@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "eamodio.gitlens",
+        "PKief.material-icon-theme",
+        "chris-noring.node-snippets",
+        "christian-kohler.path-intellisense"
+    ]
+}
