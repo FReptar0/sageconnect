@@ -27,16 +27,16 @@ npm install
 
 __The necessary .env files are the following:__
    
-   - <a href="#.env.credentials.database"><b>.env.credentials.database</b></a>
-   - <a href="#.env.credentials.focaltec"><b>.env.credentials.focaltec</b></a>
-   - <a href="#.env.credentials.mailing"><b>.env.credentials.mailing</b></a>
-   - <a href="#.env.mail"><b>.env.mail</b></a>
+   - <a href="#envcredentialsdatabase"><b>.env.credentials.database</b></a>
+   - <a href="#envcredentialsfocaltec"><b>.env.credentials.focaltec</b></a>
+   - <a href="#envcredentialsmailing"><b>.env.credentials.mailing</b></a>
+   - <a href="#envmail"><b>.env.mail</b></a>
 
-### .env.credentials.
+### .env.credentials.database
 
-### .env.credentials.
+### .env.credentials.focaltec
 
-### .env.credentials.
+### .env.credentials.mailing
 
 ### .env.mail
 
