@@ -25,7 +25,20 @@ npm install
 
 > :bulb: Remember that the ***.env*** files need to be added so that the program can access the credentials.
 
+__The necessary .env files are the following:__
+   
+   - <a href="#.env.credentials.database"><b>.env.credentials.database</b></a>
+   - <a href="#.env.credentials.focaltec"><b>.env.credentials.focaltec</b></a>
+   - <a href="#.env.credentials.mailing"><b>.env.credentials.mailing</b></a>
+   - <a href="#.env.mail"><b>.env.mail</b></a>
 
+### .env.credentials.
+
+### .env.credentials.
+
+### .env.credentials.
+
+### .env.mail
 
 ### For the final user
 
