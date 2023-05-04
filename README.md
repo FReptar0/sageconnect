@@ -23,6 +23,10 @@ Only the installation of the libraries/dependencies in the project should be per
 npm install
 ```
 
+> :bulb: Remember that the ***.env*** files need to be added so that the program can access the credentials.
+
+
+
 ### For the final user
 
 

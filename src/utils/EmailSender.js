@@ -1,7 +1,7 @@
 const nodeMailer = require('nodemailer');
 const dotenv = require('dotenv');
 
-async function sendMail(subject, text, oAuth2Client) {
+async function sendMail(subject, text) {
     dotenv.config({ path: '.env.credentials.mailing' });
     dotenv.config({ path: '.env.mail' });
     try {
