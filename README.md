@@ -25,12 +25,12 @@ npm install
 
 > :bulb: Remember that the ***.env*** files need to be added so that the program can access the credentials.
 
-__The necessary .env files are the following:__
+**The necessary .env files are the following:**
    
-   - <a href="#envcredentialsdatabase"><b>.env.credentials.database</b></a>
-   - <a href="#envcredentialsfocaltec"><b>.env.credentials.focaltec</b></a>
-   - <a href="#envcredentialsmailing"><b>.env.credentials.mailing</b></a>
-   - <a href="#envmail"><b>.env.mail</b></a>
+   - **[.env.credentials.database](#envcredentialsdatabase)**
+   - **[.env.credentials.focaltec](#envcredentialsfocaltec)**
+   - **[.env.credentials.mailing](#envcredentialsmailing)**
+   - **[.env.mail](#envmail)**
 
 ---
 
@@ -85,8 +85,21 @@ USER_MAIL_RECEIVER=<email address who is going to get the messages>
 USER_MAIL_SENDER=<email address who is going to send the messages>
 ```
 
-### For the final user
+> :exclamation: The time must be greater than zero.
 
 - ### During testing time
+
+You should execute the next command so you can run all the tests:
+
+
+
+```
+npm run test
+```
+> :bulb: Remember, if you want to add a new test, you should add it in the [tests](./tests/) folder. <br/>
+> :bangbang: The test files must end in .test.js
+
+### For the final user
+
 
 ---

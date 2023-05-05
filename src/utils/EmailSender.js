@@ -17,14 +17,13 @@ async function sendMail(subject, text) {
             }
         });
         const mailOptions = {
-            from: `Fernando Rodriguez <${process.env.USER_MAIL_SENDER}>`,
+            from: process.env.USER_MAIL_SENDER,
             to: process.env.USER_MAIL_RECEIVER,
             subject: subject,
             text: text,
         }
 
         const result = await transport.sendMail(mailOptions);
-        console.log(result)
         return result;
 
     } catch (error) {
