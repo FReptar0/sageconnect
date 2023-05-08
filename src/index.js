@@ -1,6 +1,6 @@
 const express = require('express');
+const { getProviders } = require('./components/focaltec/Provider')
 const { minutesToMilliseconds } = require('./utils/TransformTime');
-require('dotenv').config({ path: '.env.mail' });
 
 const app = express();
 
@@ -16,4 +16,10 @@ app.listen(3030, () => {
 setInterval(() => {
     // TODO: Llamar a las funciones que se ejecutarán cada cierto tiempo
     // * Son las funciones de comparación de datos
-}, minutesToMilliseconds(process.env.WAIT_TIME));
+    getProviders().then(result => {
+        console.console.log(result);
+    })
+    .catch(err => {
+        console.log(err)
+    })
+}, minutesToMilliseconds());
