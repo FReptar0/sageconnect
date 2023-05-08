@@ -1,13 +1,13 @@
 const axios = require('axios');
-require('dotenv').config({ path: '.env.credentials.focaltec' });
-
-const url = process.env.URL;
-const tenantId = process.env.TENANT_ID;
-const apiKey = process.env.API_KEY;
-const apiSecret = process.env.API_SECRET;
-
+const { getConfig } = require('../../utils/FocaltecConfig');
 
 async function getCFDIS() {
+    const config = await getConfig();
+    const url = config.URL;
+    const tenantId = config.TenantId;
+    const apiKey = config.TenantKey;
+    const apiSecret = config.TenantSecret;
+
     let date = new Date().getDate();
     let month = new Date().getMonth() + 1;
     let year = new Date().getFullYear();
