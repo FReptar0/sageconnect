@@ -32,7 +32,24 @@ async function getTypeI() {
     }
 }
 
+async function getTypeE() {
+    try {
+        const data = await getCFDIS();
+        let typeE = [];
+        data.forEach(element => {
+            console.log(element.cfdi.tipo_comprobante);
+            if (element.cfdi.tipo_comprobante == 'E') {
+                typeE.push(element);
+            }
+        });
+        return typeE;
+    } catch (error) {
+        throw new Error('Error al obtener el tipo de comprobante "E" : \n' + error + '\n');
+    }
+}
+
 module.exports = {
     getTypeP,
-    getTypeI
+    getTypeI,
+    getTypeE
 }
