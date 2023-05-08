@@ -16,7 +16,7 @@ async function getProviders() {
         });
         return response.data.items;
     } catch (error) {
-        throw new Error('Error al obtener los proveedores');
+        throw new Error('Error al obtener los proveedores: \n' + error + '\n');
     }
 }
 

@@ -8,7 +8,7 @@
 
 - Node.js (Stable version)
    - > The system was created on Node v18.12.1
-- npm (latest version)
+- npm (Stable version)
    - > The system was created using npm v8.19.2
 
 ---
@@ -31,6 +31,9 @@ npm install
    - **[.env.credentials.focaltec](#envcredentialsfocaltec)**
    - **[.env.credentials.mailing](#envcredentialsmailing)**
    - **[.env.mail](#envmail)**
+
+   
+### For the final user
 
 ---
 
@@ -99,7 +102,6 @@ npm run test
 > :bulb: Remember, if you want to add a new test, you should add it in the [tests](./tests/) folder. <br/>
 > :bangbang: The test files must end in .test.js
 
-### For the final user
 
 
 ---

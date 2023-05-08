@@ -7,7 +7,7 @@ const apiKey = process.env.API_KEY;
 const apiSecret = process.env.API_SECRET;
 
 
-async function getProviders() {
+async function getCFDIS() {
     let date = new Date().getDate();
     let month = new Date().getMonth() + 1;
     let year = new Date().getFullYear();
@@ -22,10 +22,10 @@ async function getProviders() {
         });
         return response.data.items;
     } catch (error) {
-        throw new Error('Error al obtener los proveedores');
+        throw new Error('Error al obtener los CFDIS: \n' + error + '\n');
     }
 }
 
 module.exports = {
-    getProviders
+    getCFDIS
 }
