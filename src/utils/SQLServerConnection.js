@@ -20,7 +20,6 @@ async function runQuery(query, database = 'FESA') {
     const result = await pool.request().query(query);
 
     pool.close();
-
     return result.recordset;
 }
 
