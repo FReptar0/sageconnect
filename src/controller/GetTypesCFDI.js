@@ -5,7 +5,6 @@ async function getTypeP() {
         const data = await getCFDIS();
         let typeP = [];
         data.forEach(element => {
-            console.log(element.cfdi.tipo_comprobante);
             if (element.cfdi.tipo_comprobante == 'P') {
                 typeP.push(element);
             }
@@ -21,7 +20,6 @@ async function getTypeI() {
         const data = await getCFDIS();
         let typeI = [];
         data.forEach(element => {
-            console.log(element.cfdi.tipo_comprobante);
             if (element.cfdi.tipo_comprobante == 'I') {
                 typeI.push(element);
             }
@@ -37,7 +35,6 @@ async function getTypeE() {
         const data = await getCFDIS();
         let typeE = [];
         data.forEach(element => {
-            console.log(element.cfdi.tipo_comprobante);
             if (element.cfdi.tipo_comprobante == 'E') {
                 typeE.push(element);
             }

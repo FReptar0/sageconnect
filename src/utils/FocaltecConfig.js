@@ -1,4 +1,4 @@
-const { runQuery } = require('../../utils/SQLServerConnection')
+const { runQuery } = require('./SQLServerConnection')
 
 async function getConfig() {
     try {

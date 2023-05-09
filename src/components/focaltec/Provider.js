@@ -3,7 +3,7 @@ const { getConfig } = require('../../utils/FocaltecConfig');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 
 async function getProviders() {
-    
+
     const config = await getConfig();
     const url = config.URL;
     const tenantId = config.TenantId;
@@ -15,6 +15,7 @@ async function getProviders() {
             headers: {
                 'PDPTenantKey': apiKey,
                 'PDPTenantSecret': apiSecret
+
             }
         });
         return response.data.items;
@@ -22,12 +23,6 @@ async function getProviders() {
         throw new Error('Error al obtener los proveedores: \n' + error + '\n');
     }
 }
-
-getProviders().then(resultado => {
-    console.log(resultado)
-}).catch(err => {
-    console.log(err)
-})
 
 module.exports = {
     getProviders

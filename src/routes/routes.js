@@ -15,4 +15,8 @@ router.post('/send-mail', (req, res) => {
 
 });
 
+router.get('/credentials', (req, res) => {
+    res.send('<form><input type="text" placeholder="hola"></form>')
+})
+
 module.exports = router;
