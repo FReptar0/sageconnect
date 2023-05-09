@@ -1,6 +1,5 @@
 const axios = require('axios');
 const { getConfig } = require('../../utils/FocaltecConfig');
-require('dotenv').config({ path: '.env.credentials.focaltec' });
 
 async function getProviders() {
 

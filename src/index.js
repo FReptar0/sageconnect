@@ -7,8 +7,11 @@ const app = express();
 
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
-
 app.use(require('./routes/routes'))
+
+app.use(function (req, res, next) {
+    res.status(404).sendFile(process.cwd() + '/public/404.html');
+});
 
 app.listen(3030, () => {
     console.log('Server is up on port 3030');
