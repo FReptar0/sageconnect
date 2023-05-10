@@ -1,9 +1,23 @@
 const nodeMailer = require('nodemailer');
 const dotenv = require('dotenv');
 
-async function sendMail(subject, text) {
+async function sendMail(subject, data) {
     dotenv.config({ path: '.env.credentials.mailing' });
     dotenv.config({ path: '.env.mail' });
+
+    const html = `<h1>${data.h1}</h1>
+    <p>${data.p}</p>
+    <table>
+        <tr>
+            <th>Status</th>
+            <th>Message</th>
+        </tr>
+        <tr>
+            <td>${data.status}</td>
+            <td>${data.message}</td>
+        </tr>
+    </table>`;
+
     try {
         const transport = nodeMailer.createTransport({
             service: 'gmail',
@@ -20,7 +34,7 @@ async function sendMail(subject, text) {
             from: process.env.USER_MAIL_SENDER,
             to: process.env.USER_MAIL_RECEIVER,
             subject: subject,
-            text: text,
+            html: html,
         }
 
         const result = await transport.sendMail(mailOptions);

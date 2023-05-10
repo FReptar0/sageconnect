@@ -31,15 +31,30 @@
             padding: 5%;
             box-shadow: 10px 10px 5px 0px rgba(0, 0, 0, 0.5);
         }
+
+        span {
+            width: 30%;
+        }
     </style>
     <div class="container">
         <div class="card text-center">
             <div class="card-body">
-                <form action="/send-time" method="post">
-                    <h2 class="card-title">Record time to verify information:</h2>
+                <form action="/send-focaltec" method="post">
+                    <h2 class="card-title">Register the database credentials:</h2>
                     <div class="input-group mt-5">
-                        <span class="input-group-text" id="basic-addon1">Time in minutes:</span>
-                        <input type="number" class="form-control" name="time" value="1" id="time" min="1" required autocomplete="off">
+                        <span class="input-group-text" id="basic-addon1">TenantId:</span>
+                        <input type="text" class="form-control" name="tenantId" id="tenantId" required autocomplete="off">
+                    </div>
+                    <div class="input-group mt-3">
+                        <span class="input-group-text" id="basic-addon1">ApiKey:</span>
+                        <input type="text" class="form-control" name="apiKey" id="apiKey" required
+                            autocomplete="off">
+                    </div>
+
+                    <div class="input-group mt-3">
+                        <span class="input-group-text" id="basic-addon1">ApiSecret:</span>
+                        <input type="text" class="form-control" name="apiSecret" id="apiSecret" required
+                            autocomplete="off">
                     </div>
                     <div class="btn-group mt-5 text-center w-50">
                         <input type="submit" class="btn btn-primary" value="Send">
@@ -48,6 +63,7 @@
             </div>
         </div>
     </div>
+
 </body>
 
 </html>

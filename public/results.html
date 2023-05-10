@@ -23,15 +23,20 @@
         // Obtener el valor de la variable "error"}
         const error = params.get('error');
         // Mostrar la alerta de SweetAlert
-        Swal.fire({
-            title: error != null ? 'Error' : 'Success',
-            html: error == null ? `<p>${data}<p>` : `<p>${data}<p><p>Error: ${error}</p>`,
-            icon: error != null ? 'error' : 'success',
-            confirmButtonText: 'Ok'
-        }).then((result) => {
+        if (data != null || error != null) {
+            Swal.fire({
+                title: error != null ? 'Error' : 'Success',
+                html: error == null ? `<p>${data}<p>` : `<p>${data}<p><p>Error: ${error}</p>`,
+                icon: error != null ? 'error' : 'success',
+                confirmButtonText: 'Ok'
+            }).then((result) => {
+                // Redireccionar a la página de inicio
+                window.location.href = '/';
+            });
+        } else {
             // Redireccionar a la página de inicio
             window.location.href = '/';
-        });
+        }
     </script>
 </body>
 

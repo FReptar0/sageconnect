@@ -12,6 +12,26 @@ async function getConfig() {
     }
 }
 
+async function updateConfig(query) {
+    try {
+        const result = await runQuery(query);
+        return result;
+    } catch (error) {
+        throw new Error('Error al actualizar los datos de Focaltec Config: \n' + error + '\n');
+    }
+}
+
+async function insertConfig(query) {
+    try {
+        const result = await runQuery(query);
+        return result;
+    } catch (error) {
+        throw new Error('Error al insertar los datos de Focaltec Config: \n' + error + '\n');
+    }
+}
+
 module.exports = {
-    getConfig
+    getConfig,
+    updateConfig,
+    insertConfig
 }
