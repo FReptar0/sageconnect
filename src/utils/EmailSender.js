@@ -1,10 +1,7 @@
 const nodeMailer = require('nodemailer');
-const dotenv = require('dotenv');
+const { getEmailConfig } = require('./EmailConfig');
 
-async function sendMail(subject, data) {
-    dotenv.config({ path: '.env.credentials.mailing' });
-    dotenv.config({ path: '.env.mail' });
-
+async function sendMail(subject, data, mailReciver) {
     const html = `<h1>${data.h1}</h1>
     <p>${data.p}</p>
     <table>
@@ -18,21 +15,22 @@ async function sendMail(subject, data) {
         </tr>
     </table>`;
 
+    const mailConfig = await getEmailConfig();
+
     try {
         const transport = nodeMailer.createTransport({
             service: 'gmail',
             auth: {
                 type: 'OAuth2',
-                user: process.env.USER_MAIL_SENDER,
-                clientId: process.env.CLIENT_ID,
-                clientSecret: process.env.SECRET_CLIENT,
-                refreshToken: process.env.REFRESH_TOKEN,
-                accessToken: process.env.accessToken
+                user: mailConfig.CorreoEnvio,
+                clientId: mailConfig.CLIENT_ID,
+                clientSecret: mailConfig.SECRET_CLIENT,
+                refreshToken: mailConfig.REFRESH_TOKEN
             }
         });
         const mailOptions = {
-            from: process.env.USER_MAIL_SENDER,
-            to: process.env.USER_MAIL_RECEIVER,
+            from: mailConfig.CorreoEnvio,
+            to: (mailReciver == undefined || mailReciver == '') ? mailConfig.CorreoAvisos : mailReciver,
             subject: subject,
             html: html,
         }

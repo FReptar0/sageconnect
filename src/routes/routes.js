@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const { sendMail } = require('../utils/EmailSender');
-const { updateConfig } = require('../utils/FocaltecConfig');
+const { updateFocaltecConfig } = require('../utils/FocaltecConfig');
 const dotenv = require('dotenv');
 
 /* router.post('/send-mail', (req, res) => {
@@ -113,7 +113,7 @@ router.post('/send-database', (req, res) => {
         } else {
             const data = {
                 h1: 'Configuration file written successfully',
-                p: 'The configuration file was written successfully. Please restart the server to apply the changes.',
+                p: 'The configuration file was written successfully.',
                 status: 'Success',
                 message: 'File written successfully'
             }
@@ -138,19 +138,19 @@ router.post('/send-focaltec', (req, res) => {
     // const query = `INSERT INTO FESA.dbo.fesaParam ([URL], [TenantId], [ApiKey], [ApiSecret]) VALUES ('https://api-stg.portaldeproveedores.mx', '${tenantId}', '${apiKey}', '${apiSecret}')`;
 
     // Query para actualizar en la base de datos
-    const updateQuery = `UPDATE FESA.dbo.fesaParam SET [URL] = 'https://api-stg.portaldeproveedores.mx', [TenantId] = '${tenantId}', [ApiKey] = '${apiKey}', [ApiSecret] = '${apiSecret}' WHERE [idCia] = 'GRUPO'`;
+    const updateQuery = `UPDATE FESA.dbo.fesaParam SET [URL] = 'https://api-stg.portaldeproveedores.mx', [TenantId] = '${tenantId}', [TenantKey] = '${apiKey}', [TenantSecret] = '${apiSecret}' WHERE [idCia] = 'GRUPO'`;
 
-    updateConfig(updateQuery).then((result) => {
+    updateFocaltecConfig(updateQuery).then((result) => {
         // verificar que hayan sido afectadas las filas
         if (result.rowsAffected[0] > 0) {
             const data = {
                 h1: 'Configuration updated successfully',
-                p: 'The configuration was updated successfully. Please restart the server to apply the changes.',
+                p: 'The configuration was updated successfully on the database.',
                 status: 'Success',
                 message: 'Configuration updated successfully'
             }
             sendMail('Configuration updated successfully', data).then((result) => {
-                res.status(200).redirect('/results?message=Configuration updated successfully');
+                res.status(200).redirect('/results?message=Configuration updated successfully: ' + result);
             }).catch((error) => {
                 res.status(500).redirect('/results?message=Error sending email but the configuration was applied+&error=' + error);
             });

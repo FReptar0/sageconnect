@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { getConfig } = require('../../utils/FocaltecConfig');
+const notifier = require('node-notifier');
 
 async function getCFDIS() {
     const config = await getConfig();
@@ -21,8 +22,18 @@ async function getCFDIS() {
             }
         });
         return response.data.items;
-    } catch (error) {
-        throw new Error('Error al obtener los CFDIS: \n' + error + '\n');
+    } catch (err) {
+        try {
+            notifier.notify({
+                title: 'Focaltec',
+                message: 'Error al obtener los CFDIS: ' + err,
+                sound: true,
+                wait: true
+            });
+        } catch (error) {
+            console.log('Error al enviar notificacion: ' + error);
+            console.log('Error al obtener los CFDIS: ' + err);
+        }
     }
 }
 
