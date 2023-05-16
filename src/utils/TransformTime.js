@@ -7,7 +7,8 @@ function minutesToMilliseconds(minutes) {
                 title: 'Asignación de tiempo',
                 message: 'El tiempo de espera no puede ser 0',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (error) {
             console.log('Error al enviar notificacion: ' + error);
@@ -19,7 +20,8 @@ function minutesToMilliseconds(minutes) {
                 title: 'Asignación de tiempo',
                 message: 'El tiempo de espera no puede ser negativo',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (error) {
             console.log('Error al enviar notificacion: ' + error);

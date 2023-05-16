@@ -22,10 +22,11 @@ async function getEmailConfig() {
                 title: 'Database Error',
                 message: 'Error al obtener la configuracion de correo: \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
-            
+
         }
     }
 }

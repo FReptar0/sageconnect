@@ -23,7 +23,7 @@ async function runQuery(query, database = 'FESA') {
     return result.recordset;
 }
 
-runQuery(`SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = 'CLO160720219')
+/* runQuery(`SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = 'CLO160720219')
 AND Parametro = 'DataBase'`).then(result =>{
     result[0].DataBaseName = result[0].DataBaseName.replace(/\s+/g, '')
     data = {
@@ -31,7 +31,7 @@ AND Parametro = 'DataBase'`).then(result =>{
         idCia: result[0].idCia
     }
     console.log(data)
-})
+}) */
 
 module.exports = {
     runQuery

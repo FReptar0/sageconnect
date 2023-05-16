@@ -17,7 +17,8 @@ async function getTypeP() {
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
@@ -42,7 +43,8 @@ async function getTypeI() {
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
@@ -67,7 +69,8 @@ async function getTypeE() {
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "E" : \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);

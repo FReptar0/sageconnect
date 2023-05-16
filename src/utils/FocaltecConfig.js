@@ -14,7 +14,8 @@ async function getFocaltecConfig() {
                 title: 'Database Error',
                 message: 'Error al obtener la configuracion de Focaltec: \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
@@ -33,7 +34,8 @@ async function updateFocaltecConfig(query) {
                 title: 'Database Error',
                 message: 'Error al actualizar los datos de Focaltec Config: \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
@@ -52,7 +54,8 @@ async function insertFocaltecConfig(query) {
                 title: 'Database Error',
                 message: 'Error al insertar los datos de Focaltec Config: \n' + error + '\n',
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);

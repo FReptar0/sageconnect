@@ -18,6 +18,6 @@ app.listen(3030, () => {
 });
 
 setInterval(async () => {
-
-
+    const providers = await getProviders();
+    console.log(providers);
 }, minutesToMilliseconds(process.env.WAIT_TIME));

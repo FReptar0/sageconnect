@@ -28,7 +28,8 @@ async function getCFDIS() {
                 title: 'Focaltec',
                 message: 'Error al obtener los CFDIS: ' + err,
                 sound: true,
-                wait: true
+                wait: true,
+                icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (error) {
             console.log('Error al enviar notificacion: ' + error);
