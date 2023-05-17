@@ -21,10 +21,19 @@ async function runQuery(query, database = 'FESA') {
 
     console.log(result)
 
-    const returnValue = {
-        recordset: result.recordset[0] || {},
-        rowsAffected: result.rowsAffected[0]
+    let returnValue = {
+        recordset: null,
+        rowsAffected: 0
     }
+
+    if (result.recordset.length > 0) {
+        returnValue.recordset = result.recordset[0];
+    }
+
+    if (result.rowsAffected.length > 0) {
+        returnValue.rowsAffected = result.rowsAffected[0];
+    }
+
     pool.close();
     return returnValue;
 }
