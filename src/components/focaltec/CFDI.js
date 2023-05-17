@@ -1,9 +1,9 @@
 const axios = require('axios');
-const { getConfig } = require('../../utils/FocaltecConfig');
+const { getFocaltecConfig } = require('../../utils/FocaltecConfig');
 const notifier = require('node-notifier');
 
 async function getCFDIS() {
-    const config = await getConfig();
+    const config = await getFocaltecConfig();
     const url = config.URL;
     const tenantId = config.TenantId;
     const apiKey = config.TenantKey;
