@@ -74,17 +74,7 @@ router.post('/send-database', (req, res) => {
     const { user, password, servername } = req.body;
 
     if (!user || !password || !servername) {
-        const data = {
-            h1: 'Error writing configuration file',
-            p: 'The following fields cannot be empty:<br/><b>- User</b><br/><b>- Password</b><br/><b>- Servername</b>',
-            status: 'Error',
-            message: 'The fields cannot be empty'
-        }
-        sendMail('Error writing configuration file', data).then((result) => {
-            res.status(500).redirect('/results?message=Error writing file&error=Empty fields');
-        }).catch((error) => {
-            res.status(500).redirect('/results?message=Error sending email and the some fields are emptyfile+&error=' + error);
-        });
+        res.status(500).redirect('/results?message=Error writing file&error=Empty fields');
         return;
     }
 
@@ -98,30 +88,9 @@ router.post('/send-database', (req, res) => {
 
     fs.writeFile(filePath, data, (err) => {
         if (err) {
-            const data = {
-                h1: 'Error writing configuration file',
-                p: 'Something went wrong while writing the configuration file. Please try again later.',
-                status: 'Error',
-                message: 'Error writing file: ' + err
-            }
-
-            sendMail('Error writing configuration file', data).then((result) => {
-                res.status(500).redirect('/results?message=Error writing file&error=' + err);
-            }).catch((error) => {
-                res.status(500).redirect('/results?message=Error sending email and writting the file+&error=' + error);
-            });
+            res.status(500).redirect('/results?message=Error writing file&error=' + err);
         } else {
-            const data = {
-                h1: 'Configuration file written successfully',
-                p: 'The configuration file was written successfully.',
-                status: 'Success',
-                message: 'File written successfully'
-            }
-            sendMail('Configuration file written successfully', data).then((result) => {
-                res.status(200).redirect('/results?message=File written successfully');
-            }).catch((error) => {
-                res.status(500).redirect('/results?message=Error sending email but the configuration was applied+&error=' + error);
-            });
+            res.status(200).redirect('/results?message=File written successfully');
         }
     });
 });

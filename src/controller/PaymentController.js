@@ -7,6 +7,7 @@ async function checkPayments() {
   try {
     // Traemos los CFDIS de Focaltec que sean de tipo P
     const result = await getTypeP();
+    console.log(result[0].cfdi.timbre.fecha_timbrado)
     // Obtenemos la fecha actual
     let fechaActual = new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
@@ -25,26 +26,26 @@ async function checkPayments() {
       const rsQuery = await runQuery(`SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${result[index].cfdi.receptor.rfc}')
       AND Parametro = 'DataBase'`)
       // Quitamos los espacios en blanco del nombre de la base de datos y del idCia
-      rsQuery[0].DataBaseName = rsQuery[0].DataBaseName.replace(/\s+/g, '')
-      rsQuery[0].idCia = rsQuery[0].idCia.replace(/\s+/g, '')
-
-      if (!rsQuery[0].DataBaseName) {
+      /*       rsQuery[0].DataBaseName = rsQuery[0].DataBaseName.replace(/\s+/g, '')
+            rsQuery[0].idCia = rsQuery[0].idCia.replace(/\s+/g, '') */
+      if (rsQuery != '') {
         // Obtenemos los campos opcionales de la base de datos
         const camposOpcionales = await runQuery(`SELECT [BancoAP],[NumCtaAP],[CorreoAvisos],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac]
       FROM (
-        SELECT PARAMETRO, VALOR
-        FROM FESA.dbo.fesaParam
+        SELECT PARAMETRO, RTRIM(VALOR) AS VALOR
+        FROM fesaParam
         WHERE PARAMETRO IN ('BancoAP','NumCtaAP','CorreoAvisos','FechaCFD','FolioCFD','FormaPago','MetodoPago','PasswordA','UserAccpac')
-          AND idCia = '${rsQuery[index].idCia}'
+          AND idCia = '${rsQuery[0].idCia}'
       ) AS t
       PIVOT (
         MIN(VALOR)
         FOR PARAMETRO IN ([BancoAP],[NumCtaAP],[CorreoAvisos],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac]
       )
       ) AS p;`)
-        const externalId = result[index].metadata.external_id
-        //const externalId = 'PY00000000000000000001'
-        const rsQueryAPTCR = await runQuery(`SELECT H.CNTBTCH, H.CNTENTR, ISNULL(O.[VALUE], 'NOEXISTECO') AS UUIDPAGO, ISNULL(F.[VALUE], 'NOEXISTECO') AS FECHATIM
+        //console.log(camposOpcionales[0])
+        //const externalId = result[index].metadata.external_id
+        const externalId = 'PY00000000000000000003'
+        const rsQueryAPTCR = await runQuery(`SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM
         FROM APTCR H
         LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${camposOpcionales[0].FolioCFD}'
         LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${camposOpcionales[0].FechaCFD}'
@@ -59,10 +60,10 @@ async function checkPayments() {
             ,  ${fechaActual} ,23165973,'${camposOpcionales[0].UserAccpac}','${rsQuery[0].idCia}' 
             ,'${result[index].cfdi.timbre.uuid}' 
             ,1,60,0,0,0,1)`, rsQuery[0].DataBaseName)
-
+          console.log(rsInsertAPTCRO_UUID)
 
           // verifacamos si se inserto el UUID en la tabla APTCRO
-          if (rsInsertAPTCRO_UUID[0].affectedRows === 0) {
+          if (rsInsertAPTCRO_UUID.affectedRows === 0) {
             // Si no se inserto el UUID en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se inserto UUID en APTCRO"
             data.p = "No se inserto el UUID en la tabla APTCRO"
@@ -119,12 +120,16 @@ async function checkPayments() {
 
         } else if (rsQueryAPTCR[0].UUIDPAGO === '') {
           // Si el UUID esta vacio en la tabla APTCRO, se actualiza
-          const rsUpdateAPTCRO_UUID = await runQuery(`UPDATE APTCRO  SET [VALUE] = ${result[index].cfdi.timbre.uuid} 
-            WHERE BTCHTYPE= 'PY' AND CNTBTCH =   ${rsQueryAPTCR[0].CNTBTCH}   AND CNTENTR =   ${rsQueryAPTCR[0].CNTENTR} 
-            AND OPTFIELD = '${camposOpcionales[0].FolioCFD}'`, rsQuery[0].DataBaseName)
+          console.log(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.uuid}' 
+          WHERE BTCHTYPE= 'PY' AND CNTBTCH =   ${rsQueryAPTCR[0].CNTBTCH} AND CNTENTR = ${rsQueryAPTCR[0].CNTENTR} 
+          AND OPTFIELD = '${camposOpcionales[0].FolioCFD}'`)
 
+          const rsUpdateAPTCRO_UUID = await runQuery(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.uuid}' 
+            WHERE BTCHTYPE= 'PY' AND CNTBTCH = ${rsQueryAPTCR[0].CNTBTCH} AND CNTENTR = ${rsQueryAPTCR[0].CNTENTR} 
+            AND OPTFIELD = '${camposOpcionales[0].FolioCFD}'`, rsQuery[0].DataBaseName)
+          console.log(rsUpdateAPTCRO_UUID)
           // verifacamos si se actualizo el UUID en la tabla APTCRO
-          if (rsUpdateAPTCRO_UUID[0].affectedRows === 0) {
+          if (rsUpdateAPTCRO_UUID.affectedRows === 0) {
             // Si no se actualizo el UUID en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se actualizo UUID en APTCRO"
             data.p = "No se actualizo el UUID en la tabla APTCRO"
@@ -189,7 +194,7 @@ async function checkPayments() {
           ,1,60,0,0,0,1)`, rsQuery[0].DataBaseName)
 
           // verifacamos si se inserto el campo FECHATIM en la tabla APTCRO
-          if (rsInsertAPTCRO_FECHATIM[0].affectedRows === 0) {
+          if (rsInsertAPTCRO_FECHATIM.affectedRows === 0) {
             // Si no se inserto el campo FECHATIM en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se inserto FECHATIM en APTCRO"
             data.p = "No se inserto el campo FECHATIM en la tabla APTCRO"
@@ -244,12 +249,12 @@ async function checkPayments() {
 
         } else if (rsQueryAPTCR[0].FECHATIM === '') {
           // Si el campo FECHATIM esta vacio en la tabla APTCRO, se actualiza 
-          const rsUpdateAPTCRO_FECHATIM = await runQuery(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.fecha_timbrado} '
+          const rsUpdateAPTCRO_FECHATIM = await runQuery(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.fecha_timbrado}'
           WHERE BTCHTYPE = 'PY' AND CNTBTCH = ${rsQueryAPTCR[0].CNTBTCH} AND CNTENTR = ${rsQueryAPTCR[0].CNTENTR}
           AND OPTFIELD = '${camposOpcionales[0].FechaCFD}'`, rsQuery[0].DataBaseName)
 
           // verifacamos si se actualizo el campo FECHATIM en la tabla APTCRO
-          if (rsUpdateAPTCRO_FECHATIM[0].affectedRows === 0) {
+          if (rsUpdateAPTCRO_FECHATIM.affectedRows === 0) {
             // Si no se actualizo el campo FECHATIM en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se actualizo FECHATIM en APTCRO"
             data.p = "No se actualizo el campo FECHATIM en la tabla APTCRO"
@@ -309,10 +314,11 @@ async function checkPayments() {
           console.log('Ya existe fecha de timbrado')
         }
       } else {
-        console.log('No existe el registro')
+        //console.log('No se encontro el pago en SAGE')
       }
     }
   } catch (error) {
+    console.log(error)
     try {
       notifier.notify({
         title: 'Error al ejecutar el query',
@@ -328,6 +334,11 @@ async function checkPayments() {
   }
 
 }
+
+checkPayments().then(rs => {
+}).catch(err => {
+  console.log(err)
+})
 
 module.exports = {
   checkPayments
