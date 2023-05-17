@@ -117,7 +117,9 @@ async function checkPayments() {
             })
           }
 
-        } else if (rsQueryAPTCR.recordset.UUIDPAGO === '') {
+        }
+        
+        if (rsQueryAPTCR.recordset.UUIDPAGO === '') {
           // Si el UUID esta vacio en la tabla APTCRO, se actualiza
           console.log(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.uuid}' 
           WHERE BTCHTYPE= 'PY' AND CNTBTCH =   ${rsQueryAPTCR.recordset.CNTBTCH} AND CNTENTR = ${rsQueryAPTCR.recordset.CNTENTR} 
@@ -182,7 +184,9 @@ async function checkPayments() {
             })
           }
 
-        } else if (rsQueryAPTCR.recordset.FECHATIM === 'NOEXISTECO') {
+        }
+        
+        if (rsQueryAPTCR.recordset.FECHATIM === 'NOEXISTECO') {
           // Si el campo FECHATIM esta vacio en la tabla APTCRO, se inserta
           const rsInsertAPTCRO_FECHATIM = await runQuery(`INSERT INTO APTCRO
           (BTCHTYPE,CNTBTCH,CNTENTR,OPTFIELD,AUDTDATE,AUDTTIME,AUDTUSER,AUDTORG,VALUE,[TYPE],[LENGTH],DECIMALS,ALLOWNULL,VALIDATE,SWSET)
@@ -246,7 +250,9 @@ async function checkPayments() {
             })
           }
 
-        } else if (rsQueryAPTCR.recordset.FECHATIM === '') {
+        }
+        
+        if (rsQueryAPTCR.recordset.FECHATIM === '') {
           // Si el campo FECHATIM esta vacio en la tabla APTCRO, se actualiza 
           const rsUpdateAPTCRO_FECHATIM = await runQuery(`UPDATE APTCRO  SET [VALUE] = '${result[index].cfdi.timbre.fecha_timbrado}'
           WHERE BTCHTYPE = 'PY' AND CNTBTCH = ${rsQueryAPTCR.recordset.CNTBTCH} AND CNTENTR = ${rsQueryAPTCR.recordset.CNTENTR}
@@ -307,9 +313,13 @@ async function checkPayments() {
               }
             })
           }
-        } else if (rsQueryAPTCR.recordset.UUIDPAGO.length === 36) {
+        }
+        
+        if (rsQueryAPTCR.recordset.UUIDPAGO.length === 36) {
           console.log('Ya existe UUID')
-        } else if (rsQueryAPTCR.recordset.FECHATIM.length === 19) {
+        }
+        
+        if (rsQueryAPTCR.recordset.FECHATIM.length === 19) {
           console.log('Ya existe fecha de timbrado')
         }
       } else {
@@ -332,6 +342,12 @@ async function checkPayments() {
     }
   }
 }
+
+checkPayments().then(rs => {
+  console.log(rs)
+}).catch(err => {
+  console.log(err)
+})
 
 module.exports = {
   checkPayments

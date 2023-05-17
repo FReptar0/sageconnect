@@ -19,24 +19,15 @@ async function runQuery(query, database = 'FESA') {
 
     const result = await pool.request().query(query);
 
+    console.log(result)
+
     const returnValue = {
         recordset: result.recordset[0],
         rowsAffected: result.rowsAffected[0]
     }
-
     pool.close();
     return returnValue;
 }
-
-runQuery(`SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = 'CLO160720219')
-AND Parametro = 'DataBase'`).then(result => {
-    result.recordset.DataBaseName = result.recordset.DataBaseName.replace(/\s+/g, '')
-    data = {
-        database: result.recordset.DataBaseName,
-        idCia: result.recordset.idCia
-    }
-    console.log(data)
-})
 
 module.exports = {
     runQuery

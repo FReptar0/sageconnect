@@ -1,10 +1,8 @@
 const axios = require('axios');
-const { getFocaltecConfig } = require('../../utils/FocaltecConfig');
 const notifier = require('node-notifier');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 
 async function getCFDIS() {
-    const config = await getFocaltecConfig();
     const url = process.env.URL;
     const tenantId = process.env.TENANT_ID  ;
     const apiKey = process.env.API_KEY;

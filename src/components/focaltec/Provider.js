@@ -1,10 +1,9 @@
 const axios = require('axios');
-const { getFocaltecConfig } = require('../../utils/FocaltecConfig');
 const notifier = require('node-notifier');
+require('dotenv').config({ path: '.env.credentials.focaltec' });
 
 async function getProviders() {
 
-    const config = await getFocaltecConfig();
     if (!config) {
         try {
             notifier.notify({
@@ -19,17 +18,10 @@ async function getProviders() {
             console.log('Error al obtener la configuracion: ');
         }
     } else {
-        var url = config.URL;
-        var tenantId = config.TenantId;
-        var apiKey = config.TenantKey;
-        var apiSecret = config.TenantSecret;
-
-        // eliminar espacio en blanco
-        const regex = /\s+/g;
-        url = url.replace(regex, '');
-        tenantId = tenantId.replace(regex, '');
-        apiKey = apiKey.replace(regex, '');
-        apiSecret = apiSecret.replace(regex, '');
+        const url = process.env.URL;
+        const tenantId = process.env.TENANT_ID;
+        const apiKey = process.env.API_KEY;
+        const apiSecret = process.env.API_SECRET;
 
         try {
             const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantId}/providers?hideBankInformation=false&emptyExternalId=false&offset=0&pageSize=1000`, {
