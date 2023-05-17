@@ -26,11 +26,11 @@ async function runQuery(query, database = 'FESA') {
         rowsAffected: 0
     }
 
-    if (result.recordset.length > 0) {
+    if (result.recordset && result.recordset.length > 0) {
         returnValue.recordset = result.recordset[0];
     }
 
-    if (result.rowsAffected.length > 0) {
+    if (result.rowsAffected && result.rowsAffected.length > 0) {
         returnValue.rowsAffected = result.rowsAffected[0];
     }
 
