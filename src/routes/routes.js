@@ -101,44 +101,23 @@ router.post('/send-focaltec', (req, res) => {
     if (!tenantId || !apiKey || !apiSecret) {
         res.status(500).redirect('/results?message=Error updating the database&error=Empty fields');
         return;
-    } else {
-        const queries = [
-            `UPDATE FESA.dbo.fesaParam SET [Valor] = '${tenantId}' WHERE [idCia] = 'GRUPO' AND [Parametro] = 'TenantId'`,
-            `UPDATE FESA.dbo.fesaParam SET [Valor] = '${apiKey}' WHERE [idCia] = 'GRUPO' AND [Parametro] = 'TenantKey'`,
-            `UPDATE FESA.dbo.fesaParam SET [Valor] = '${apiSecret}' WHERE [idCia] = 'GRUPO' AND [Parametro] = 'TenantSecret'`
-        ];
-        for (let i; queries.length; i++) {
-            const query = queries[i];
-            updateFocaltecConfig(query).then((result) => {
-                if (result.rowsAffected[0] > 0) {
-                    const data = {
-                        h1: 'Database updated successfully',
-                        p: 'The database was updated successfully.',
-                        status: 'Success',
-                        message: 'Database updated successfully'
-                    }
-                    sendMail('Database updated successfully', data).then((result) => {
-                        res.status(200).redirect('/results?message=Database updated successfully');
-                    }).catch((error) => {
-                        res.status(500).redirect('/results?message=Error sending email but the database was updated+&error=' + error);
-                    });
-                }
-            }).catch((error) => {
-                const data = {
-                    h1: 'Error updating the database',
-                    p: 'Something went wrong while updating the database. Please try again later.',
-                    status: 'Error',
-                    message: 'Error updating the database: ' + error
-                }
-
-                sendMail('Error updating the database', data).then((result) => {
-                    res.status(500).redirect('/results?message=Error updating the database&error=No rows affected');
-                }).catch((error) => {
-                    res.status(500).redirect('/results?message=Error sending email and updating the database+&error=' + error);
-                });
-            });
-        }
     }
+
+    const data = `URL=https://api-stg.portaldeproveedores.mx\nTENANT_ID=${tenantId}\nAPI_KEY=${apiKey}\nAPI_SECRET=${apiSecret}`;
+
+    const filePath = path.join(process.cwd(), '.env.credentials.focaltec');
+
+    if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+    }
+
+    fs.writeFile(filePath, data, (err) => {
+        if (err) {
+            res.status(500).redirect('/results?message=Error writing file&error=' + err);
+        } else {
+            res.status(200).redirect('/results?message=File written successfully');
+        }
+    });
 });
 
 module.exports = router;

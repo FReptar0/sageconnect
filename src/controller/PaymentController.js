@@ -331,13 +331,7 @@ async function checkPayments() {
       console.log("No se ejecuto el query : " + error)
     }
   }
-
 }
-
-checkPayments().then(rs => {
-}).catch(err => {
-  console.log(err)
-})
 
 module.exports = {
   checkPayments
