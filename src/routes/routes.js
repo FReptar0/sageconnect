@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const { sendMail } = require('../utils/EmailSender');
-const { updateFocaltecConfig } = require('../utils/FocaltecConfig');
 const dotenv = require('dotenv');
 
 /* router.post('/send-mail', (req, res) => {

@@ -22,7 +22,7 @@ async function runQuery(query, database = 'FESA') {
     console.log(result)
 
     const returnValue = {
-        recordset: result.recordset[0],
+        recordset: result.recordset[0] || {},
         rowsAffected: result.rowsAffected[0]
     }
     pool.close();
