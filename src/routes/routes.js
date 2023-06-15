@@ -33,6 +33,10 @@ router.get('/focaltec', (req, res) => {
     res.status(200).sendFile(process.cwd() + '/public/focaltec.html');
 })
 
+router.get('/mailing', (req, res) => {
+    res.status(200).sendFile(process.cwd() + '/public/mailing.html');
+});
+
 router.get('/results', (req, res) => {
     res.status(200).sendFile(process.cwd() + '/public/results.html');
 });
@@ -105,6 +109,31 @@ router.post('/send-focaltec', (req, res) => {
     const data = `URL=https://api-stg.portaldeproveedores.mx\nTENANT_ID=${tenantId}\nAPI_KEY=${apiKey}\nAPI_SECRET=${apiSecret}`;
 
     const filePath = path.join(process.cwd(), '.env.credentials.focaltec');
+
+    if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+    }
+
+    fs.writeFile(filePath, data, (err) => {
+        if (err) {
+            res.status(500).redirect('/results?message=Error writing file&error=' + err);
+        } else {
+            res.status(200).redirect('/results?message=File written successfully');
+        }
+    });
+});
+
+router.post('/send-mailing', (req, res) => {
+    const { email, clientId, secretClient, refreshToken } = req.body;
+
+    if (!email || !clientId || !secretClient || !refreshToken) {
+        res.status(500).redirect('/results?message=Error writing file&error=Empty fields');
+        return;
+    }
+
+    const data = `EMAIL=${email}\nCLIENT_ID=${clientId}\nSECRET_CLIENT=${secretClient}\nREFRESH_TOKEN=${refreshToken}\nREDIRECT_URI=https://developers.google.com/oauthplayground`;
+
+    const filePath = path.join(process.cwd(), '.env.credentials.mailing');
 
     if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);

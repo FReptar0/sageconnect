@@ -23,8 +23,8 @@
         }
 
         .card {
-            width: 65%;
-            height: 35%;
+            width: 50%;
+            height: 50%;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -32,29 +32,27 @@
             box-shadow: 10px 10px 5px 0px rgba(0, 0, 0, 0.5);
         }
 
-        .btn {
-            width: 100%;
+        span {
+            width: 30%;
         }
     </style>
     <div class="container">
         <div class="card text-center">
-            <div style="background-color: #fff;" class="card-header">
-                <h1 class="card-tile">SAGECONNECT</h1>
-            </div>
             <div class="card-body">
-                <div class="cont">
-                    <h2 class="p-2">Select an option:</h2>
-                    <div class="btn-group">
-                        <a href="/time" class="btn btn-primary">Set time</a>
-                        <a href="/database" class="btn btn-primary">Set database credentials</a>
-                        <a href="/focaltec" class="btn btn-primary">Set focaltec credentials</a>
-                        <a href="/mailing" class="btn btn-primary">Set mailing credentials</a>
-                        <a href="/path" class="btn btn-primary">Set path</a>
+                <form action="/send-path" method="post">
+                    <h2 class="card-title">Register the path:</h2>
+                    <div class="input-group mt-5">
+                        <span class="input-group-text" id="basic-addon1">Path:</span>
+                        <input type="text" class="form-control" name="ruta" id="ruta" required autocomplete="off">
                     </div>
-                </div>
+                    <div class="btn-group mt-5 text-center w-50">
+                        <input type="submit" class="btn btn-primary" value="Send">
+                    </div>
+                </form>
             </div>
         </div>
     </div>
+
 </body>
 
 </html>
