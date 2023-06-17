@@ -32,7 +32,7 @@ async function downloadCFDI() {
                 'PDPTenantSecret': apiSecret
             }
         });
-        urls.push(response.data.pdf);
+        //urls.push(response.data.pdf);
         urls.push(response.data.xml);
     }
 
@@ -40,7 +40,6 @@ async function downloadCFDI() {
         const name = path.basename(urls[i]).split('?')[0];
         const outPath = path.join(path_env.parsed.PATH, name);
         const fileStream = await axios.get(urls[i], { responseType: 'stream' });
-
         fileStream.data.pipe(fs.createWriteStream(outPath))
             .on('finish', () => {
                 console.log(`Archivo ${name} descargado`);
