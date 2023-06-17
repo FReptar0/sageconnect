@@ -14,28 +14,31 @@ const apiKey = credentials.parsed.API_KEY;
 const apiSecret = credentials.parsed.API_SECRET;
 
 async function downloadCFDI() {
-    const ids = [];
-    const urls = [];
-    const outPathWFileNames = [];
+    const cfdi_ids = [];
+    const providers_ids = [];
 
     const types = await getTypeE();
     types.forEach(type => {
-        ids.push(type.id);
+        cfdi_ids.push(type.id);
     });
 
     const typesI = await getTypeI();
     typesI.forEach(type => {
-        ids.push(type.id);
+        cfdi_ids.push(type.id);
     });
 
-    for (let i = 0; i < ids.length; i++) {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantId}/cfdis/${ids[i]}/files`, {
+    // El arreglo providers_ids se crea pero no se utiliza por ahora
+
+    const urls = [];
+    const outPathWFileNames = [];
+
+    for (let i = 0; i < cfdi_ids.length; i++) {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantId}/cfdis/${cfdi_ids[i]}/files`, {
             headers: {
                 'PDPTenantKey': apiKey,
                 'PDPTenantSecret': apiSecret
             }
         });
-        //urls.push(response.data.pdf);
         urls.push(response.data.xml);
     }
 
@@ -92,11 +95,12 @@ async function downloadCFDI() {
                     }
                 };
 
-                // Agregar la etiqueta <cfdi:Addenda> al objeto XML
-                result['cfdi:Comprobante']['cfdi:Addenda'] = addenda['cfdi:Addenda'];
+                // Agregar la etiqueta <cfdi:Addenda> al resultado del análisis
+                result['cfdi:Comprobante']['cfdi:Addenda'] = addenda;
 
-                // Generar el XML actualizado
-                const xml = new xmlBuilder().buildObject(result);
+                // Convertir el resultado actualizado a XML
+                const xmlBuilderInstance = new xmlBuilder();
+                const xml = xmlBuilderInstance.buildObject(result);
 
                 // Escribir el XML actualizado en el mismo archivo
                 fs.writeFile(xmlPath, xml, 'utf8', (err) => {
