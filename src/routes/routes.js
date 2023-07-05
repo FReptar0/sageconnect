@@ -5,17 +5,24 @@ const router = express.Router();
 const { sendMail } = require('../utils/EmailSender');
 const dotenv = require('dotenv');
 
-/* router.post('/send-mail', (req, res) => {
+router.post('/send-mail', (req, res) => {
     dotenv.config({ path: '.env.credentials.mailing' });
-    const { subject, text } = req.body;
 
-    sendMail(subject, text).then((result) => {
+    const { subject, mail, data } = req.body;
+
+    if (!subject || !data) {
+        res.status(500).json({ message: 'Error sending email', error: 'Empty fields' });
+        return;
+    }
+
+    sendMail(subject, data, mail).then((result) => {
         res.status(200).json({ message: 'Email sent successfully', result });
     }).catch((error) => {
         res.status(500).json({ message: 'Error sending email', error });
+        console.log(error);
     });
 
-}); */
+});
 
 router.get('/', (req, res) => {
     res.status(200).sendFile(process.cwd() + '/public/index.html');

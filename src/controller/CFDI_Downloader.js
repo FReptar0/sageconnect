@@ -9,109 +9,57 @@ const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;
 
 const url = credentials.parsed.URL;
-const tenantId = credentials.parsed.TENANT_ID;
+/* const tenantId = credentials.parsed.TENANT_ID;
 const apiKey = credentials.parsed.API_KEY;
-const apiSecret = credentials.parsed.API_SECRET;
+const apiSecret = credentials.parsed.API_SECRET; */
 
-async function downloadCFDI() {
-    const cfdi_ids = [];
-    const providers_ids = [];
+const tenantIds = []
+const apiKeys = []
+const apiSecrets = []
 
-    const types = await getTypeE();
-    types.forEach(type => {
-        cfdi_ids.push(type.id);
+const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
+const apiKeyValues = credentials.parsed.API_KEY.split(',');
+const apiSecretValues = credentials.parsed.API_SECRET.split(',');
+
+tenantIds.push(...tenantIdValues);
+apiKeys.push(...apiKeyValues);
+apiSecrets.push(...apiSecretValues);
+
+async function downloadCFDI(index) {
+    const cfdiData = [];
+
+    const typeE = await getTypeE(index);
+    typeE.forEach((type) => {
+        cfdiData.push({
+            cfdiId: type.id,
+            providerId: type.metadata.provider_id,
+            rfcReceptor: type.cfdi.receptor.rfc,
+        });
     });
 
-    const typesI = await getTypeI();
-    typesI.forEach(type => {
-        cfdi_ids.push(type.id);
+    const typeI = await getTypeI(index);
+    typeI.forEach((type) => {
+        cfdiData.push({
+            cfdiId: type.id,
+            providerId: type.metadata.provider_id,
+            rfcReceptor: type.cfdi.receptor.rfc,
+        });
     });
 
-    // El arreglo providers_ids se crea pero no se utiliza por ahora
+    const apiKey = apiKeys[index];
+    const apiSecret = apiSecrets[index];
 
     const urls = [];
     const outPathWFileNames = [];
 
-    for (let i = 0; i < cfdi_ids.length; i++) {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantId}/cfdis/${cfdi_ids[i]}/files`, {
+    for (let i = 0; i < cfdiData.length; i++) {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis/${cfdiData[i].cfdiId}/files`, {
             headers: {
                 'PDPTenantKey': apiKey,
-                'PDPTenantSecret': apiSecret
-            }
+                'PDPTenantSecret': apiSecret,
+            },
         });
         urls.push(response.data.xml);
-    }
-
-    // Función para agregar la etiqueta <cfdi:Addenda> al archivo XML
-    function agregarEtiquetaAddenda(xmlPath) {
-        // Leer el archivo XML
-        fs.readFile(xmlPath, 'utf8', (err, data) => {
-            if (err) {
-                console.error(`Error al leer el archivo ${xmlPath}:`, err);
-                return;
-            }
-
-            // Analizar el archivo XML
-            parser(data, (err, result) => {
-                if (err) {
-                    console.error(`Error al analizar el archivo ${xmlPath}:`, err);
-                    return;
-                }
-
-                // Crear la estructura de la etiqueta <cfdi:Addenda> y su contenido
-                const addenda = {
-                    'cfdi:Addenda': {
-                        'cfdi:AddendaEmisor': {
-                            'cfdi:Proveedor': {
-                                '$': {
-                                    'IdBase': '.',
-                                    'provider_id': '.',
-                                    'external_id': '.',
-                                    'bank': '.',
-                                    'clabe': '.',
-                                    'account': '.',
-                                    'grupo_prov': '.',
-                                    'grupo_fiscal': '.',
-                                    'contact': '',
-                                    'contact_email': '.',
-                                    'Terminos': '.',
-                                    'CuentaContable': '.'
-                                },
-                                'cfdi:DomicilioProv': {
-                                    '$': {
-                                        'Calle': '.',
-                                        'NumeroExterior': '.',
-                                        'NumeroInterior': '.',
-                                        'Colonia': '.',
-                                        'Localidad': '.',
-                                        'Municipio': '.',
-                                        'Estado': '.',
-                                        'Pais': '.',
-                                        'CodigoPostal': '.'
-                                    }
-                                }
-                            }
-                        }
-                    }
-                };
-
-                // Agregar la etiqueta <cfdi:Addenda> al resultado del análisis
-                result['cfdi:Comprobante']['cfdi:Addenda'] = addenda;
-
-                // Convertir el resultado actualizado a XML
-                const xmlBuilderInstance = new xmlBuilder();
-                const xml = xmlBuilderInstance.buildObject(result);
-
-                // Escribir el XML actualizado en el mismo archivo
-                fs.writeFile(xmlPath, xml, 'utf8', (err) => {
-                    if (err) {
-                        console.error(`Error al escribir el archivo ${xmlPath}:`, err);
-                        return;
-                    }
-                    console.log(`Archivo ${xmlPath} actualizado exitosamente.`);
-                });
-            });
-        });
     }
 
     for (let i = 0; i < urls.length; i++) {
@@ -120,25 +68,187 @@ async function downloadCFDI() {
         outPathWFileNames.push(outPath);
         const fileStream = await axios.get(urls[i], { responseType: 'stream' });
 
-        const xmlPath = outPath; // Ruta del archivo XML descargado
+        const xmlPath = outPath;
 
-        fileStream.data.pipe(fs.createWriteStream(outPath))
+        fileStream.data
+            .pipe(fs.createWriteStream(outPath))
             .on('finish', () => {
-                // Agregar etiqueta <cfdi:Addenda> al XML descargado
-                agregarEtiquetaAddenda(xmlPath);
-
+                agregarEtiquetaAddenda(xmlPath, cfdiData[i], index);
                 console.log(`Archivo ${name} descargado`);
-            }).on('error', (err) => {
+            })
+            .on('error', (err) => {
                 console.log('Error al descargar el archivo: ' + err);
+                // Eliminar el archivo si ocurre un error
+                fs.unlink(xmlPath, (unlinkErr) => {
+                    if (unlinkErr) {
+                        console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
+                        return;
+                    }
+                    console.log(`Archivo ${xmlPath} eliminado exitosamente.`);
+                });
             });
     }
 }
 
-downloadCFDI().then(() => {
-    console.log('CFDIS descargados');
+
+function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
+    fs.readFile(xmlPath, 'utf8', async (err, data) => {
+        if (err) {
+            console.error(`Error al leer el archivo ${xmlPath}:`, err);
+            return;
+        }
+        
+        const apiKey = apiKeys[index];
+        const apiSecret = apiSecrets[index];
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers/${dataCfdi.providerId}`, {
+            headers: {
+                'PDPTenantKey': apiKey,
+                'PDPTenantSecret': apiSecret
+            }
+        });
+
+        const bankAccounts = response.data.expedient.bank_accounts;
+        const firstBankAccountKey = Object.keys(bankAccounts)[0];
+        const firstBankAccountValue = bankAccounts[firstBankAccountKey];
+
+        const addresses = response.data.expedient.addresses;
+        const firstAddressKey = Object.keys(addresses)[0];
+        const firstAddressValue = addresses[firstAddressKey];
+
+        const contact = response.data.expedient.contacts;
+        const firstContactKey = Object.keys(contact)[0];
+        const firstContactValue = contact[firstContactKey];
+
+        if (!firstBankAccountValue) {
+            console.log('No se tienen los datos del banco. Eliminando archivo:', xmlPath);
+            // Eliminar el archivo si no se tienen los datos del banco
+            fs.unlink(xmlPath, (unlinkErr) => {
+                if (unlinkErr) {
+                    console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
+                    return;
+                }
+                console.log(`Archivo ${xmlPath} eliminado exitosamente.`);
+            });
+            return;
+        }
+
+
+        parser(data, (err, result) => {
+            if (err) {
+                console.error(`Error al analizar el archivo ${xmlPath}:`, err);
+                return;
+            }
+
+            const fields = response.data.expedient.fields;
+            const fieldKeys = Object.keys(fields);
+            let grupo_prov = '';
+            let grupo_fiscal = '';
+            let cuenta_contable = '';
+
+            fieldKeys.forEach(key => {
+                if (fields[key].field_external_id == 'Grupo_de_Proveedores') {
+                    grupo_prov = fields[key].value_external_id;
+                }
+                if (fields[key].field_external_id == 'Grupo_de_impuestos') {
+                    grupo_fiscal = fields[key].value_external_id;
+                }
+                if (fields[key].field_external_id == 'Cuenta_de_Gastos') {
+                    cuenta_contable = fields[key].value_external_id;
+                }
+            });
+
+            const bankData = {
+                'bank': firstBankAccountValue ? firstBankAccountValue.value.bank : '',
+                'clabe': firstBankAccountValue ? firstBankAccountValue.value.clabe : '',
+                'account': firstBankAccountValue ? firstBankAccountValue.value.account : '',
+                'grupo_prov': grupo_prov ? grupo_prov : '',
+                'grupo_fiscal': grupo_fiscal ? grupo_fiscal : '',
+                'cuenta_contable': cuenta_contable ? cuenta_contable : ''
+            };
+
+            const addressData = {
+                'calle': firstAddressValue ? firstAddressValue.value.street : '',
+                'noExterior': firstAddressValue ? firstAddressValue.value.exterior_number : '',
+                'noInterior': firstAddressValue ? firstAddressValue.value.interior_number : '',
+                'colonia': firstAddressValue ? firstAddressValue.value.suburb : '',
+                'localidad': firstAddressValue ? firstAddressValue.value.city : '',
+                'municipio': firstAddressValue ? firstAddressValue.value.city : '',
+                'estado': firstAddressValue ? firstAddressValue.value.state : '',
+                'pais': firstAddressValue ? firstAddressValue.value.country : '',
+                'codigoPostal': firstAddressValue ? firstAddressValue.value.zip_code : ''
+            };
+
+            const contactData = {
+                'nombre': firstContactValue ? `${response.data.first_name} ${response.data.last_name}` : '',
+                'telefono': firstContactValue ? firstContactValue.value.phone : '',
+                'correo': firstContactValue ? firstContactValue.value.email : ''
+            };
+
+            const addenda = {
+                'cfdi:Addenda': {
+                    'cfdi:AddendaEmisor': {
+                        'cfdi:Proveedor': {
+                            '$': {
+                                'IdBase': '', // Dejado vacío en lugar de 'NOT_FOUND'
+                                'provider_id': dataCfdi.providerId, // Agregado el provider_id
+                                'external_id': response.data.external_id || '',
+                                'bank': bankData.bank,
+                                'clabe': bankData.clabe,
+                                'account': bankData.account,
+                                'grupo_prov': bankData.grupo_prov,
+                                'grupo_fiscal': bankData.grupo_fiscal,
+                                'contact': contactData.nombre,
+                                'contact_email': contactData.correo,
+                                'contact_phone': contactData.telefono,
+                                'Terminos': response.data.credit_days || '30',
+                                'CuentaContable': bankData.cuenta_contable,
+                            },
+                            'cfdi:DomicilioProv': {
+                                '$': {
+                                    'Calle': addressData.calle,
+                                    'NumeroExterior': addressData.noExterior,
+                                    'NumeroInterior': addressData.noInterior,
+                                    'Colonia': addressData.colonia,
+                                    'Localidad': addressData.localidad,
+                                    'Municipio': addressData.municipio,
+                                    'Estado': addressData.estado,
+                                    'Pais': addressData.pais,
+                                    'CodigoPostal': addressData.codigoPostal
+                                }
+                            }
+                        }
+                    }
+                }
+            };
+
+            result['cfdi:Comprobante']['cfdi:Addenda'] = addenda;
+
+            const xmlBuilderInstance = new xmlBuilder();
+            const xml = xmlBuilderInstance.buildObject(result);
+
+            fs.writeFile(xmlPath, xml, 'utf8', (err) => {
+                if (err) {
+                    console.error(`Error al escribir el archivo ${xmlPath}:`, err);
+                    return;
+                }
+                console.log(`Archivo ${xmlPath} actualizado exitosamente.`);
+            });
+        });
+    });
+}
+
+const forResponse = async () => {
+    for (let index = 0; index < tenantIds.length; index++) {
+        await downloadCFDI(index);
+    }
+}
+
+forResponse().then(() => {
+    console.log('Terminado');
 }).catch((err) => {
-    console.log('Error al descargar los CFDIS: ' + err);
+    console.error('Error:', err);
 });
+
 
 module.exports = {
     downloadCFDI

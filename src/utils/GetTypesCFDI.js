@@ -1,81 +1,107 @@
-const { getCFDIS } = require('../components/focaltec/CFDI');
 const notifier = require('node-notifier');
+require('dotenv').config({ path: '.env.credentials.focaltec' });
+const axios = require('axios');
 
-async function getTypeP() {
+const url = process.env.URL;
+const tenantIds = []
+const apiKeys = []
+const apiSecrets = []
+
+const tenantIdValues = process.env.TENANT_ID.split(',');
+const apiKeyValues = process.env.API_KEY.split(',');
+const apiSecretValues = process.env.API_SECRET.split(',');
+
+tenantIds.push(...tenantIdValues);
+apiKeys.push(...apiKeyValues);
+apiSecrets.push(...apiSecretValues);
+
+async function getTypeP(index) {
+    let date = new Date().getDate();
+    let month = new Date().getMonth() + 1;
+    let year = new Date().getFullYear();
+
     try {
-        const data = await getCFDIS();
-        let typeP = [];
-        data.forEach(element => {
-            if (element.cfdi.tipo_comprobante == 'P') {
-                typeP.push(element);
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?to=${year}-${month}-${date}&from=${year}-01-01&cfdiType=PAYMENT_CFDI`, {
+            headers: {
+                'PDPTenantKey': apiKeys[index],
+                'PDPTenantSecret': apiSecrets[index]
             }
         });
-        return typeP;
+        return response.data.items;
     } catch (error) {
         try {
             notifier.notify({
                 title: 'Focaltec',
-                message: 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n',
+                message: 'Error al obtener el tipo de comprobante "P" : \n' + 'error' + '\n',
                 sound: true,
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
-            console.log('Error al enviar notificacion: ' + err);
-            console.log('Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
+            console.log('Error al enviar notificacion: ' );
+            console.log('Error al obtener el tipo de comprobante "P" : \n' + '' + '\n');
         }
+        return [];
     }
 }
 
-async function getTypeI() {
+async function getTypeI(index) {
+    let date = new Date().getDate();
+    let month = new Date().getMonth() + 1;
+    let year = new Date().getFullYear();
+
     try {
-        const data = await getCFDIS();
-        let typeI = [];
-        data.forEach(element => {
-            if (element.cfdi.tipo_comprobante == 'I') {
-                typeI.push(element);
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?to=${year}-${month}-${date}&from=${year}-01-01&cfdiType=INVOICE`, {
+            headers: {
+                'PDPTenantKey': apiKeys[index],
+                'PDPTenantSecret': apiSecrets[index]
             }
         });
-        return typeI;
+        return response.data.items;
     } catch (error) {
         try {
             notifier.notify({
                 title: 'Focaltec',
-                message: 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n',
+                message: 'Error al obtener el tipo de comprobante "I" : \n' + 'error' + '\n',
                 sound: true,
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
-            console.log('Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
+            console.log('Error al obtener el tipo de comprobante "I" : \n' + 'error' + '\n');
         }
+        return [];
     }
 }
 
-async function getTypeE() {
+async function getTypeE(index) {
+    let date = new Date().getDate();
+    let month = new Date().getMonth() + 1;
+    let year = new Date().getFullYear();
+
     try {
-        const data = await getCFDIS();
-        let typeE = [];
-        data.forEach(element => {
-            if (element.cfdi.tipo_comprobante == 'E') {
-                typeE.push(element);
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?to=${year}-${month}-${date}&from=${year}-01-01&cfdiType=CREDIT_NOTE`, {
+            headers: {
+                'PDPTenantKey': apiKeys[index],
+                'PDPTenantSecret': apiSecrets[index]
             }
         });
-        return typeE;
+        return response.data.items;
     } catch (error) {
         try {
             notifier.notify({
                 title: 'Focaltec',
-                message: 'Error al obtener el tipo de comprobante "E" : \n' + error + '\n',
+                message: 'Error al obtener el tipo de comprobante "E" : \n' + 'error' + '\n',
                 sound: true,
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
-            console.log('Error al obtener el tipo de comprobante "E" : \n' + error + '\n');
+            console.log('Error al obtener el tipo de comprobante "E" : \n' + 'error' + '\n');
         }
+        return [];
     }
 }
 

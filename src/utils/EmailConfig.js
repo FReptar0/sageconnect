@@ -26,8 +26,10 @@ async function getEmailConfig() {
                 icon: process.cwd() + '/public/img/cerrar.png'
             });
         } catch (err) {
-
+            console.log('Error al enviar notificacion: ' + err);
+            console.log('Error al obtener la configuracion de correo: \n' + error + '\n');
         }
+        return [];
     }
 }
 
