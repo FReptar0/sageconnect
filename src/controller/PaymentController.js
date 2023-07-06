@@ -3,10 +3,10 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { sendMail } = require('../utils/EmailSender');
 const notifier = require('node-notifier');
 
-async function checkPayments() {
+async function checkPayments(index) {
   try {
     // Traemos los CFDIS de Focaltec que sean de tipo P
-    const result = await getTypeP();
+    const result = await getTypeP(index);
     // Obtenemos la fecha actual
     let fechaActual = new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
@@ -42,7 +42,8 @@ async function checkPayments() {
       )
       ) AS p;`)
         //console.log(camposOpcionales.recordset)
-        //const externalId = result[index].metadata.external_id
+        //const externalId = result[index].metadata.provider_external_id 
+        //FIXME: Remplazar externalId estatico por el que se obtenga del CFDI-API
         const externalId = 'PY00000000000000000003'
         const rsQueryAPTCR = await runQuery(`SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM
         FROM APTCR H
@@ -62,7 +63,7 @@ async function checkPayments() {
           console.log(rsInsertAPTCRO_UUID)
 
           // verifacamos si se inserto el UUID en la tabla APTCRO
-          if (rsInsertAPTCRO_UUID.affectedRows === 0) {
+          if (rsInsertAPTCRO_UUID.rowsAffected === 0) {
             // Si no se inserto el UUID en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se inserto UUID en APTCRO"
             data.p = "No se inserto el UUID en la tabla APTCRO"
@@ -130,7 +131,7 @@ async function checkPayments() {
             AND OPTFIELD = '${camposOpcionales.recordset.FolioCFD}'`, rsQuery.recordset.DataBaseName)
           console.log(rsUpdateAPTCRO_UUID)
           // verifacamos si se actualizo el UUID en la tabla APTCRO
-          if (rsUpdateAPTCRO_UUID.affectedRows === 0) {
+          if (rsUpdateAPTCRO_UUID.rowsAffected === 0) {
             // Si no se actualizo el UUID en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se actualizo UUID en APTCRO"
             data.p = "No se actualizo el UUID en la tabla APTCRO"
@@ -197,7 +198,7 @@ async function checkPayments() {
           ,1,60,0,0,0,1)`, rsQuery.recordset.DataBaseName)
 
           // verifacamos si se inserto el campo FECHATIM en la tabla APTCRO
-          if (rsInsertAPTCRO_FECHATIM.affectedRows === 0) {
+          if (rsInsertAPTCRO_FECHATIM.rowsAffected === 0) {
             // Si no se inserto el campo FECHATIM en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se inserto FECHATIM en APTCRO"
             data.p = "No se inserto el campo FECHATIM en la tabla APTCRO"
@@ -259,7 +260,7 @@ async function checkPayments() {
           AND OPTFIELD = '${camposOpcionales.recordset.FechaCFD}'`, rsQuery.recordset.DataBaseName)
 
           // verifacamos si se actualizo el campo FECHATIM en la tabla APTCRO
-          if (rsUpdateAPTCRO_FECHATIM.affectedRows === 0) {
+          if (rsUpdateAPTCRO_FECHATIM.rowsAffected === 0) {
             // Si no se actualizo el campo FECHATIM en la tabla APTCRO, se modifica el objeto data y se envia el correo
             data.h1 = "No se actualizo FECHATIM en APTCRO"
             data.p = "No se actualizo el campo FECHATIM en la tabla APTCRO"

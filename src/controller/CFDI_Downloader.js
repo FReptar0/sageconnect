@@ -5,13 +5,11 @@ const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
 const path_env = dotenv.config({ path: '.env.path' });
 const fs = require('fs');
 const path = require('path');
+const { runQuery } = require('../utils/SQLServerConnection');
 const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;
 
 const url = credentials.parsed.URL;
-/* const tenantId = credentials.parsed.TENANT_ID;
-const apiKey = credentials.parsed.API_KEY;
-const apiSecret = credentials.parsed.API_SECRET; */
 
 const tenantIds = []
 const apiKeys = []
@@ -107,6 +105,15 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             }
         });
 
+        //TODO: En el servidor descomentar la siguiente linea
+        
+        /* const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${result[index].cfdi.receptor.rfc}') AND Parametro = 'DataBase';`
+        const dbResponse = await runQuery(query); 
+
+        const idCia = dbResponse.recordset[0].Resultado || 'NOT_FOUND'; */
+
+        idCia = 'NOT_FOUND';
+
         const bankAccounts = response.data.expedient.bank_accounts;
         const firstBankAccountKey = Object.keys(bankAccounts)[0];
         const firstBankAccountValue = bankAccounts[firstBankAccountKey];
@@ -158,7 +165,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             });
 
             const bankData = {
-                'bank': firstBankAccountValue ? firstBankAccountValue.value.bank : '',
+                'bank': firstBankAccountValue ? firstBankAccountValue.value.bank_name : '',
                 'clabe': firstBankAccountValue ? firstBankAccountValue.value.clabe : '',
                 'account': firstBankAccountValue ? firstBankAccountValue.value.account : '',
                 'grupo_prov': grupo_prov ? grupo_prov : '',
@@ -179,7 +186,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             };
 
             const contactData = {
-                'nombre': firstContactValue ? `${response.data.first_name} ${response.data.last_name}` : '',
+                'nombre': firstContactValue ? `${firstContactValue.value.first_name} ${firstContactValue.value.last_name}` : '',
                 'telefono': firstContactValue ? firstContactValue.value.phone : '',
                 'correo': firstContactValue ? firstContactValue.value.email : ''
             };
@@ -189,7 +196,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                     'cfdi:AddendaEmisor': {
                         'cfdi:Proveedor': {
                             '$': {
-                                'IdBase': '', // Dejado vacío en lugar de 'NOT_FOUND'
+                                'IdBase': idCia,
                                 'provider_id': dataCfdi.providerId, // Agregado el provider_id
                                 'external_id': response.data.external_id || '',
                                 'bank': bankData.bank,

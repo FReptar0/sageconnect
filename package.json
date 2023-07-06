@@ -1,6 +1,6 @@
 {
   "name": "sageconnect",
-  "version": "1.0.0",
+  "version": "2.5.1",
   "description": "This is the code implementation to handle the changes on the API of portaldeproveedores in SAGE 300",
   "main": "src/index.js",
   "scripts": {

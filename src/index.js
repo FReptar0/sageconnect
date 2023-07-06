@@ -31,8 +31,5 @@ try {
 }
 
 setInterval(async () => {
-/*     const result = await getProviders()
-    console.log(result) */
-/*     const rs = await checkPayments();
-    console.log(rs) */
+    console.log('Checking payments...')
 }, minutesToMilliseconds(process.env.WAIT_TIME));
