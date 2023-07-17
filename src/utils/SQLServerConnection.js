@@ -24,7 +24,8 @@ async function runQuery(query, database = 'FESA') {
 
     const returnValue = {
         rowsAffected: result.rowsAffected[0],
-        recordset: result.recordset == undefined ? [] : result.recordset[0]
+        recordset: result.recordset == undefined ? [] : result.recordset[0],
+        length: result.recordset == undefined ? 0 : result.recordset.length
     }
 
     pool.close();

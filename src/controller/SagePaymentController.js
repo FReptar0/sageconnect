@@ -331,7 +331,7 @@ async function checkPayments(index) {
     console.log(error)
     try {
       notifier.notify({
-        title: 'Error al ejecutar el query',
+        title: 'Error al ejecutar el proceso de pagos',
         message: 'No se ejecuto el query: ' + error,
         sound: true,
         wait: true,
@@ -339,7 +339,7 @@ async function checkPayments(index) {
       });
     } catch (error) {
       console.log("No se pudo mandar la notificacion: " + error)
-      console.log("No se ejecuto el query : " + error)
+      console.log("No se ejecuto el proceso de pagos : " + error)
     }
   }
 }

@@ -153,14 +153,17 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             let cuenta_contable = '';
 
             fieldKeys.forEach(key => {
-                if (fields[key].field_external_id == 'Grupo_de_Proveedores') {
+                if (fields[key].field_external_id && fields[key].field_external_id.toLowerCase() == 'grupo_de_proveedores') {
                     grupo_prov = fields[key].value_external_id;
+                    console.log(grupo_prov)
                 }
-                if (fields[key].field_external_id == 'Grupo_de_impuestos') {
+                if (fields[key].field_external_id && fields[key].field_external_id.toLowerCase() == 'grupo_de_impuestos') {
                     grupo_fiscal = fields[key].value_external_id;
+                    console.log(grupo_fiscal)
                 }
-                if (fields[key].field_external_id == 'Cuenta_de_Gastos') {
+                if (fields[key].field_external_id && fields[key].field_external_id.toLowerCase() == 'cuenta_de_gastos') {
                     cuenta_contable = fields[key].value_external_id;
+                    console.log(cuenta_contable)
                 }
             });
 

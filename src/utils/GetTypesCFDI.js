@@ -113,7 +113,7 @@ async function getTypeI(index) {
 
 
 
-        /* return data || response.data.items; */
+        /* return data */
 
         return response.data.items;
     } catch (error) {
@@ -170,7 +170,7 @@ async function getTypeE(index) {
             }
         } */
 
-        /* return data || response.data.items; */
+        /* return data */
 
         return response.data.items;
     } catch (error) {
