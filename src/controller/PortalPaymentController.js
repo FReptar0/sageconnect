@@ -16,7 +16,7 @@ const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
 const apiKeyValues = credentials.parsed.API_KEY.split(',');
 const apiSecretValues = credentials.parsed.API_SECRET.split(',');
 
-const databaseValues = credentials.parsed.database.split(',');
+const databaseValues = credentials.parsed.DATABASES.split(',');
 
 tenantIds.push(...tenantIdValues);
 apiKeys.push(...apiKeyValues);
@@ -47,7 +47,7 @@ async function uploadPayments(index) {
         AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )`;
 
         const payments = await runQuery(queryEncabezadosPago, database[index]);
-
+        console.log(payments)
         if (payments.length > 0) {
             /* Consulta de las Facturas Pagadas se debe de sustituir el LotePago y AsientoPago de la Consulta Anterior */
             const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  DP.IDVEND, DP.IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
@@ -59,15 +59,15 @@ async function uploadPayments(index) {
             WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset.LotePago} AND DP.CNTRMIT = ${payments.recordset.AsientoPago} AND DP.DOCTYPE = 1
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0`;
 
-            const invoices = await runQuery(queryFacturasPagadas, database[index]);
-
+            //const invoices = await runQuery(queryFacturasPagadas, database[index]);
+            //console.log(invoices)
             if (invoices.length > 0) {
                 /* Proceso de alta */
 
                 // insertar en fesaPagosFocaltec el idCia el NoPagoSage que es el el que empieza con PY de la primera consulta (external_id) 
 
                 const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES (${payments.recordset.AUDTORG}, '${payments.recordset.external_id}')`;
-                const result = await runQuery(queryInsert); // no se indica la base de datos porque sera FESA por default
+                //const result = await runQuery(queryInsert); // no se indica la base de datos porque sera FESA por default
 
                 if (result.rowsAffected[0] > 0) {
                     console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
@@ -80,11 +80,11 @@ async function uploadPayments(index) {
         }
 
     } catch (error) {
-        console.log(error);
+        //console.log(error);
         try {
             notifier.notify({
                 title: 'Error al ejecutar el proceso de alta de pagos en portal',
-                message: 'No se ejecuto el proceso: ' + error,
+                message: 'No se ejecuto el proceso: ' + error ,
                 sound: true,
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
@@ -96,7 +96,10 @@ async function uploadPayments(index) {
 
 }
 
+uploadPayments.catch((err)=>{
+    console.log(err)
+})
+
 module.exports = {
     uploadPayments,
-    getPayments
 }
