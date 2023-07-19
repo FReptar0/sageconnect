@@ -253,11 +253,11 @@ const forResponse = async () => {
     }
 }
 
-forResponse().then(() => {
+/* forResponse().then(() => {
     console.log('Terminado');
 }).catch((err) => {
     console.error('Error:', err);
-});
+}); */
 
 
 module.exports = {

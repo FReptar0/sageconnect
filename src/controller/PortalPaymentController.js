@@ -6,16 +6,15 @@ const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
 
 const database = [];
-const url = credentials.parsed.URL;
-
 const tenantIds = []
 const apiKeys = []
 const apiSecrets = []
+const cfdis = [];
 
+const url = credentials.parsed.URL;
 const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
 const apiKeyValues = credentials.parsed.API_KEY.split(',');
 const apiSecretValues = credentials.parsed.API_SECRET.split(',');
-
 const databaseValues = credentials.parsed.DATABASES.split(',');
 
 tenantIds.push(...tenantIdValues);
@@ -25,7 +24,7 @@ database.push(...databaseValues);
 
 async function uploadPayments(index) {
     try {
-        //Obtener la fecha de hoy (dia, mes, año)
+
         const fechaActual = new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
 
@@ -47,33 +46,87 @@ async function uploadPayments(index) {
         AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )`;
 
         const payments = await runQuery(queryEncabezadosPago, database[index]);
-        console.log(payments)
-        if (payments.length > 0) {
-            /* Consulta de las Facturas Pagadas se debe de sustituir el LotePago y AsientoPago de la Consulta Anterior */
-            const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  DP.IDVEND, DP.IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
+
+        const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
+        const pagosRegistrados = await runQuery(queryPagosRegistrados);
+
+        // Si un external_id corresponde a algun NoPagoSage, verificar en que posicion del arreglo se encuentra y eliminarlo
+        if (pagosRegistrados.recordset.length > 0) {
+            for (let i = 0; i < pagosRegistrados.recordset.length; i++) {
+                for (let j = 0; j < payments.recordset.length; j++) {
+                    if (pagosRegistrados.recordset[i].NoPagoSage === payments.recordset[j].external_id) {
+                        payments.recordset.splice(j, 1);
+                    }
+                }
+            }
+        }
+
+        if (payments.recordset.length > 0) {
+            for (let i = 0; i < payments.recordset.length; i++) {
+                /* Consulta de las Facturas Pagadas se debe de sustituir el LotePago y AsientoPago de la Consulta Anterior */
+                const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  DP.IDVEND, DP.IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
             , CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency
             , H.EXCHRATEHC  AS invoice_exchange_rate
             , DP.AMTPAYM  AS payment_amount
             , ISNULL((SELECT [VALUE] FROM APIBHO  WHERE CNTBTCH = H.CNTBTCH  AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'),'') AS UUID
             FROM APTCP DP , APIBH H
-            WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset.LotePago} AND DP.CNTRMIT = ${payments.recordset.AsientoPago} AND DP.DOCTYPE = 1
+            WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset[i].LotePago} AND DP.CNTRMIT = ${payments.recordset[i].AsientoPago} AND DP.DOCTYPE = 1
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0`;
 
-            //const invoices = await runQuery(queryFacturasPagadas, database[index]);
-            //console.log(invoices)
-            if (invoices.length > 0) {
-                /* Proceso de alta */
+                const invoices = await runQuery(queryFacturasPagadas, database[index]);
+                //console.log(invoices)
+                if (invoices.recordset.length > 0) {
+                    /* Proceso de alta */
+                    for (let j = 0; j < tenantIds.length; j++) {
+                        const cfdi = {
+                            "amount": invoices.recordset[j].invoice_amount,
+                            "currency": invoices.recordset[j].invoice_currency,
+                            "exchange_rate": invoices.recordset[j].invoice_exchange_rate,
+                            "payment_amount": invoices.recordset[j].payment_amount,
+                            "payment_currency": payments.recordset[i].bk_currency,
+                            "uuid": invoices.recordset[j].UUID,
+                        }
+                        cfdis.push(cfdi);
+                    }
 
-                // insertar en fesaPagosFocaltec el idCia el NoPagoSage que es el el que empieza con PY de la primera consulta (external_id) 
+                    const payment = {
+                        "bank_account_id": payments.recordset[i].bank_account_id,
+                        "cfdis": cfdis,
+                        "comments": payments.recordset[i].comments,
+                        "currency": payments.recordset[i].bk_currency,
+                        "external_id": payments.recordset[i].external_id,
+                        "ignore_amounts": true,
+                        "mark_existing_cfdi_as_paid": true,
+                        "open": false,
+                        "operation_type": payments.recordset[i].operation_type,
+                        "payment_date": payments.recordset[i].payment_date,
+                        "provider_external_id": payments.recordset[i].provider_external_id,
+                        "reference": payments.recordset[i].reference,
+                        "total_amount": payments.recordset[i].total_amount,
+                    }
 
-                const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES (${payments.recordset.AUDTORG}, '${payments.recordset.external_id}')`;
-                //const result = await runQuery(queryInsert); // no se indica la base de datos porque sera FESA por default
+                    const response = await axios.post(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`, payment, {
+                        headers: {
+                            'PDPTenantKey': apiKeys[index],
+                            'PDPTenantSecret': apiSecrets[index]
+                        }
+                    }).catch(error => {
+                        console.log(error.response.data);
+                    });
 
-                if (result.rowsAffected[0] > 0) {
-                    console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
+                    if (response.status === 200) {
+                        // insertar en fesaPagosFocaltec el idCia el NoPagoSage que es el el que empieza con PY de la primera consulta (external_id) 
+                        const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES (${database[index]}, '${payments.recordset[i].external_id}')`;
+                        const result = await runQuery(queryInsert); // no se indica la base de datos porque sera FESA por default
+
+                        if (result.rowsAffected[0] > 0) {
+                            console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
+                        }
+                    }
+
+                } else {
+                    console.log('No hay facturas pagadas para subir a portal');
                 }
-            } else {
-                console.log('No hay facturas pagadas para subir a portal');
             }
         } else {
             console.log('No hay pagos para subir a portal');
@@ -84,7 +137,7 @@ async function uploadPayments(index) {
         try {
             notifier.notify({
                 title: 'Error al ejecutar el proceso de alta de pagos en portal',
-                message: 'No se ejecuto el proceso: ' + error ,
+                message: 'No se ejecuto el proceso: ' + error,
                 sound: true,
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
@@ -96,9 +149,9 @@ async function uploadPayments(index) {
 
 }
 
-uploadPayments.catch((err)=>{
+/* uploadPayments(1).catch((err) => {
     console.log(err)
-})
+}) */
 
 module.exports = {
     uploadPayments,

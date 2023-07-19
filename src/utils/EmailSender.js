@@ -1,9 +1,7 @@
 const nodeMailer = require('nodemailer');
-const { getEmailConfig } = require('./EmailConfig');
 require('dotenv').config({ path: '.env.credentials.mailing' });
 
-async function sendMail(subject, data, mailReciver) {
-    console.log(mailReciver);
+async function sendMail(subject, data) {
     const html = `<h1>${data.h1}</h1>
     <p>${data.p}</p>
     <table>
@@ -16,8 +14,6 @@ async function sendMail(subject, data, mailReciver) {
             <td>${data.message}</td>
         </tr>
     </table>`;
-
-    //const mailConfig = await getEmailConfig();
 
     try {
         const transport = nodeMailer.createTransport({
@@ -32,8 +28,8 @@ async function sendMail(subject, data, mailReciver) {
         });
         const mailOptions = {
             from: process.env.CORREO_ENVIO,
-            to: mailReciver || process.env.CORREO_AVISOS,
-            subject: subject,
+            to: process.env.CORREOS_AVISOS.split(',')[data.position] || process.env.CORREOS_AVISOS.split(',')[0],
+            subject: `${data.idCia} - ${subject}`,
             html: html,
         }
 
