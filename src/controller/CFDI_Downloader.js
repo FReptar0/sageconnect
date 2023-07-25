@@ -95,7 +95,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             console.error(`Error al leer el archivo ${xmlPath}:`, err);
             return;
         }
-        
+
         const apiKey = apiKeys[index];
         const apiSecret = apiSecrets[index];
         const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers/${dataCfdi.providerId}`, {
@@ -106,7 +106,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         });
 
         //TODO: En el servidor descomentar la siguiente linea
-        
+
         /* const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${result[index].cfdi.receptor.rfc}') AND Parametro = 'DataBase';`
         const dbResponse = await runQuery(query); 
 
