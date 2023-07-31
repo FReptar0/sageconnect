@@ -1,7 +1,7 @@
 const notifier = require('node-notifier');
 
 function hoursToMilliseconds(hours) {
-    if (minutes == 0) {
+    if (hours == 0) {
         try {
             notifier.notify({
                 title: 'Asignación de tiempo',

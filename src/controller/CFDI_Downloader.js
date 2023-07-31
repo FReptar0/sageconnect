@@ -76,7 +76,7 @@ async function downloadCFDI(index) {
             })
             .on('error', (err) => {
                 console.log('Error al descargar el archivo: ' + err);
-                // Eliminar el archivo si ocurre un error
+                // Delete the file if an error occurs
                 fs.unlink(xmlPath, (unlinkErr) => {
                     if (unlinkErr) {
                         console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -105,14 +105,12 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             }
         });
 
-        //TODO: En el servidor descomentar la siguiente linea
+        const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${result[index].cfdi.receptor.rfc}') AND Parametro = 'DataBase';`
+        const dbResponse = await runQuery(query);
 
-        /* const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${result[index].cfdi.receptor.rfc}') AND Parametro = 'DataBase';`
-        const dbResponse = await runQuery(query); 
+        const idCia = dbResponse.recordset[0].Resultado || '';
 
-        const idCia = dbResponse.recordset[0].Resultado || 'NOT_FOUND'; */
-
-        idCia = 'NOT_FOUND';
+        //idCia = 'NOT_FOUND';
 
         const bankAccounts = response.data.expedient.bank_accounts;
         const firstBankAccountKey = Object.keys(bankAccounts)[0];
@@ -128,7 +126,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
 
         if (!firstBankAccountValue) {
             console.log('No se tienen los datos del banco. Eliminando archivo:', xmlPath);
-            // Eliminar el archivo si no se tienen los datos del banco
+            // Delete the file if the bank data is not found
             fs.unlink(xmlPath, (unlinkErr) => {
                 if (unlinkErr) {
                     console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -212,6 +210,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                                 'contact_phone': contactData.telefono,
                                 'Terminos': response.data.credit_days || '30',
                                 'CuentaContable': bankData.cuenta_contable,
+                                'TipoProveedor': response.data.type,
                             },
                             'cfdi:DomicilioProv': {
                                 '$': {

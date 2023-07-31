@@ -5,13 +5,13 @@ const dbConfig = {
     user: process.env.USER,
     password: process.env.PASSWORD,
     server: process.env.SERVER,
-    database: process.env.DATABASE, // por defecto, usa la base de datos FESA
+    database: process.env.DATABASE, // By default, the database is FESA
 };
 
 async function runQuery(query, database = 'FESA') {
     const pool = await new sql.ConnectionPool({
         ...dbConfig,
-        database: database, // si se especifica otra base de datos, se usa esa en vez de la FESA
+        database: database, // If the database is not specified, the default database is FESA
         options: {
             trustServerCertificate: true
         }

@@ -7,14 +7,17 @@ const url = process.env.URL;
 const tenantIds = []
 const apiKeys = []
 const apiSecrets = []
+const databases = []
 
 const tenantIdValues = process.env.TENANT_ID.split(',');
 const apiKeyValues = process.env.API_KEY.split(',');
 const apiSecretValues = process.env.API_SECRET.split(',');
+const databaseValues = process.env.DATABASES.split(',');
 
 tenantIds.push(...tenantIdValues);
 apiKeys.push(...apiKeyValues);
 apiSecrets.push(...apiSecretValues);
+databases.push(...databaseValues);
 
 async function getTypeP(index) {
     let date = new Date().getDate();
@@ -29,26 +32,31 @@ async function getTypeP(index) {
             }
         });
 
+        if (response.data.total === 0) {
+            console.log('No hay CFDI de tipo P para timbrar');
+            return [];
+        }
+
         // TODO: En el servidor eliminar el return que no esta comentado y descomentar desde const data = [] hasta el return
 
 
         const data = [];
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = `${response.data.items[i].cfdi.receptor.rfc}}`; si NREG = 0 entonces no existe el RFC en la tabla fesaParam y se debe eliminar el CFDI
         for (let i = 0; i < response.data.items.length; i++) {
+            // Check if RFCReceptor exists in fesaParam table
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
             const result = await runQuery(query);
-            // si NREG != 0 entonces existe el RFC en la tabla fesaParam y se debe agregar el CFDI al arreglo data
+            // If the RFCReceptor does not exist in fesaParam table, then the CFDI is not timbrable and must be deleted
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
             }
         }
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = `${response.data.items[i].cfdi.timbre.uuid}}`; si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI porque ya fue timbrado
         for (let i = 0; i < data.length; i++) {
+            // Check if the CFDI exists
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query);
-            // si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI del arreglo data
+            const result = await runQuery(query, databases[index]);
+            // If the CFDI exists, then the CFDI is already timbrado and must be deleted
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
             }
@@ -56,7 +64,7 @@ async function getTypeP(index) {
 
         return data;
 
-        // return response.data.items;
+        //return response.data.items;
     } catch (error) {
         try {
             notifier.notify({
@@ -91,31 +99,26 @@ async function getTypeI(index) {
 
         const data = [];
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = `${response.data.items[i].cfdi.receptor.rfc}}`; si NREG = 0 entonces no existe el RFC en la tabla fesaParam y se debe eliminar el CFDI
         for (let i = 0; i < response.data.items.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
             const result = await runQuery(query);
-            // si NREG != 0 entonces existe el RFC en la tabla fesaParam y se debe agregar el CFDI al arreglo data
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
             }
         }
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = `${response.data.items[i].cfdi.timbre.uuid}}`; si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI porque ya fue timbrado
-        /* for (let i = 0; i < data.length; i++) {
+        for (let i = 0; i < data.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query);
-            // si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI del arreglo data
+            const result = await runQuery(query, databases[index]);
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
             }
-        } */
+        }
 
 
 
         return data
 
-        // return response.data.items;
     } catch (error) {
         try {
             notifier.notify({
@@ -150,21 +153,17 @@ async function getTypeE(index) {
 
         const data = [];
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = `${response.data.items[i].cfdi.receptor.rfc}}`; si NREG = 0 entonces no existe el RFC en la tabla fesaParam y se debe eliminar el CFDI
         for (let i = 0; i < response.data.items.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
             const result = await runQuery(query);
-            // si NREG != 0 entonces existe el RFC en la tabla fesaParam y se debe agregar el CFDI al arreglo data
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
             }
         }
 
-        // ejecutar la siguiente query SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = `${response.data.items[i].cfdi.timbre.uuid}}`; si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI porque ya fue timbrado
         for (let i = 0; i < data.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query);
-            // si NREG > 0 entonces existe el CFDI en la tabla ARIBHO y se debe eliminar el CFDI del arreglo data
+            const result = await runQuery(query, databases[index]);
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
             }
@@ -172,7 +171,7 @@ async function getTypeE(index) {
 
         return data
 
-        // return response.data.items;
+        //return response.data.items;
     } catch (error) {
         try {
             notifier.notify({

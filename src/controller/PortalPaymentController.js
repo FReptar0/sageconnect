@@ -25,11 +25,9 @@ database.push(...databaseValues);
 async function uploadPayments(index) {
     try {
 
-        const fechaActual = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        const currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '')
 
-
-        // Obtener los pagos del dia en sage y subirlos a portal
-        /* Consulta del encabezado de los Pagos */
+        // Get the daily payments from Sage
 
         const queryEncabezadosPago = `SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, BK.ADDR1 AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
         , P.DOCNBR as external_id,P.TEXTRMIT AS comments, P.TXTRMITREF AS reference
@@ -42,7 +40,7 @@ async function uploadPayments(index) {
         FROM APBTA B, BKACCT BK, APTCR P
         WHERE B.IDBANK = BK.BANK  AND B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH 
         AND P.ERRENTRY = 0
-        AND B.PAYMTYPE='PY' AND B.BATCHSTAT = 3 AND P.DATEBUS>=${fechaActual}
+        AND B.PAYMTYPE='PY' AND B.BATCHSTAT = 3 AND P.DATEBUS>=${currentDate}
         AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )`;
 
         const payments = await runQuery(queryEncabezadosPago, database[index]);
@@ -50,7 +48,7 @@ async function uploadPayments(index) {
         const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
         const pagosRegistrados = await runQuery(queryPagosRegistrados);
 
-        // Si un external_id corresponde a algun NoPagoSage, verificar en que posicion del arreglo se encuentra y eliminarlo
+        // If an external_id corresponds to some NoPagoSage, verify in which position of the array it is and delete it
         if (pagosRegistrados.recordset.length > 0) {
             for (let i = 0; i < pagosRegistrados.recordset.length; i++) {
                 for (let j = 0; j < payments.recordset.length; j++) {
@@ -63,7 +61,7 @@ async function uploadPayments(index) {
 
         if (payments.recordset.length > 0) {
             for (let i = 0; i < payments.recordset.length; i++) {
-                /* Consulta de las Facturas Pagadas se debe de sustituir el LotePago y AsientoPago de la Consulta Anterior */
+                // Consult the invoices paid with the LotePago and AsientoPago of the previous query
                 const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  DP.IDVEND, DP.IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
             , CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency
             , H.EXCHRATEHC  AS invoice_exchange_rate
@@ -74,9 +72,7 @@ async function uploadPayments(index) {
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0`;
 
                 const invoices = await runQuery(queryFacturasPagadas, database[index]);
-                //console.log(invoices)
                 if (invoices.recordset.length > 0) {
-                    /* Proceso de alta */
                     for (let j = 0; j < tenantIds.length; j++) {
                         const cfdi = {
                             "amount": invoices.recordset[j].invoice_amount,
@@ -115,9 +111,9 @@ async function uploadPayments(index) {
                     });
 
                     if (response.status === 200) {
-                        // insertar en fesaPagosFocaltec el idCia el NoPagoSage que es el el que empieza con PY de la primera consulta (external_id) 
+                        // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
                         const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES (${database[index]}, '${payments.recordset[i].external_id}')`;
-                        const result = await runQuery(queryInsert); // no se indica la base de datos porque sera FESA por default
+                        const result = await runQuery(queryInsert);
 
                         if (result.rowsAffected[0] > 0) {
                             console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');

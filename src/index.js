@@ -1,9 +1,10 @@
 const express = require('express');
-const { getProviders } = require('./components/focaltec/Provider')
 const { hoursToMilliseconds } = require('./utils/TransformTime');
-const { checkPayments } = require('./controller/SagePaymentController');
+//const { checkPayments } = require('./controller/SagePaymentController');
+const { checkPayments } = require('./controller/Payment');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
+const { spawn } = require('child_process');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -39,10 +40,35 @@ try {
 forResponse = async () => {
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
+        // CFDI_Downloader function
         await downloadCFDI(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // The spawn function is used to execute the import process
+        const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, env.parsed.ARGS);
+
+        // Stdout is used to capture the data messages
+        childProcess.stdout.on('data', (data) => {
+            console.log(`stdout: ${data}`);
+        });
+
+        // Stderr is used to capture the error messages
+        childProcess.stderr.on('data', (data) => {
+            console.error(`stderr: ${data}`);
+        });
+
+        // Close is used to capture the close event
+        childProcess.on('close', (code) => {
+            console.log(`child process exited with code ${code}`);
+        });
+
+
+        // Function to check payments in Sage and upload timbrados data
         await checkPayments(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
+
+
+        // Function to upload payments to the portal de proveedores
         await uploadPayments(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
     }
