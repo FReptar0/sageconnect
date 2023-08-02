@@ -19,7 +19,7 @@ async function runQuery(query, database = 'FESA') {
 
     const result = await pool.request().query(query);
 
-    console.log(result)
+    //console.log(result)
 
     pool.close();
     return result;

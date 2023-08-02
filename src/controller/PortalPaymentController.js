@@ -29,10 +29,10 @@ async function uploadPayments(index) {
 
         // Get the daily payments from Sage
 
-        const queryEncabezadosPago = `SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, BK.ADDR1 AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
+        const queryEncabezadosPago = `SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, RTRIM(BK.ADDR1) AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
         , P.DOCNBR as external_id,P.TEXTRMIT AS comments, P.TXTRMITREF AS reference
         , CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency
-        ,P.DATERMIT as payment_date, P.IDVEND as provider_external_id
+        ,P.DATERMIT as payment_date, RTRIM(P.IDVEND) as provider_external_id
         , P.AMTRMIT as total_amount
         , 'TRANSFER' as operation_type
         , P.RATEEXCHHC as TipoCambioPago
@@ -62,18 +62,19 @@ async function uploadPayments(index) {
         if (payments.recordset.length > 0) {
             for (let i = 0; i < payments.recordset.length; i++) {
                 // Consult the invoices paid with the LotePago and AsientoPago of the previous query
-                const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  DP.IDVEND, DP.IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
+                const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  RTRIM(DP.IDVEND) as IDVEND, RTRIM(DP.IDINVC) AS IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
             , CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency
             , H.EXCHRATEHC  AS invoice_exchange_rate
             , DP.AMTPAYM  AS payment_amount
-            , ISNULL((SELECT [VALUE] FROM APIBHO  WHERE CNTBTCH = H.CNTBTCH  AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'),'') AS UUID
+            , ISNULL((SELECT RTRIM([VALUE]) FROM APIBHO  WHERE CNTBTCH = H.CNTBTCH  AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'),'') AS UUID
             FROM APTCP DP , APIBH H
             WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset[i].LotePago} AND DP.CNTRMIT = ${payments.recordset[i].AsientoPago} AND DP.DOCTYPE = 1
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0`;
 
                 const invoices = await runQuery(queryFacturasPagadas, database[index]);
+                console.log(invoices)
                 if (invoices.recordset.length > 0) {
-                    for (let j = 0; j < tenantIds.length; j++) {
+                    for (let j = 0; j < invoices.recordset.length; j++) {
                         const cfdi = {
                             "amount": invoices.recordset[j].invoice_amount,
                             "currency": invoices.recordset[j].invoice_currency,
@@ -101,6 +102,8 @@ async function uploadPayments(index) {
                         "total_amount": payments.recordset[i].total_amount,
                     }
 
+                    console.log(payment)
+
                     const response = await axios.post(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`, payment, {
                         headers: {
                             'PDPTenantKey': apiKeys[index],
@@ -112,7 +115,7 @@ async function uploadPayments(index) {
 
                     if (response.status === 200) {
                         // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
-                        const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES (${database[index]}, '${payments.recordset[i].external_id}')`;
+                        const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
                         const result = await runQuery(queryInsert);
 
                         if (result.rowsAffected[0] > 0) {

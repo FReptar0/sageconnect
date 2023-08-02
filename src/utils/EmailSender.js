@@ -1,7 +1,7 @@
 const nodeMailer = require('nodemailer');
 require('dotenv').config({ path: '.env.credentials.mailing' });
 
-async function sendMail(subject, data) {
+async function sendMail(data) {
     const html = `<h1>${data.h1}</h1>
     <p>${data.p}</p>
     <table>
@@ -29,12 +29,12 @@ async function sendMail(subject, data) {
         const mailOptions = {
             from: process.env.CORREO_ENVIO,
             to: process.env.CORREOS_AVISOS.split(',')[data.position] || process.env.CORREOS_AVISOS.split(',')[0],
-            subject: `${data.idCia} - ${subject}`,
+            subject: `${data.idCia} - ${data.h1}`,
             html: html,
         }
 
         const result = await transport.sendMail(mailOptions);
-        console.log(result);
+        //console.log(result);
         return result;
 
     } catch (error) {
