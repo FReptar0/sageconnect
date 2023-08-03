@@ -80,9 +80,27 @@ forResponse().then(() => {
 });
 
 /* setInterval(async () => {
-    forResponse().then(() => {
-        console.log('Proceso finalizado');
-    }).catch((error) => {
-        console.log(error);
+forResponse().then(() => {
+    console.log('Proceso finalizado');
+    // The spawn function is used to execute the import process
+    const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
+
+    // Stdout is used to capture the data messages
+    childProcess.stdout.on('data', (data) => {
+        console.log(`stdout: ${data}`);
     });
+
+    // Stderr is used to capture the error messages
+    childProcess.stderr.on('data', (data) => {
+        console.error(`stderr: ${data}`);
+    });
+
+    // Close is used to capture the close event
+    childProcess.on('close', (code) => {
+        console.log(`child process exited with code ${code}`);
+    });
+
+}).catch((error) => {
+    console.log(error);
+});
 }, hoursToMilliseconds(env.parsed.WAIT_TIME)); */

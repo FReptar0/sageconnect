@@ -11,8 +11,7 @@ async function checkPayments(index) {
 
     let emails = [];
 
-    //let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    let currentDate = '20230803'
+    let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     for (let i = 0; i < resultPayments.length; i++) {
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
@@ -28,9 +27,9 @@ async function checkPayments(index) {
             if (optionalFieldsResult.recordset.length === 0)
                 continue;
             
-                // FIXME: Remplazar el PY00000000000000000006 por el numero de documento de la factura de pago de sage desde el API
-                // Debe de venir en el resultPayments[i].metadata.external_id
-            const timbradoDataQuery = `SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM FROM APTCR H LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}' LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}' WHERE H.BTCHTYPE = 'PY' AND H.ERRENTRY = 0 AND H.DOCNBR = 'PY00000000000000000006'`
+                // ? TODO: Verificar si se debe cambiar la forma de obtener el external_id
+                // ? Provicionalmente es resultPayments[i].metadata.external_id pero es igual a undifined
+            const timbradoDataQuery = `SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM FROM APTCR H LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}' LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}' WHERE H.BTCHTYPE = 'PY' AND H.ERRENTRY = 0 AND H.DOCNBR = '${resultPayments[i].metadata.external_id}'`
             const timbradoDataResult = await runQuery(timbradoDataQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al obtener los datos de timbrado", p: err, status: 500, message: "Error al obtener los datos de timbrado", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
 
             if (timbradoDataResult.recordset.length === 0)
@@ -47,6 +46,9 @@ async function checkPayments(index) {
                 ,  ${currentDate} ,23165973,'${optionalFieldsResult.recordset[0].UserAccpac}','${idCiaResult.recordset[0].idCia}' 
                 ,'${resultPayments[i].cfdi.timbre.uuid}' 
                 ,1,60,0,0,0,1)`;
+                
+                console.log("UUID:")
+                console.log(resultPayments[i].cfdi.timbre.uuid)
 
                 const insertUUIDResult = await runQuery(insertUUIDQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al insertar el UUID", p: err, status: 500, message: "Error al insertar el UUID", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
 
@@ -119,7 +121,7 @@ async function checkPayments(index) {
                 if (insertFECHATIMResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se insertó la fecha de timbrado",
-                        p: `Se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
                         status: 200,
                         message: "Se insertó la fecha de timbrado",
                         position: index,
@@ -129,7 +131,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al insertar la fecha de timbrado",
-                        p: `No se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
                         status: 500,
                         message: "Error al insertar la fecha de timbrado",
                         position: index,
@@ -149,7 +151,7 @@ async function checkPayments(index) {
                 if (updateFECHATIMResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se actualizó la fecha de timbrado",
-                        p: `Se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
                         status: 200,
                         message: "Se actualizó la fecha de timbrado",
                         position: index,
@@ -159,7 +161,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al actualizar la fecha de timbrado",
-                        p: `No se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
                         status: 500,
                         message: "Error al actualizar la fecha de timbrado",
                         position: index,
@@ -184,7 +186,6 @@ async function checkPayments(index) {
 
     if (emails.length > 0) {
         for (let i = 0; i < emails.length; i++) {
-            console.log(emails)
             sendMail(emails[i]).catch((err) => {
                 notifier.notify({
                     title: 'Error al enviar correo',
