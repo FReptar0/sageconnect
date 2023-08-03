@@ -86,6 +86,8 @@ async function uploadPayments(index) {
                         cfdis.push(cfdi);
                     }
 
+                    const payment_date = payments.recordset[i].payment_date.slice(0, 4) + '-' + payments.recordset[i].payment_date.slice(4, 6) + '-' + payments.recordset[i].payment_date.slice(6, 8) + 'T00:00:00.000Z'
+
                     const payment = {
                         "bank_account_id": payments.recordset[i].bank_account_id,
                         "cfdis": cfdis,
@@ -96,7 +98,7 @@ async function uploadPayments(index) {
                         "mark_existing_cfdi_as_paid": true,
                         "open": false,
                         "operation_type": payments.recordset[i].operation_type,
-                        "payment_date": payments.recordset[i].payment_date,
+                        "payment_date": payment_date,
                         "provider_external_id": payments.recordset[i].provider_external_id,
                         "reference": payments.recordset[i].reference,
                         "total_amount": payments.recordset[i].total_amount,

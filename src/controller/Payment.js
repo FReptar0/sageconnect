@@ -8,26 +8,34 @@ async function checkPayments(index) {
 
     if (resultPayments.length === 0)
         return;
-    // TODO: Corregir el envio de correo solo se esta eenviando uno 
-        let emailData = { h1: "", p: "", status: 0, message: "", position: index, idCia: "" };
-        let emails = [];
 
-    let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let emails = [];
+
+    //let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let currentDate = '20230803'
 
     for (let i = 0; i < resultPayments.length; i++) {
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
-        const idCiaResult = await runQuery(idCiaQuery).catch((err) => { emailData.h1 = "Error al obtener el idCia"; emailData.p = err; emailData.status = 500; emailData.message = "Error al obtener el idCia"; emails.push(emailData); });
+        const idCiaResult = await runQuery(idCiaQuery).catch((err) => { const data = { h1: "Error al obtener el idCia", p: err, status: 500, message: "Error al obtener el idCia", position: index }; emails.push(data); });
 
         if (idCiaResult.recordset.length === 0)
             continue;
 
         if (idCiaResult.recordset.length > 0) {
             const optionalFieldsQuery = `SELECT [BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac] FROM (SELECT PARAMETRO, RTRIM(VALOR) AS VALOR FROM fesaParam WHERE PARAMETRO IN ('BancoAP','NumCtaAP','FechaCFD','FolioCFD','FormaPago','MetodoPago','PasswordA','UserAccpac') AND idCia = '${idCiaResult.recordset[0].idCia}') AS t PIVOT (MIN(VALOR) FOR PARAMETRO IN ([BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac])) AS p;`;
-            const optionalFieldsResult = await runQuery(optionalFieldsQuery).catch((err) => { emailData.h1 = "Error al obtener los campos opcionales"; emailData.p = err; emailData.status = 500; emailData.message = "Error al obtener los campos opcionales"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
+            const optionalFieldsResult = await runQuery(optionalFieldsQuery).catch((err) => { const data = { h1: "Error al obtener los campos opcionales", p: err, status: 500, message: "Error al obtener los campos opcionales", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
 
+            if (optionalFieldsResult.recordset.length === 0)
+                continue;
+            
+                // FIXME: Remplazar el PY00000000000000000006 por el numero de documento de la factura de pago de sage desde el API
+                // Debe de venir en el resultPayments[i].metadata.external_id
             const timbradoDataQuery = `SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM FROM APTCR H LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}' LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}' WHERE H.BTCHTYPE = 'PY' AND H.ERRENTRY = 0 AND H.DOCNBR = 'PY00000000000000000006'`
-            const timbradoDataResult = await runQuery(timbradoDataQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { emailData.h1 = "Error al obtener los datos de timbrado"; emailData.p = err; emailData.status = 500; emailData.message = "Error al obtener los datos de timbrado"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
-            // TODO: Corregir en todos los casos que continue con el siguiente si el recordset viene vacio
+            const timbradoDataResult = await runQuery(timbradoDataQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al obtener los datos de timbrado", p: err, status: 500, message: "Error al obtener los datos de timbrado", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
+
+            if (timbradoDataResult.recordset.length === 0)
+                continue;
+
             if (timbradoDataResult.recordset[0].UUIDPAGO.length === 36 && timbradoDataResult.recordset[0].FECHATIM.length === 19)
                 continue;
 
@@ -40,79 +48,94 @@ async function checkPayments(index) {
                 ,'${resultPayments[i].cfdi.timbre.uuid}' 
                 ,1,60,0,0,0,1)`;
 
-                const insertUUIDResult = await runQuery(insertUUIDQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { emailData.h1 = "Error al insertar el UUID"; emailData.p = err; emailData.status = 500; emailData.message = "Error al insertar el UUID"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
+                const insertUUIDResult = await runQuery(insertUUIDQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al insertar el UUID", p: err, status: 500, message: "Error al insertar el UUID", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
 
                 if (insertUUIDResult.rowsAffected[0] > 0) {
-                    emailData.h1 = "Se insertó el UUID";
-                    emailData.p = `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 200;
-                    emailData.message = "Se insertó el UUID";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Se insertó el UUID",
+                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 200,
+                        message: "Se insertó el UUID",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 } else {
-                    emailData.h1 = "Error al insertar el UUID";
-                    emailData.p = `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 500;
-                    emailData.message = "Error al insertar el UUID";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Error al insertar el UUID",
+                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 500,
+                        message: "Error al insertar el UUID",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 }
             }
-            console.log("Pagos")
-            console.log(timbradoDataResult.recordset[0].UUIDPAGO === '')
+
             if (timbradoDataResult.recordset[0].UUIDPAGO === '') {
                 const updateUUIDQuery = `UPDATE APTCRO  SET [VALUE] = '${resultPayments[i].cfdi.timbre.uuid}' 
                 WHERE BTCHTYPE= 'PY' AND CNTBTCH = ${timbradoDataResult.recordset[0].CNTBTCH} AND CNTENTR = ${timbradoDataResult.recordset[0].CNTENTR} 
                 AND OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}'`
 
-                const updateUUIDResult = await runQuery(updateUUIDQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { emailData.h1 = "Error al actualizar el UUID"; emailData.p = err; emailData.status = 500; emailData.message = "Error al actualizar el UUID"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
-                console.log("Actualizado")
-                console.log(updateUUIDResult)
-                console.log(updateUUIDResult.rowsAffected[0] > 0)
+                const updateUUIDResult = await runQuery(updateUUIDQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al actualizar el UUID", p: err, status: 500, message: "Error al actualizar el UUID", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
+
                 if (updateUUIDResult.rowsAffected[0] > 0) {
-                    emailData.h1 = "Se actualizó el UUID";
-                    emailData.p = `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 200;
-                    emailData.message = "Se actualizó el UUID";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
-                    console.log("Se agrego mensaje")
+                    const data = {
+                        h1: "Se actualizó el UUID",
+                        p: `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 200,
+                        message: "Se actualizó el UUID",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 } else {
-                    emailData.h1 = "Error al actualizar el UUID";
-                    emailData.p = `No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 500;
-                    emailData.message = "Error al actualizar el UUID";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Error al actualizar el UUID",
+                        p: `No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 500,
+                        message: "Error al actualizar el UUID",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 }
             }
-            // TODO: Hacer regex de fecha de timbrado que retorna API para que sea 
-            // 20230802
+            
+            const fechaTimbrado = resultPayments[i].cfdi.timbre.fecha_timbrado.split('T')[0].replace(/-/g, '');
+
             if (timbradoDataResult.recordset[0].FECHATIM === 'NOEXISTECO') {
                 const insertFECHATIMQuery = `INSERT INTO APTCRO
                 (BTCHTYPE,CNTBTCH,CNTENTR,OPTFIELD,AUDTDATE,AUDTTIME,AUDTUSER,AUDTORG,VALUE,[TYPE],[LENGTH],DECIMALS,ALLOWNULL,VALIDATE,SWSET)
                 VALUES
                 ('PY',${timbradoDataResult.recordset[0].CNTBTCH},${timbradoDataResult.recordset[0].CNTENTR},'${optionalFieldsResult.recordset[0].FechaCFD}'
                 ,${currentDate},23165973,'${optionalFieldsResult.recordset[0].UserAccpac}','${idCiaResult.recordset[0].idCia}'
-                ,'${resultPayments[i].cfdi.timbre.fecha_timbrado}'
+                ,'${fechaTimbrado}'
                 ,1,60,0,0,0,1)`
 
-                const insertFECHATIMResult = await runQuery(insertFECHATIMQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { emailData.h1 = "Error al insertar la fecha de timbrado"; emailData.p = err; emailData.status = 500; emailData.message = "Error al insertar la fecha de timbrado"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
+                const insertFECHATIMResult = await runQuery(insertFECHATIMQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al insertar la fecha de timbrado", p: err, status: 500, message: "Error al insertar la fecha de timbrado", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); });
 
                 if (insertFECHATIMResult.rowsAffected[0] > 0) {
-                    emailData.h1 = "Se insertó la fecha de timbrado";
-                    emailData.p = `Se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 200;
-                    emailData.message = "Se insertó la fecha de timbrado";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Se insertó la fecha de timbrado",
+                        p: `Se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 200,
+                        message: "Se insertó la fecha de timbrado",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 } else {
-                    emailData.h1 = "Error al insertar la fecha de timbrado";
-                    emailData.p = `No se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 500;
-                    emailData.message = "Error al insertar la fecha de timbrado";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Error al insertar la fecha de timbrado",
+                        p: `No se insertó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 500,
+                        message: "Error al insertar la fecha de timbrado",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 }
             }
 
@@ -121,32 +144,41 @@ async function checkPayments(index) {
                 WHERE BTCHTYPE = 'PY' AND CNTBTCH = ${timbradoDataResult.recordset[0].CNTBTCH} AND CNTENTR = ${timbradoDataResult.recordset[0].CNTENTR}
                 AND OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}'`
 
-                const updateFECHATIMResult = await runQuery(updateFECHATIMQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { emailData.h1 = "Error al actualizar la fecha de timbrado"; emailData.p = err; emailData.status = 500; emailData.message = "Error al actualizar la fecha de timbrado"; emailData.idCia = idCiaResult.recordset[0].idCia; emails.push(emailData); });
+                const updateFECHATIMResult = await runQuery(updateFECHATIMQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = {h1: "Error al actualizar la fecha de timbrado", p: err, status: 500, message: "Error al actualizar la fecha de timbrado", idCia: idCiaResult.recordset[0].idCia, position: index}; emails.push(data); });
 
                 if (updateFECHATIMResult.rowsAffected[0] > 0) {
-                    emailData.h1 = "Se actualizó la fecha de timbrado";
-                    emailData.p = `Se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 200;
-                    emailData.message = "Se actualizó la fecha de timbrado";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Se actualizó la fecha de timbrado",
+                        p: `Se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 200,
+                        message: "Se actualizó la fecha de timbrado",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 } else {
-                    emailData.h1 = "Error al actualizar la fecha de timbrado";
-                    emailData.p = `No se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`;
-                    emailData.status = 500;
-                    emailData.message = "Error al actualizar la fecha de timbrado";
-                    emailData.idCia = idCiaResult.recordset[0].idCia;
-                    emails.push(emailData);
+                    const data = {
+                        h1: "Error al actualizar la fecha de timbrado",
+                        p: `No se actualizó la fecha de timbrado ${resultPayments[i].cfdi.timbre.fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        status: 500,
+                        message: "Error al actualizar la fecha de timbrado",
+                        position: index,
+                        idCia: idCiaResult.recordset[0].idCia,
+                    }
+                    emails.push(data);
                 }
             }
 
 
         } else {
-            emailData.h1 = "Error al obtener el idCia";
-            emailData.p = "No se encontró el idCia";
-            emailData.status = 500;
-            emailData.message = "Error al obtener el idCia";
-            emails.push(emailData);
+            const data = {
+                h1: "Error al obtener el idCia",
+                p: "No se encontró el idCia",
+                status: 500,
+                message: "Error al obtener el idCia",
+                position: index,
+            }
+            emails.push(data);
         }
     }
 
@@ -157,6 +189,7 @@ async function checkPayments(index) {
                 notifier.notify({
                     title: 'Error al enviar correo',
                     message: 'No se envio el correo, error: ' + err,
+                    position: index,
                     sound: true,
                     wait: true,
                     icon: process.cwd() + '/public/img/cerrar.png'

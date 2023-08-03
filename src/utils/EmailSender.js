@@ -29,7 +29,7 @@ async function sendMail(data) {
         const mailOptions = {
             from: process.env.CORREO_ENVIO,
             to: process.env.CORREOS_AVISOS.split(',')[data.position] || process.env.CORREOS_AVISOS.split(',')[0],
-            subject: `${data.idCia} - ${data.h1}`,
+            subject: `${data.idCia || 'NOT FOUND'} - ${data.h1}`,
             html: html,
         }
 

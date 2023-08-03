@@ -37,8 +37,6 @@ async function getTypeP(index) {
             return [];
         }
 
-        // TODO: En el servidor eliminar el return que no esta comentado y descomentar desde const data = [] hasta el return
-
 
         const data = [];
 
@@ -95,7 +93,6 @@ async function getTypeI(index) {
             }
         });
 
-        // TODO: En el servidor eliminar el return que no esta comentado y descomentar desde const data = [] hasta el return
 
         const data = [];
 
@@ -148,8 +145,6 @@ async function getTypeE(index) {
                 'PDPTenantSecret': apiSecrets[index]
             }
         });
-
-        // TODO: En el servidor eliminar el return que no esta comentado y descomentar desde const data = [] hasta el return
 
         const data = [];
 
