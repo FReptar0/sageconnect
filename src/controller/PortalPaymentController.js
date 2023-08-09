@@ -67,12 +67,10 @@ async function uploadPayments(index) {
             , H.EXCHRATEHC  AS invoice_exchange_rate
             , DP.AMTPAYM  AS payment_amount
             , ISNULL((SELECT RTRIM([VALUE]) FROM APIBHO  WHERE CNTBTCH = H.CNTBTCH  AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'),'') AS UUID
-            FROM APTCP DP , APIBH H
+            FROM APTCP DP , APIBH H, APIBC C
             WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset[i].LotePago} AND DP.CNTRMIT = ${payments.recordset[i].AsientoPago} AND DP.DOCTYPE = 1
-            AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0`;
-
+            AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0 AND H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3`;
                 const invoices = await runQuery(queryFacturasPagadas, database[index]);
-                console.log(invoices)
                 if (invoices.recordset.length > 0) {
                     for (let j = 0; j < invoices.recordset.length; j++) {
                         const cfdi = {
@@ -85,8 +83,9 @@ async function uploadPayments(index) {
                         }
                         cfdis.push(cfdi);
                     }
+                    const date = payments.recordset[i].payment_date.toString();
 
-                    const payment_date = payments.recordset[i].payment_date.slice(0, 4) + '-' + payments.recordset[i].payment_date.slice(4, 6) + '-' + payments.recordset[i].payment_date.slice(6, 8) + 'T00:00:00.000Z'
+                    const payment_date = date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6, 8) + 'T10:00:00.000Z'
 
                     const payment = {
                         "bank_account_id": payments.recordset[i].bank_account_id,
