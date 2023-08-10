@@ -9,7 +9,11 @@
 - Node.js (Stable version)
    - > The system was created on Node v18.12.1
 - npm (Stable version)
-   - > The system was created using npm v8.19.2
+   - > The system was created using npm v8.19.2 <br> 
+       > This package manager for JavaScript is automatically installed when you installed Node.js
+- PM2
+   - > The system was created using npm v5.3.0 <br>
+      > To install PM2 you need to previously had already been installed Node.js and npm
 
 ---
 
