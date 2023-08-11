@@ -43,7 +43,12 @@ async function getTypeP(index) {
         for (let i = 0; i < response.data.items.length; i++) {
             // Check if RFCReceptor exists in fesaParam table
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query);
+            const result = await runQuery(query).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             // If the RFCReceptor does not exist in fesaParam table, then the CFDI is not timbrable and must be deleted
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
@@ -55,7 +60,12 @@ async function getTypeP(index) {
         for (let i = 0; i < data.length; i++) {
             // Check if the CFDI exists
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]);
+            const result = await runQuery(query, databases[index]).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             // If the CFDI exists, then the CFDI is already timbrado and must be deleted
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
@@ -99,7 +109,12 @@ async function getTypeI(index) {
 
         for (let i = 0; i < response.data.items.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query);
+            const result = await runQuery(query).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
             } else {
@@ -109,7 +124,12 @@ async function getTypeI(index) {
 
         for (let i = 0; i < data.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]);
+            const result = await runQuery(query, databases[index]).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
             }
@@ -152,17 +172,27 @@ async function getTypeE(index) {
 
         for (let i = 0; i < response.data.items.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query);
+            const result = await runQuery(query).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
-            }  else {
+            } else {
                 console.log("No existe el valor del RFCReceptor en fesa")
             }
         }
 
         for (let i = 0; i < data.length; i++) {
             const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]);
+            const result = await runQuery(query, databases[index]).catch((err) => {
+                console.log(err)
+                return {
+                    recordset: [{ NREG: 0 }]
+                }
+            })
             if (result.recordset[0].NREG > 0) {
                 data.splice(i, 1);
             }

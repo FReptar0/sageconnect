@@ -106,7 +106,14 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         });
 
         const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${dataCfdi.rfcReceptor}') AND Parametro = 'DataBase';`
-        const dbResponse = await runQuery(query);
+        const dbResponse = await runQuery(query).catch(() => {
+            console.log('Error al ejecutar la consulta:', query);
+            return {
+                recordset: [{
+                    Resultado: 'NOT_FOUND'
+                }]
+            }
+        });
 
         const idCia = dbResponse.recordset[0].Resultado || '';
 

@@ -44,10 +44,20 @@ async function uploadPayments(index) {
         AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )
         AND P.DOCNBR NOT IN (SELECT IDINVC FROM APPYM WHERE IDBANK = B.IDBANK AND CNTBTCH = P.CNTBTCH AND CNTITEM =P.CNTENTR AND SWCHKCLRD = 2 )`;
 
-        const payments = await runQuery(queryEncabezadosPago, database[index]);
+        const payments = await runQuery(queryEncabezadosPago, database[index]).catch((err) => {
+            console.log(err)
+            return {
+                recordset: []
+            }
+        })
 
         const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
-        const pagosRegistrados = await runQuery(queryPagosRegistrados);
+        const pagosRegistrados = await runQuery(queryPagosRegistrados).catch((err) => {
+            console.log(err);
+            return {
+                recordset: []
+            }
+        })
 
         // If an external_id corresponds to some NoPagoSage, verify in which position of the array it is and delete it
         if (pagosRegistrados.recordset.length > 0) {
@@ -71,7 +81,12 @@ async function uploadPayments(index) {
             FROM APTCP DP , APIBH H, APIBC C
             WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset[i].LotePago} AND DP.CNTRMIT = ${payments.recordset[i].AsientoPago} AND DP.DOCTYPE = 1
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0 AND H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3`;
-                const invoices = await runQuery(queryFacturasPagadas, database[index]);
+                const invoices = await runQuery(queryFacturasPagadas, database[index]).catch((err) => {
+                    console.log(err)
+                    return {
+                        recordset: []
+                    }
+                })
                 if (invoices.recordset.length > 0) {
                     for (let j = 0; j < invoices.recordset.length; j++) {
                         const cfdi = {
@@ -113,15 +128,40 @@ async function uploadPayments(index) {
                         }
                     }).catch(error => {
                         console.log(error.response.data);
+                        return {
+                            status: error.response.status,
+                            data: error.response.data
+                        }
                     });
 
                     if (response.status === 200) {
                         // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
                         const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
-                        const result = await runQuery(queryInsert);
+                        const result = await runQuery(queryInsert).catch((err) => {
+                            console.log(err)
+                            return {
+                                rowsAffected: [0]
+                            }
+                        })
 
                         if (result.rowsAffected[0] > 0) {
                             console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
+                        } else {
+                            console.log('No se inserto el pago en la tabla fesaPagosFocaltec');
+                        }
+                    } else {
+                        console.log('No se pudo insertar el pago en portal');
+                        try {
+                            notifier.notify({
+                                title: 'Error al ejecutar el proceso de alta de pagos en portal',
+                                message: 'No se ejecuto el proceso: ' + response.data,
+                                sound: true,
+                                wait: true,
+                                icon: process.cwd() + '/public/img/cerrar.png'
+                            });
+                        } catch (error) {
+                            console.log(error)
+                            console.log("No se ejecuto el proceso: " + response.data)
                         }
                     }
 
