@@ -159,3 +159,7 @@ These are the paths where the CFDI's will be saved
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
+
+---
+
+## :gear: How to use
