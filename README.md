@@ -46,18 +46,20 @@ To download Node.js you must do it from the following [link](https://nodejs.org/
 
 After you have downloaded and installed the previous applications you will need to run the following command in a terminal so that you can clone this repository:
 
-`
+```bash
 git clone https://github.com/FReptar0/sageconnect
-`
+```
+
 > :bangbang: Make sure you are cloning the program to the desired path.
 
 #### Packages
 
 Once you have cloned the repository, you will need to run the following command in a terminal to install the necessary packages for the program to run correctly:
 
-`
+```bash
 npm install
-`
+```
+
 > :bangbang: Make sure that you are running the command in the program folder
 
 ---
