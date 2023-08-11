@@ -1,6 +1,5 @@
 const express = require('express');
 const { hoursToMilliseconds } = require('./utils/TransformTime');
-//const { checkPayments } = require('./controller/SagePaymentController');
 const { checkPayments } = require('./controller/Payment');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
