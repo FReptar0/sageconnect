@@ -47,6 +47,8 @@ async function getTypeP(index) {
             // If the RFCReceptor does not exist in fesaParam table, then the CFDI is not timbrable and must be deleted
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
+            } else {
+                console.log("No existe el valor del RFCReceptor en fesa")
             }
         }
 
@@ -93,7 +95,6 @@ async function getTypeI(index) {
             }
         });
 
-
         const data = [];
 
         for (let i = 0; i < response.data.items.length; i++) {
@@ -101,6 +102,8 @@ async function getTypeI(index) {
             const result = await runQuery(query);
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
+            } else {
+                console.log("No existe el valor del RFCReceptor en fesa")
             }
         }
 
@@ -111,7 +114,6 @@ async function getTypeI(index) {
                 data.splice(i, 1);
             }
         }
-
 
 
         return data
@@ -153,6 +155,8 @@ async function getTypeE(index) {
             const result = await runQuery(query);
             if (result.recordset[0].NREG != 0) {
                 data.push(response.data.items[i]);
+            }  else {
+                console.log("No existe el valor del RFCReceptor en fesa")
             }
         }
 

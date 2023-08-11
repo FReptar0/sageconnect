@@ -41,7 +41,8 @@ async function uploadPayments(index) {
         WHERE B.IDBANK = BK.BANK  AND B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH 
         AND P.ERRENTRY = 0
         AND B.PAYMTYPE='PY' AND B.BATCHSTAT = 3 AND P.DATEBUS>=${currentDate}
-        AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )`;
+        AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )
+        AND P.DOCNBR NOT IN (SELECT IDINVC FROM APPYM WHERE IDBANK = B.IDBANK AND CNTBTCH = P.CNTBTCH AND CNTITEM =P.CNTENTR AND SWCHKCLRD = 2 )`;
 
         const payments = await runQuery(queryEncabezadosPago, database[index]);
 
