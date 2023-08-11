@@ -58,7 +58,7 @@ forResponse = async () => {
 forResponse().then(() => {
     console.log('Proceso finalizado');
     // The spawn function is used to execute the import process
-    const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
+    const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
     // Stdout is used to capture the data messages
     childProcess.stdout.on('data', (data) => {

@@ -20,15 +20,15 @@ async function sendMail(data) {
             service: 'gmail',
             auth: {
                 type: 'OAuth2',
-                user: process.env.CORREO_ENVIO,
+                user: process.env.SEND_MAILS,
                 clientId: process.env.CLIENT_ID,
                 clientSecret: process.env.SECRET_CLIENT,
                 refreshToken: process.env.REFRESH_TOKEN,
             }
         });
         const mailOptions = {
-            from: process.env.CORREO_ENVIO,
-            to: process.env.CORREOS_AVISOS.split(',')[data.position] || process.env.CORREOS_AVISOS.split(',')[0],
+            from: process.env.SEND_MAILS,
+            to: process.env.MAILING_NOTICES.split(',')[data.position] || process.env.MAILING_NOTICES.split(',')[0],
             subject: `${data.idCia || 'NOT FOUND'} - ${data.h1}`,
             html: html,
         }
