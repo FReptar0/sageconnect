@@ -70,20 +70,20 @@ The following environment variables must be configured for the program to run co
 
 ### .env
 
-| Variable | Description | Example | File |
-| :---: | :---: | :---: | :---: |
-| WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 2 | .env |
+| Variable | Description | Example |
+| :---: | :---: | :---: | 
+| WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 2 |
 | IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe | .env|
-| ARG | This is the argument that must be provided for the executable to perform its task. | CMXDAT | .env |
+| ARG | This is the argument that must be provided for the executable to perform its task. | CMXDAT |
 
 ### .env.credentials.database
 
-| Variable | Description | Example | File |
-| :---: | :---: | :---: | :---: |
-| USER | Is the user name for SQLServer database. | sa | .env.credentials.database |
-| PASSWORD | Is the password for the acording user. | sa | .env.credentials.database |
-| SERVER | Is the server name for the conecction. | EC2AMAZ-IMEIBNC | .env.credentials.database |
-| DATABASE | It is the default name of the database where some actions must occur. | FESA | .env.credentials.database |
+| Variable | Description | Example |
+| :---: | :---: | :---: | 
+| USER | Is the user name for SQLServer database. | sa | 
+| PASSWORD | Is the password for the acording user. | sa | 
+| SERVER | Is the server name for the conecction. | EC2AMAZ-IMEIBNC | 
+| DATABASE | It is the default name of the database where some actions must occur. | FESA | 
 
 ### .env.credentials.focaltec
 
@@ -91,13 +91,13 @@ The following environment variables must be configured for the program to run co
 
 > :bangbang: Make sure there are no commas after the equal or at the end of a value that has no other value right away.
 
-| Variable | Description | Example | File |
-| :---: | :---: | :---: | :---: |
-| URL | It is the URL of the focaltec API. | https://api-sandbox.portaldeproveedores.mx | .env.credentials.focaltec |
-| TENANT_ID | These are the company identifiers provided by Focaltec. | t8e8412hgs4kopf,t8e86cuiuennbl,t8e881bms3hygj8 | .env.credentials.focaltec |
-| API_KEY | This is one of the key values used by focaltec | EDaYeHfGbgnpevkE,QjgN7i3EHh7kOnuE,6hNTwGkVj9zLZgDX | .env.credentials.focaltec |
-| API_SECRET | This is another of the key values used by focaltec | NMcqO1qxQmx66yEQ3tqzFspxe2ALwXbrtcfIY8upZdeiPbDY,iUJRIrquQvFa6LvDzeDlQIk8clwYc14kuiEVGysRioqkcFyt,SDZHVho74TJK2xyshLsl6VSvWRYCt16fBJ00BDnZ3CUXjeZN | .env.credentials.focaltec |
-| DATABASES | It is the name of the database corresponding to each company. | CMXDAT,TSMDAT,ARKDAT | .env.credentials.focaltec |
+| Variable | Description | Example |
+| :---: | :---: | :---: | 
+| URL | It is the URL of the focaltec API. | https://api-sandbox.portaldeproveedores.mx |
+| TENANT_ID | These are the company identifiers provided by Focaltec. | t8e8412hgs4kopf,t8e86cuiuennbl,t8e881bms3hygj8 |
+| API_KEY | This is one of the key values used by focaltec | EDaYeHfGbgnpevkE,QjgN7i3EHh7kOnuE,6hNTwGkVj9zLZgDX |
+| API_SECRET | This is another of the key values used by focaltec | NMcqO1qxQmx66yEQ3tqzFspxe2ALwXbrtcfIY8upZdeiPbDY,iUJRIrquQvFa6LvDzeDlQIk8clwYc14kuiEVGysRioqkcFyt,SDZHVho74TJK2xyshLsl6VSvWRYCt16fBJ00BDnZ3CUXjeZN |
+| DATABASES | It is the name of the database corresponding to each company. | CMXDAT,TSMDAT,ARKDAT |
 
 > :bangbang: Make sure that the values correspond to each other, for example, if the first TENANT_ID is for Charger, then the first API_KEY, API_SECRET and DATABASE must be for Charger.
 
@@ -105,8 +105,8 @@ The following environment variables must be configured for the program to run co
 
 These are the credentials needed to send emails using the google API
 
-| Variable | Description | Example | File |
-| :---: | :---: | :---: | :---: |
+| Variable | Description | Example |
+| :---: | :---: | :---: | 
 | CLIENT_ID | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 213110698827-j2ih3tvkp4hlc4prngfa5hr9qdh2r9bq.apps.googleusercontent.com | .env.credentials.mailing |
 | SECRET_CLIENT | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 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 | .env.credentials.mailing  |
 | REFRESH_TOKEN | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 1//04MQuKAFpXo-_CgYIARAAGAQSNwF-L9IrQKynzPc1WJTkShu3Afzt5z_A_gPcXzdUw5TPTz8u1lgbUnXpZqR7Wcj8rgBMLQWqyTE | .env.credentials.mailing  |
@@ -151,3 +151,11 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 30. Click on the **Allow** button
 31. Click on the **Exchange authorization code for tokens** button
 32. Copy the **Refresh token** value and paste it in the corresponding field in the .env.credentials.mailing file
+
+### .env.path
+
+These are the paths where the CFDI's will be saved
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
