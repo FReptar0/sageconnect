@@ -9,7 +9,6 @@ const database = [];
 const tenantIds = []
 const apiKeys = []
 const apiSecrets = []
-const cfdis = [];
 
 const url = credentials.parsed.URL;
 const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
@@ -72,6 +71,8 @@ async function uploadPayments(index) {
 
         if (payments.recordset.length > 0) {
             for (let i = 0; i < payments.recordset.length; i++) {
+                const cfdis = [];
+
                 // Consult the invoices paid with the LotePago and AsientoPago of the previous query
                 const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  RTRIM(DP.IDVEND) as IDVEND, RTRIM(DP.IDINVC) AS IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
             , CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency
@@ -87,6 +88,7 @@ async function uploadPayments(index) {
                         recordset: []
                     }
                 })
+
                 if (invoices.recordset.length > 0) {
                     for (let j = 0; j < invoices.recordset.length; j++) {
                         const cfdi = {
