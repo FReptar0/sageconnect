@@ -33,42 +33,32 @@ async function getTypeP(index) {
         });
 
         if (response.data.total === 0) {
-            console.log('No hay CFDI de tipo P para timbrar');
+            console.log('No hay CFDI de tipo P');
             return [];
         }
 
 
         const data = [];
-
-        for (let i = 0; i < response.data.items.length; i++) {
-            // Check if RFCReceptor exists in fesaParam table
-            const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
+        for (const item of response.data.items) {
+            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
+            try {
+                const rfcResult = await runQuery(rfcQuery);
+                if (rfcResult.recordset[0].NREG === 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    continue; // Skip this item
                 }
-            })
-            // If the RFCReceptor does not exist in fesaParam table, then the CFDI is not timbrable and must be deleted
-            if (result.recordset[0].NREG != 0) {
-                data.push(response.data.items[i]);
-            } else {
-                console.log("No existe el valor del RFCReceptor en fesa")
-            }
-        }
 
-        for (let i = 0; i < data.length; i++) {
-            // Check if the CFDI exists
-            const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
+                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
+                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                if (cfdiResult.recordset[0].NREG > 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
+                    continue; // Skip this item
                 }
-            })
-            // If the CFDI exists, then the CFDI is already timbrado and must be deleted
-            if (result.recordset[0].NREG > 0) {
-                data.splice(i, 1);
+
+                console.log(`UUID ${item.cfdi.timbre.uuid} conservado`);
+                data.push(item); // Keep this item
+            } catch (error) {
+                console.log(`Error executing query: ${error}`);
             }
         }
 
@@ -105,36 +95,34 @@ async function getTypeI(index) {
             }
         });
 
+        if (response.data.total === 0) {
+            console.log('No hay CFDI de tipo I');
+            return [];
+        }
+
         const data = [];
-
-        for (let i = 0; i < response.data.items.length; i++) {
-            const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
+        for (const item of response.data.items) {
+            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
+            try {
+                const rfcResult = await runQuery(rfcQuery);
+                if (rfcResult.recordset[0].NREG === 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    continue; // Skip this item
                 }
-            })
-            if (result.recordset[0].NREG != 0) {
-                data.push(response.data.items[i]);
-            } else {
-                console.log("No existe el valor del RFCReceptor en fesa")
+
+                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
+                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                if (cfdiResult.recordset[0].NREG > 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
+                    continue; // Skip this item
+                }
+
+                console.log(`UUID ${item.cfdi.timbre.uuid} conservado`);
+                data.push(item); // Keep this item
+            } catch (error) {
+                console.log(`Error executing query: ${error}`);
             }
         }
-
-        for (let i = 0; i < data.length; i++) {
-            const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
-                }
-            })
-            if (result.recordset[0].NREG > 0) {
-                data.splice(i, 1);
-            }
-        }
-
 
         return data
 
@@ -168,33 +156,32 @@ async function getTypeE(index) {
             }
         });
 
-        const data = [];
-
-        for (let i = 0; i < response.data.items.length; i++) {
-            const query = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${response.data.items[i].cfdi.receptor.rfc}';`;
-            const result = await runQuery(query).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
-                }
-            })
-            if (result.recordset[0].NREG != 0) {
-                data.push(response.data.items[i]);
-            } else {
-                console.log("No existe el valor del RFCReceptor en fesa")
-            }
+        if (response.data.total === 0) {
+            console.log('No hay CFDI de tipo E');
+            return [];
         }
 
-        for (let i = 0; i < data.length; i++) {
-            const query = `SELECT COUNT(*) AS NREG FROM ARIBH H, ARIBHO O WHERE H.CNTBTCH  = O. CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${data[i].cfdi.timbre.uuid}';`;
-            const result = await runQuery(query, databases[index]).catch((err) => {
-                console.log(err)
-                return {
-                    recordset: [{ NREG: 0 }]
+        const data = [];
+        for (const item of response.data.items) {
+            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
+            try {
+                const rfcResult = await runQuery(rfcQuery);
+                if (rfcResult.recordset[0].NREG === 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    continue; // Skip this item
                 }
-            })
-            if (result.recordset[0].NREG > 0) {
-                data.splice(i, 1);
+
+                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
+                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                if (cfdiResult.recordset[0].NREG > 0) {
+                    console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
+                    continue; // Skip this item
+                }
+
+                console.log(`UUID ${item.cfdi.timbre.uuid} conservado`);
+                data.push(item); // Keep this item
+            } catch (error) {
+                console.log(`Error executing query: ${error}`);
             }
         }
 

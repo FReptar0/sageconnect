@@ -92,7 +92,7 @@ async function uploadPayments(index) {
                 if (invoices.recordset.length > 0) {
                     for (let j = 0; j < invoices.recordset.length; j++) {
                         const cfdi = {
-                            "amount": invoices.recordset[j].invoice_amount,
+                            "amount": invoices.recordset[j].payment_amount,
                             "currency": invoices.recordset[j].invoice_currency,
                             "exchange_rate": invoices.recordset[j].invoice_exchange_rate,
                             "payment_amount": invoices.recordset[j].payment_amount,
@@ -137,6 +137,7 @@ async function uploadPayments(index) {
                     });
 
                     if (response.status === 200) {
+                        console.log(response.data)
                         // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
                         const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
                         const result = await runQuery(queryInsert).catch((err) => {
