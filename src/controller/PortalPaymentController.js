@@ -121,23 +121,32 @@ async function uploadPayments(index) {
                         "total_amount": payments.recordset[i].total_amount,
                     }
 
-                    console.log(payment)
-
                     const response = await axios.post(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`, payment, {
                         headers: {
                             'PDPTenantKey': apiKeys[index],
                             'PDPTenantSecret': apiSecrets[index]
                         }
                     }).catch(error => {
-                        console.log(error.response.data);
                         return {
-                            status: error.response.status,
-                            data: error.response.data
+                            status: 500,
+                            data: error
                         }
                     });
 
                     if (response.status === 200) {
-                        console.log(response.data)
+                        const data = {
+                            h1: 'Alta de pagos en portal',
+                            p: 'Se ejecuto el proceso de alta de pagos en portal',
+                            status: response.status,
+                            message: response.data,
+                            position: index,
+                            idCia: database[index]
+                        }
+
+                        await sendMail(data).catch((err) => {
+                            console.log(err)
+                        })
+
                         // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
                         const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
                         const result = await runQuery(queryInsert).catch((err) => {
@@ -154,6 +163,20 @@ async function uploadPayments(index) {
                         }
                     } else {
                         console.log('No se pudo insertar el pago en portal');
+
+                        const data = {
+                            h1: 'Alta de pagos en portal',
+                            p: 'No se ejecuto el proceso de alta de pagos en portal',
+                            status: response.status,
+                            message: response.data,
+                            position: index,
+                            idCia: database[index]
+                        }
+
+                        await sendMail(data).catch((err) => {
+                            console.log(err)
+                        })
+
                         try {
                             notifier.notify({
                                 title: 'Error al ejecutar el proceso de alta de pagos en portal',

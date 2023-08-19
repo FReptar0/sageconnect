@@ -166,16 +166,19 @@ These are the paths where the CFDI's will be saved
 
 ## :gear: How to deploy it
 
-After all the previous actions have been performed you will need to install an npm dependency globally with the following command:
+After all the previous actions have been performed you will need to install some npm dependencies globally with the following commands:
 
 ```bash
 npm install -g pm2
+npm install pm2-windows-startup -g
+npx pm2-startup install
 ```
 
-Then, you must execute the following command in order to keep the program process always running
+Then, you must execute the following commands in order to keep the program process always running
 
 ```bash
-pm2 start src/index.js --watch --ignore-watch="node_modules" --name sageconnect
+npx pm2 start src/index.js --watch --ignore-watch="node_modules" --name sageconnect
+npx pm2 save
 ```
 
 If you need more information on the use of PM2 you can visit the following [link](https://pm2.keymetrics.io/docs/usage/quick-start/)

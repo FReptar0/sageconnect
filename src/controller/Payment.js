@@ -27,8 +27,6 @@ async function checkPayments(index) {
             if (optionalFieldsResult.recordset.length === 0)
                 continue;
 
-            // ? TODO: Verificar si se debe cambiar la forma de obtener el external_id
-            // ? Provicionalmente es resultPayments[i].metadata.external_id pero es igual a undifined
             const timbradoDataQuery = `SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM FROM APTCR H LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}' LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}' WHERE H.BTCHTYPE = 'PY' AND H.ERRENTRY = 0 AND H.DOCNBR = '${resultPayments[i].metadata.payment_info.payments[0].external_id}'`
             const timbradoDataResult = await runQuery(timbradoDataQuery, idCiaResult.recordset[0].DataBaseName).catch((err) => { const data = { h1: "Error al obtener los datos de timbrado", p: err, status: 500, message: "Error al obtener los datos de timbrado", idCia: idCiaResult.recordset[0].idCia, position: index }; emails.push(data); return { recordset: [] } });
 
@@ -55,7 +53,7 @@ async function checkPayments(index) {
                 if (insertUUIDResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se insertó el UUID",
-                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 200,
                         message: "Se insertó el UUID",
                         position: index,
@@ -65,7 +63,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al insertar el UUID",
-                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 500,
                         message: "Error al insertar el UUID",
                         position: index,
@@ -85,7 +83,7 @@ async function checkPayments(index) {
                 if (updateUUIDResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se actualizó el UUID",
-                        p: `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 200,
                         message: "Se actualizó el UUID",
                         position: index,
@@ -95,7 +93,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al actualizar el UUID",
-                        p: `No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 500,
                         message: "Error al actualizar el UUID",
                         position: index,
@@ -121,7 +119,7 @@ async function checkPayments(index) {
                 if (insertFECHATIMResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se insertó la fecha de timbrado",
-                        p: `Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 200,
                         message: "Se insertó la fecha de timbrado",
                         position: index,
@@ -131,7 +129,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al insertar la fecha de timbrado",
-                        p: `No se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 500,
                         message: "Error al insertar la fecha de timbrado",
                         position: index,
@@ -151,7 +149,7 @@ async function checkPayments(index) {
                 if (updateFECHATIMResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se actualizó la fecha de timbrado",
-                        p: `Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 200,
                         message: "Se actualizó la fecha de timbrado",
                         position: index,
@@ -161,7 +159,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al actualizar la fecha de timbrado",
-                        p: `No se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.external_id}`,
+                        p: `No se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
                         status: 500,
                         message: "Error al actualizar la fecha de timbrado",
                         position: index,

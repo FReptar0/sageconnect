@@ -4,6 +4,7 @@ const { checkPayments } = require('./controller/Payment');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
 const { spawn } = require('child_process');
+const { sendMail } = require('./utils/EmailSender');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -37,6 +38,9 @@ try {
 }
 
 forResponse = async () => {
+    // imprimir la fecha y hora actual en formato ISO
+    const date = new Date();
+    console.log(date.toISOString());
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
         // CFDI_Downloader function
@@ -55,7 +59,6 @@ forResponse = async () => {
 }
 
 forResponse().then(() => {
-    console.log('Proceso finalizado');
     // The spawn function is used to execute the import process
     const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
@@ -67,6 +70,18 @@ forResponse().then(() => {
     // Stderr is used to capture the error messages
     childProcess.stderr.on('data', (data) => {
         console.error(`stderr: ${data}`);
+        const data = {
+            h1: 'Error en el proceso de importación',
+            p: 'El proceso de importación de CFDIs ha fallado',
+            status: 500,
+            message: `stderr: ${data}`,
+            position: 1,
+            idCia: 'Global'
+        }
+
+        sendMail(data).catch((error) => {
+            console.log(error);
+        });
     });
 
     // Close is used to capture the close event
@@ -78,28 +93,42 @@ forResponse().then(() => {
     console.log(error);
 });
 
-/* setInterval(async () => {
-forResponse().then(() => {
-    console.log('Proceso finalizado');
-    // The spawn function is used to execute the import process
-    const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
+setInterval(async () => {
+    forResponse().then(() => {
+        const date = new Date();
+        console.log(date.toISOString());
+        // The spawn function is used to execute the import process
+        const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
 
-    // Stdout is used to capture the data messages
-    childProcess.stdout.on('data', (data) => {
-        console.log(`stdout: ${data}`);
+        // Stdout is used to capture the data messages
+        childProcess.stdout.on('data', (data) => {
+            console.log(`stdout: ${data}`);
+        });
+
+        // Stderr is used to capture the error messages
+        childProcess.stderr.on('data', (data) => {
+            console.error(`stderr: ${data}`);
+
+            const data = {
+                h1: 'Error en el proceso de importación',
+                p: 'El proceso de importación de CFDIs ha fallado',
+                status: 500,
+                message: `stderr: ${data}`,
+                position: 0,
+                idCia: 'Global'
+            }
+
+            sendMail(data).catch((error) => {
+                console.log(error);
+            });
+        });
+
+        // Close is used to capture the close event
+        childProcess.on('close', (code) => {
+            console.log(`child process exited with code ${code}`);
+        });
+
+    }).catch((error) => {
+        console.log(error);
     });
-
-    // Stderr is used to capture the error messages
-    childProcess.stderr.on('data', (data) => {
-        console.error(`stderr: ${data}`);
-    });
-
-    // Close is used to capture the close event
-    childProcess.on('close', (code) => {
-        console.log(`child process exited with code ${code}`);
-    });
-
-}).catch((error) => {
-    console.log(error);
-});
-}, hoursToMilliseconds(env.parsed.WAIT_TIME)); */
+}, hoursToMilliseconds(env.parsed.WAIT_TIME));
