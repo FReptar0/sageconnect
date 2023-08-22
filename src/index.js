@@ -70,7 +70,7 @@ forResponse().then(() => {
     // Stderr is used to capture the error messages
     childProcess.stderr.on('data', (data) => {
         console.error(`stderr: ${data}`);
-        const data = {
+        const dataMail = {
             h1: 'Error en el proceso de importación',
             p: 'El proceso de importación de CFDIs ha fallado',
             status: 500,
@@ -79,7 +79,7 @@ forResponse().then(() => {
             idCia: 'Global'
         }
 
-        sendMail(data).catch((error) => {
+        sendMail(dataMail).catch((error) => {
             console.log(error);
         });
     });
@@ -96,7 +96,7 @@ forResponse().then(() => {
 setInterval(async () => {
     forResponse().then(() => {
         const date = new Date();
-        console.log(date.toISOString());
+        console.log(date.toISOString());    
         // The spawn function is used to execute the import process
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
 
@@ -109,7 +109,7 @@ setInterval(async () => {
         childProcess.stderr.on('data', (data) => {
             console.error(`stderr: ${data}`);
 
-            const data = {
+            const dataMail = {
                 h1: 'Error en el proceso de importación',
                 p: 'El proceso de importación de CFDIs ha fallado',
                 status: 500,
@@ -118,7 +118,7 @@ setInterval(async () => {
                 idCia: 'Global'
             }
 
-            sendMail(data).catch((error) => {
+            sendMail(dataMail).catch((error) => {
                 console.log(error);
             });
         });
