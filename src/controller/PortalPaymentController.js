@@ -134,11 +134,13 @@ async function uploadPayments(index) {
                     });
 
                     if (response.status === 200) {
+                        const message = 'Se ejecuto correctamente el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id;
+
                         const data = {
                             h1: 'Alta de pagos en portal',
                             p: 'Se ejecuto el proceso de alta de pagos en portal',
                             status: response.status,
-                            message: response.data,
+                            message: message,
                             position: index,
                             idCia: database[index]
                         }
