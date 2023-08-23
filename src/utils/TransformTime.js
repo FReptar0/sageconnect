@@ -1,6 +1,6 @@
 const notifier = require('node-notifier');
 
-function hoursToMilliseconds(hours) {
+function minutesToMilliseconds(minutes) {
     if (hours == 0) {
         try {
             notifier.notify({
@@ -28,10 +28,10 @@ function hoursToMilliseconds(hours) {
             console.log('El tiempo de espera no puede ser negativo');
         }
     } else {
-        return hours * 60 * 60 * 1000;
+        return minutes * 60000;
     }
 }
 
 module.exports = {
-    hoursToMilliseconds
+    minutesToMilliseconds
 }

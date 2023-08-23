@@ -250,19 +250,6 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
     });
 }
 
-const forResponse = async () => {
-    for (let index = 0; index < tenantIds.length; index++) {
-        await downloadCFDI(index);
-    }
-}
-
-/* forResponse().then(() => {
-    console.log('Terminado');
-}).catch((err) => {
-    console.error('Error:', err);
-}); */
-
-
 module.exports = {
     downloadCFDI
 };

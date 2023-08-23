@@ -25,10 +25,6 @@ async function runQuery(query, database = 'FESA') {
     return result;
 }
 
-/* runQuery().catch((err) => {
-    console.log(err)
-}) */
-
 module.exports = {
     runQuery
 };

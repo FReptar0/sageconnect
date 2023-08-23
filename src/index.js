@@ -1,5 +1,5 @@
 const express = require('express');
-const { hoursToMilliseconds } = require('./utils/TransformTime');
+const { minutesToMilliseconds } = require('./utils/TransformTime');
 const { checkPayments } = require('./controller/Payment');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
@@ -131,4 +131,4 @@ setInterval(async () => {
     }).catch((error) => {
         console.log(error);
     });
-}, hoursToMilliseconds(env.parsed.WAIT_TIME));
+}, minutesToMilliseconds(env.parsed.WAIT_TIME));

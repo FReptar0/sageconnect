@@ -218,10 +218,6 @@ async function uploadPayments(index) {
 
 }
 
-/* uploadPayments(1).catch((err) => {
-    console.log(err)
-}) */
-
 module.exports = {
     uploadPayments,
 }
