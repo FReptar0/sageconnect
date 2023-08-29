@@ -60,6 +60,8 @@ forResponse = async () => {
 
 forResponse().then(() => {
     // The spawn function is used to execute the import process
+
+if (!typeof env.parsed.IMPORT_CFDIS_ROUTE === "undefined") {
     const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
     // Stdout is used to capture the data messages
@@ -88,6 +90,7 @@ forResponse().then(() => {
     childProcess.on('close', (code) => {
         console.log(`child process exited with code ${code}`);
     });
+}
 
 }).catch((error) => {
     console.log(error);
@@ -98,6 +101,8 @@ setInterval(async () => {
         const date = new Date();
         console.log(date.toISOString());    
         // The spawn function is used to execute the import process
+
+if (!typeof env.parsed.IMPORT_CFDIS_ROUTE === "undefined") {
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
 
         // Stdout is used to capture the data messages
@@ -127,6 +132,7 @@ setInterval(async () => {
         childProcess.on('close', (code) => {
             console.log(`child process exited with code ${code}`);
         });
+}
 
     }).catch((error) => {
         console.log(error);
