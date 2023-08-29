@@ -61,7 +61,7 @@ forResponse = async () => {
 forResponse().then(() => {
     // The spawn function is used to execute the import process
 
-if (!typeof env.parsed.IMPORT_CFDIS_ROUTE === "undefined") {
+if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
     const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
     // Stdout is used to capture the data messages
@@ -96,13 +96,15 @@ if (!typeof env.parsed.IMPORT_CFDIS_ROUTE === "undefined") {
     console.log(error);
 });
 
+
+
 setInterval(async () => {
     forResponse().then(() => {
         const date = new Date();
         console.log(date.toISOString());    
         // The spawn function is used to execute the import process
 
-if (!typeof env.parsed.IMPORT_CFDIS_ROUTE === "undefined") {
+if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
 
         // Stdout is used to capture the data messages
