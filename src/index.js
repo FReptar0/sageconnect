@@ -116,7 +116,7 @@ setInterval(async () => {
         console.log(date.toISOString());
         // The spawn function is used to execute the import process
         if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
-            const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARGS]);
+            const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
             // Stdout is used to capture the data messages
             childProcess.stdout.on('data', (data) => {
