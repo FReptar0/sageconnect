@@ -13,7 +13,11 @@ async function sendMail(data) {
             <td>${data.status}</td>
             <td>${data.message}</td>
         </tr>
-    </table>`;
+    </table>
+    <br><br>
+    <p>This is an automatic message, please do not reply.</p>
+    <br><br>
+    `;
 
     try {
         const transport = nodeMailer.createTransport({

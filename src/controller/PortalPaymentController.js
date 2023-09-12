@@ -138,7 +138,7 @@ async function uploadPayments(index) {
 
                         const data = {
                             h1: 'Alta de pagos en portal',
-                            p: 'Se ejecuto el proceso de alta de pagos en portal',
+                            p: 'Se ejecuto el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id,
                             status: response.status,
                             message: message,
                             position: index,
@@ -168,7 +168,7 @@ async function uploadPayments(index) {
 
                         const data = {
                             h1: 'Alta de pagos en portal',
-                            p: 'No se ejecuto el proceso de alta de pagos en portal',
+                            p: 'No se ejecuto el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id,
                             status: response.status,
                             message: response.data,
                             position: index,
