@@ -108,9 +108,8 @@ forResponse().then(() => {
 
 }).catch((error) => {
     console.log(error);
-});
-
-
-server.close(() => {
-    console.log('Server is closed');
+}).finally(() => {
+    server.close(() => {
+        console.log('Server is closed');
+    });
 });
