@@ -40,6 +40,14 @@ async function getTypeP(index) {
 
         const data = [];
         for (const item of response.data.items) {
+
+            console.log(item.metadata.payment_info.payments.length);
+
+            if (item.metadata.payment_info.payments.length === 0) {
+                console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos`);
+                continue; // Skip this item
+            }
+
             const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
             try {
                 const rfcResult = await runQuery(rfcQuery);
