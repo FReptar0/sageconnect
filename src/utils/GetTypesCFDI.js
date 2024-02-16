@@ -25,7 +25,7 @@ async function getTypeP(index) {
     let year = new Date().getFullYear();
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&cfdiType=PAYMENT_CFDI`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=PAYMENT_CFDI`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
@@ -96,7 +96,7 @@ async function getTypeI(index) {
     let year = new Date().getFullYear();
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&cfdiType=INVOICE&stage=PENDING_TO_PAY`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=INVOICE&stage=PENDING_TO_PAY`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
@@ -157,7 +157,7 @@ async function getTypeE(index) {
     let year = new Date().getFullYear();
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&cfdiType=CREDIT_NOTE`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=CREDIT_NOTE`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
