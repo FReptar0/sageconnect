@@ -3,6 +3,10 @@ const dotenv = require('dotenv');
 const path_env = dotenv.config({ path: '.env.path' });
 
 logGenerator = (fileName, logLevel, logMessage) => {
+
+    const date = new Date();
+    fileName = `${date.toISOString().split('T')[0]}_${fileName}`;
+
     log.configure({
         appenders: { logs: { type: 'file', filename: path_env.parsed.LOG_PATH + fileName + '.log'} },
         //appenders: { logs: { type: 'file', filename: 'logs/log.log'} },
@@ -27,11 +31,6 @@ logGenerator = (fileName, logLevel, logMessage) => {
             break;
     }
 }
-
-logGenerator('LogGenerator', 'info', 'This is an info message');
-logGenerator('LogGenerator', 'error', 'This is an error message');
-logGenerator('LogGenerator', 'debug', 'This is a debug message');
-logGenerator('LogGenerator', 'warn', 'This is a warning message');
 
 module.exports = {
     logGenerator
