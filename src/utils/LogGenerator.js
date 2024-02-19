@@ -8,7 +8,7 @@ logGenerator = (fileName, logLevel, logMessage) => {
     fileName = `${date.toISOString().split('T')[0]}_${fileName}`;
 
     log.configure({
-        appenders: { logs: { type: 'file', filename: path_env.parsed.LOG_PATH + fileName + '.log'} },
+        appenders: { logs: { type: 'file', filename: path_env.parsed.LOG_PATH + 'sageconnect/' + fileName + '.log'} },
         //appenders: { logs: { type: 'file', filename: 'logs/log.log'} },
         categories: { default: { appenders: ['logs'], level: 'info' } }
     });
