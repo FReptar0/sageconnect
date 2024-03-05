@@ -2,6 +2,7 @@ const notifier = require('node-notifier');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 const axios = require('axios');
 const { runQuery } = require('./SQLServerConnection');
+const { logGenerator } = require('./LogGenerator');
 
 const url = process.env.URL;
 const tenantIds = []
@@ -20,12 +21,12 @@ apiSecrets.push(...apiSecretValues);
 databases.push(...databaseValues);
 
 async function getTypeP(index) {
-    let date = new Date().getDate();
-    let month = new Date().getMonth() + 1;
-    let year = new Date().getFullYear();
+    let date = new Date();
+    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7)
+    let dateUntil = new Date().toISOString().slice(0, 10);
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=PAYMENT_CFDI`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${dateUntil}&createdFrom=${dateFrom}-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=PAYMENT_CFDI`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
@@ -45,6 +46,7 @@ async function getTypeP(index) {
 
             if (item.metadata.payment_info.payments.length === 0) {
                 console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos`);
+                logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos`);
                 continue; // Skip this item
             }
 
@@ -53,6 +55,7 @@ async function getTypeP(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue; // Skip this item
                 }
 
@@ -67,6 +70,7 @@ async function getTypeP(index) {
                 data.push(item); // Keep this item
             } catch (error) {
                 console.log(`Error executing query: ${error}`);
+                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
             }
         }
 
@@ -75,6 +79,7 @@ async function getTypeP(index) {
         //return response.data.items;
     } catch (error) {
         try {
+            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
             notifier.notify({
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n',
@@ -91,12 +96,12 @@ async function getTypeP(index) {
 }
 
 async function getTypeI(index) {
-    let date = new Date().getDate();
-    let month = new Date().getMonth() + 1;
-    let year = new Date().getFullYear();
+    let date = new Date();
+    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7)
+    let dateUntil = new Date().toISOString().slice(0, 10);
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=INVOICE&stage=PENDING_TO_PAY`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${dateUntil}&createdFrom=${dateFrom}-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=INVOICE&stage=PENDING_TO_PAY`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
@@ -115,6 +120,7 @@ async function getTypeI(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue; // Skip this item
                 }
 
@@ -129,6 +135,7 @@ async function getTypeI(index) {
                 data.push(item); // Keep this item
             } catch (error) {
                 console.log(`Error executing query: ${error}`);
+                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
             }
         }
 
@@ -136,6 +143,7 @@ async function getTypeI(index) {
 
     } catch (error) {
         try {
+            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
             notifier.notify({
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n',
@@ -152,12 +160,12 @@ async function getTypeI(index) {
 }
 
 async function getTypeE(index) {
-    let date = new Date().getDate();
-    let month = new Date().getMonth() + 1;
-    let year = new Date().getFullYear();
+    let date = new Date();
+    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7)
+    let dateUntil = new Date().toISOString().slice(0, 10);
 
     try {
-        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${year}-${month}-${date}&createdFrom=${year}-01-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=CREDIT_NOTE`, {
+        const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis?createdUntil=${dateUntil}&createdFrom=${dateFrom}-01&documentTypes=CFDI&offset=0&pageSize=0&cfdiType=CREDIT_NOTE`, {
             headers: {
                 'PDPTenantKey': apiKeys[index],
                 'PDPTenantSecret': apiSecrets[index]
@@ -176,6 +184,7 @@ async function getTypeE(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue; // Skip this item
                 }
 
@@ -190,6 +199,7 @@ async function getTypeE(index) {
                 data.push(item); // Keep this item
             } catch (error) {
                 console.log(`Error executing query: ${error}`);
+                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
             }
         }
 
@@ -198,6 +208,7 @@ async function getTypeE(index) {
         //return response.data.items;
     } catch (error) {
         try {
+            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "E" : \n' + error + '\n');
             notifier.notify({
                 title: 'Focaltec',
                 message: 'Error al obtener el tipo de comprobante "E" : \n' + error + '\n',

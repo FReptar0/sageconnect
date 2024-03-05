@@ -8,6 +8,7 @@ const path = require('path');
 const { runQuery } = require('../utils/SQLServerConnection');
 const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;
+const { logGenerator } = require('../utils/LogGenerator');
 
 const url = credentials.parsed.URL;
 
@@ -76,10 +77,12 @@ async function downloadCFDI(index) {
             })
             .on('error', (err) => {
                 console.log('Error al descargar el archivo: ' + err);
+                logGenerator('CFDI_Downloader', 'error', 'Error al descargar el archivo: ' + err);
                 // Delete the file if an error occurs
                 fs.unlink(xmlPath, (unlinkErr) => {
                     if (unlinkErr) {
                         console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
+                        logGenerator(`Error al eliminar el archivo ${xmlPath}:`, 'error', unlinkErr);
                         return;
                     }
                     console.log(`Archivo ${xmlPath} eliminado exitosamente.`);
@@ -93,6 +96,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
     fs.readFile(xmlPath, 'utf8', async (err, data) => {
         if (err) {
             console.error(`Error al leer el archivo ${xmlPath}:`, err);
+            logGenerator(`Error al leer el archivo ${xmlPath}:`, 'error', err);
             return;
         }
 
@@ -108,6 +112,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${dataCfdi.rfcReceptor}') AND Parametro = 'DataBase';`
         const dbResponse = await runQuery(query).catch(() => {
             console.log('Error al ejecutar la consulta:', query);
+            logGenerator('CFDI_Downloader', 'error', 'Error al ejecutar la consulta: ' + query);
             return {
                 recordset: [{
                     Resultado: 'NOT_FOUND'
@@ -133,10 +138,12 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
 
         if (!firstBankAccountValue) {
             console.log('No se tienen los datos del banco. Eliminando archivo:', xmlPath);
+            logGenerator('CFDI_Downloader', 'error', 'No se tienen los datos del banco. Eliminando archivo: ' + xmlPath);
             // Delete the file if the bank data is not found
             fs.unlink(xmlPath, (unlinkErr) => {
                 if (unlinkErr) {
                     console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
+                    logGenerator(`Error al eliminar el archivo ${xmlPath}:`, 'error', unlinkErr);
                     return;
                 }
                 console.log(`Archivo ${xmlPath} eliminado exitosamente.`);
@@ -148,6 +155,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         parser(data, (err, result) => {
             if (err) {
                 console.error(`Error al analizar el archivo ${xmlPath}:`, err);
+                logGenerator(`Error al analizar el archivo ${xmlPath}:`, 'error', err);
                 return;
             }
 
@@ -242,6 +250,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             fs.writeFile(xmlPath, xml, 'utf8', (err) => {
                 if (err) {
                     console.error(`Error al escribir el archivo ${xmlPath}:`, err);
+                    logGenerator(`Error al escribir el archivo ${xmlPath}:`, 'error', err);
                     return;
                 }
                 console.log(`Archivo ${xmlPath} actualizado exitosamente.`);

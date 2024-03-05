@@ -4,6 +4,7 @@ const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
+const { logGenerator } = require('../utils/LogGenerator');
 
 const database = [];
 const tenantIds = []
@@ -45,6 +46,7 @@ async function uploadPayments(index) {
 
         const payments = await runQuery(queryEncabezadosPago, database[index]).catch((err) => {
             console.log(err)
+            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryEncabezadosPago ${err}`)
             return {
                 recordset: []
             }
@@ -53,6 +55,7 @@ async function uploadPayments(index) {
         const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
         const pagosRegistrados = await runQuery(queryPagosRegistrados).catch((err) => {
             console.log(err);
+            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryPagosRegistrados ${err}`)
             return {
                 recordset: []
             }
@@ -84,6 +87,7 @@ async function uploadPayments(index) {
             AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0 AND H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3`;
                 const invoices = await runQuery(queryFacturasPagadas, database[index]).catch((err) => {
                     console.log(err)
+                    logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryFacturasPagadas ${err}`)
                     return {
                         recordset: []
                     }
@@ -127,6 +131,8 @@ async function uploadPayments(index) {
                             'PDPTenantSecret': apiSecrets[index]
                         }
                     }).catch(error => {
+                        console.log(error);
+                        logGenerator('PortalPaymentController', 'error', `Error al ejecutar la peticion POST de pagos ${error}`)
                         return {
                             status: 500,
                             data: error
@@ -145,14 +151,18 @@ async function uploadPayments(index) {
                             idCia: database[index]
                         }
 
+                        logGenerator('PortalPaymentController', 'success', `Se ejecuto correctamente el proceso de alta de pagos en portal, para la compañia ${database[index]} con el NoPagoSage ${payments.recordset[i].external_id}`)
+
                         await sendMail(data).catch((err) => {
                             console.log(err)
+                            logGenerator('PortalPaymentController', 'error', `Error al enviar el correo de alta de pagos en portal ${err}`)
                         })
 
                         // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
                         const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
                         const result = await runQuery(queryInsert).catch((err) => {
                             console.log(err)
+                            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la insercion de pagos en fesaPagosFocaltec ${err}`)
                             return {
                                 rowsAffected: [0]
                             }
@@ -160,8 +170,10 @@ async function uploadPayments(index) {
 
                         if (result.rowsAffected[0] > 0) {
                             console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
+                            logGenerator('PortalPaymentController', 'success', `Se inserto correctamente el pago en la tabla fesaPagosFocaltec`)
                         } else {
                             console.log('No se inserto el pago en la tabla fesaPagosFocaltec');
+                            logGenerator('PortalPaymentController', 'error', `No se inserto el pago en la tabla fesaPagosFocaltec`)
                         }
                     } else {
                         console.log('No se pudo insertar el pago en portal');
@@ -175,8 +187,11 @@ async function uploadPayments(index) {
                             idCia: database[index]
                         }
 
+                        logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso de alta de pagos en portal, para la compañia ${database[index]} con el NoPagoSage ${payments.recordset[i].external_id}`)
+
                         await sendMail(data).catch((err) => {
                             console.log(err)
+                            logGenerator('PortalPaymentController', 'error', `Error al enviar el correo de alta de pagos en portal ${err}`)
                         })
 
                         try {
@@ -187,8 +202,10 @@ async function uploadPayments(index) {
                                 wait: true,
                                 icon: process.cwd() + '/public/img/cerrar.png'
                             });
+                            logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso: ${response.data}`)
                         } catch (error) {
                             console.log(error)
+                            logGenerator('PortalPaymentController', 'error', `Error al ejecutar el proceso de alta de pagos en portal ${error}`)
                             console.log("No se ejecuto el proceso: " + response.data)
                         }
                     }
@@ -211,8 +228,10 @@ async function uploadPayments(index) {
                 wait: true,
                 icon: process.cwd() + '/public/img/cerrar.png'
             });
+            logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso: ${error}`)
         } catch (err) {
             console.log(err);
+            logGenerator('PortalPaymentController', 'error', `Error al ejecutar el proceso de alta de pagos en portal ${err}`)
         }
     }
 

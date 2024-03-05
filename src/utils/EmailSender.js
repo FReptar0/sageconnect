@@ -1,5 +1,6 @@
 const nodeMailer = require('nodemailer');
 require('dotenv').config({ path: '.env.credentials.mailing' });
+const { logGenerator } = require('./LogGenerator');
 
 async function sendMail(data) {
     const html = `<h1>${data.h1}</h1>
@@ -43,6 +44,7 @@ async function sendMail(data) {
 
     } catch (error) {
         console.log(error);
+        logGenerator('EmailSender', 'error', error);
         return error;
     }
 }
