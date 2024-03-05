@@ -29,7 +29,7 @@ async function uploadPayments(index) {
 
         // Get the daily payments from Sage
 
-        const queryEncabezadosPago = `SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, RTRIM(BK.ADDR1) AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
+        const queryEncabezadosPago = `SELECT A.* FROM (SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, RTRIM(BK.ADDR1) AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
         , P.DOCNBR as external_id,P.TEXTRMIT AS comments, P.TXTRMITREF AS reference
         , CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency
         ,P.DATERMIT as payment_date, RTRIM(P.IDVEND) as provider_external_id
@@ -37,12 +37,13 @@ async function uploadPayments(index) {
         , 'TRANSFER' as operation_type
         , P.RATEEXCHHC as TipoCambioPago
         , ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD ='RFC' AND VENDORID = P.IDVEND ),'') AS RFC
+        , ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD ='PROVIDERID' AND VENDORID = P.IDVEND ),'') AS PROVIDERID
         FROM APBTA B, BKACCT BK, APTCR P
-        WHERE B.IDBANK = BK.BANK  AND B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH 
+        WHERE B.IDBANK = BK.BANK  AND B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
         AND P.ERRENTRY = 0 AND P.RMITTYPE = 1
         AND B.PAYMTYPE='PY' AND B.BATCHSTAT = 3 AND P.DATEBUS>=${currentDate}
         AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )
-        AND P.DOCNBR NOT IN (SELECT IDINVC FROM APPYM WHERE IDBANK = B.IDBANK AND CNTBTCH = P.CNTBTCH AND CNTITEM =P.CNTENTR AND SWCHKCLRD = 2 )`;
+        AND P.DOCNBR NOT IN (SELECT IDINVC FROM APPYM WHERE IDBANK = B.IDBANK AND CNTBTCH = P.CNTBTCH AND CNTITEM =P.CNTENTR AND SWCHKCLRD = 2 )) AS A WHERE PROVIDERID <> ''`;
 
         const payments = await runQuery(queryEncabezadosPago, database[index]).catch((err) => {
             console.log(err)
