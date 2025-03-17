@@ -43,6 +43,8 @@ forResponse = async () => {
     console.log(date.toISOString());
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
+
+        //TODO Integrar funcion de agregado de informacion de proveedores
         // CFDI_Downloader function
         await downloadCFDI(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
