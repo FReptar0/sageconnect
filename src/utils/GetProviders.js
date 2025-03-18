@@ -33,7 +33,7 @@ async function getProviders(index) {
     console.log('Today:', today);
     try {
         const response = await axios.get(
-            `${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers`,
+            `${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers?statusExpedient=ACCEPTED&expedientAcceptedFrom=${today}&expedientAcceptedTo=${today}&status=ENABLED`,
             {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
