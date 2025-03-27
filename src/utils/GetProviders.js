@@ -48,15 +48,8 @@ async function getProviders(index) {
             logGenerator('getProviders', 'INFO', 'No providers found');
             return [];
         }
-    
-        // Aquí se pueden agregar filtros adicionales según sea necesario.
-        const filteredProviders = response.data.items.filter(provider => {
-            // Ejemplo de filtro adicional:
-            // return provider.someField === 'valorDeseado';
-            return true; // Actualmente se retornan todos los proveedores
-        });
-        console.log('Providers:', filteredProviders);
-        return filteredProviders;
+
+        return response.data.items;
     } catch (error) {
         console.error('Error fetching providers:', error);
         logGenerator('getProviders', 'ERROR', error);

@@ -1,6 +1,6 @@
 // buildProvidersXML.js
 
-require('dotenv').config({ path: '.env.credentials.focaltec' });
+require('dotenv').config({ path: '.env' });
 const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
@@ -131,7 +131,7 @@ async function buildProvidersXML(index) {
                 clabe: firstBank.clabe || '',
                 account: firstBank.account || '',
                 Sucursal: firstBank.sucursal || '',
-                SWIFT: firstBank.swift || '',
+                SWIFT: firstBank.code || '',
                 // REFDO = reference en el API (si existe)
                 REFDO: firstBank.reference || ''
             }
@@ -157,7 +157,6 @@ async function buildProvidersXML(index) {
                 Moneda, // <-- Aquí se asigna la moneda dinámica
                 NumRegIdTrib,
                 FechaActualizacion,
-                ExpedientValid
             },
             DomicilioProv,
             Contacto1Prov,
