@@ -154,7 +154,7 @@ async function buildProvidersXML(index) {
                 bank: firstBank.bank_name || '',
                 clabe: firstBank.clabe || '',
                 account: firstBank.account || '',
-                Sucursal: firstBank.subsidiary_number || '',
+                Sucursal: firstBank.subsidiary_number || firstBank.subsidiary || '',
                 SWIFT: firstBank.code || '',
                 // REFDO = reference en el API (si existe)
                 REFDO: firstBank.reference || ''
