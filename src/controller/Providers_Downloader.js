@@ -5,7 +5,28 @@ const fs = require('fs');
 const path = require('path');
 const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
-const {getProviders} = require('../utils/GetProviders');
+const { getProviders } = require('../utils/GetProviders');
+
+
+/**
+ * Formatea un timestamp a formato "dd/mm/yyyyTHH:MM:SS:MMMZ"
+ * @param {number} timestamp
+ * @returns {string} Fecha formateada
+ */
+function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    const pad = (n, width = 2) => n.toString().padStart(width, '0');
+    const day = pad(date.getDate());
+    const month = pad(date.getMonth() + 1);
+    const year = date.getFullYear();
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    const milliseconds = pad(date.getMilliseconds(), 3);
+    return `${day}-${month}-${year}T${hours}:${minutes}:${seconds}:${milliseconds}Z`;
+}
+
+
 /**
  * Construye un archivo XML con la información de los proveedores.
  * @param {number} index - Índice del tenant a procesar.
@@ -43,8 +64,11 @@ async function buildProvidersXML(index) {
             : false;
         // credit_days -> para Terminos
         const Terminos = provider.credit_days ? String(provider.credit_days) : '0';
-        // Fecha de actualización (si no existe, se usa la actual)
-        const FechaActualizacion = new Date(provider.updated_at || Date.now()).toISOString();
+        // Se utiliza provider.expedient.approved para la fecha; se formatea usando formatTimestamp
+
+        const approvedTimestamp = (provider.expedient && provider.expedient.approved) ? provider.expedient.approved : Date.now();
+        const FechaActualizacion = formatTimestamp(approvedTimestamp);
+
 
         // -- BUSCAR CAMPOS DENTRO DE "fields" --
         let grupo_prov = '';
@@ -130,7 +154,7 @@ async function buildProvidersXML(index) {
                 bank: firstBank.bank_name || '',
                 clabe: firstBank.clabe || '',
                 account: firstBank.account || '',
-                Sucursal: firstBank.sucursal || '',
+                Sucursal: firstBank.subsidiary_number || '',
                 SWIFT: firstBank.code || '',
                 // REFDO = reference en el API (si existe)
                 REFDO: firstBank.reference || ''
