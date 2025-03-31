@@ -1,4 +1,6 @@
 node_modules
 .qodo
 .env
-.env.*
+*.log
+*.json
+*.xml
