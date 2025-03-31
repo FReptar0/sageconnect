@@ -55,13 +55,14 @@ async function buildProvidersXML(index) {
         const external_id = provider.external_id || '';
         const Nombre = provider.name || '';
         const Rfc = provider.rfc || '';
+        const TipoProveedor = provider.type || '';
         const provider_id = provider.id || '';
         // Para NumRegIdTrib
         const NumRegIdTrib = provider.tax_id || '';
         // Asumimos que expedient.valid es un booleano (si no existe, se pone false)
-        const ExpedientValid = provider.expedient && typeof provider.expedient.valid === 'boolean'
-            ? provider.expedient.valid
-            : false;
+        // const ExpedientValid = provider.expedient && typeof provider.expedient.valid === 'boolean'
+        //     ? provider.expedient.valid
+        //     : false;
         // credit_days -> para Terminos
         const Terminos = provider.credit_days ? String(provider.credit_days) : '0';
         // Se utiliza provider.expedient.approved para la fecha; se formatea usando formatTimestamp
@@ -170,6 +171,7 @@ async function buildProvidersXML(index) {
                 external_id,
                 Nombre,
                 Rfc,
+                TipoProveedor,
                 grupo_prov,
                 RegimenFiscalReceptor: process.env.REGIMEN || '', // Ajusta si deseas otro régimen
                 MetodoPago: metodoPago,
