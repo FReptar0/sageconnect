@@ -12,9 +12,9 @@ const { logGenerator } = require('../utils/LogGenerator');
 
 const url = credentials.parsed.URL;
 
-const tenantIds = []
-const apiKeys = []
-const apiSecrets = []
+const tenantIds = [];
+const apiKeys = [];
+const apiSecrets = [];
 
 const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
 const apiKeyValues = credentials.parsed.API_KEY.split(',');
@@ -78,7 +78,7 @@ async function downloadCFDI(index) {
             .on('error', (err) => {
                 console.log('Error al descargar el archivo: ' + err);
                 logGenerator('CFDI_Downloader', 'error', 'Error al descargar el archivo: ' + err);
-                // Delete the file if an error occurs
+                // Si ocurre un error se elimina el archivo
                 fs.unlink(xmlPath, (unlinkErr) => {
                     if (unlinkErr) {
                         console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -90,7 +90,6 @@ async function downloadCFDI(index) {
             });
     }
 }
-
 
 function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
     fs.readFile(xmlPath, 'utf8', async (err, data) => {
@@ -117,12 +116,10 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 recordset: [{
                     Resultado: 'NOT_FOUND'
                 }]
-            }
+            };
         });
 
         const idCia = dbResponse.recordset[0].Resultado || '';
-
-        //idCia = 'NOT_FOUND';
 
         const bankAccounts = response.data.expedient.bank_accounts;
         const firstBankAccountKey = Object.keys(bankAccounts)[0];
@@ -139,7 +136,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         if (!firstBankAccountValue) {
             console.log('No se tienen los datos del banco. Eliminando archivo:', xmlPath);
             logGenerator('CFDI_Downloader', 'error', 'No se tienen los datos del banco. Eliminando archivo: ' + xmlPath);
-            // Delete the file if the bank data is not found
+            // Elimina el archivo si no se encuentran los datos del banco
             fs.unlink(xmlPath, (unlinkErr) => {
                 if (unlinkErr) {
                     console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -150,7 +147,6 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             });
             return;
         }
-
 
         parser(data, (err, result) => {
             if (err) {
@@ -204,44 +200,55 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 'correo': firstContactValue ? firstContactValue.value.email : ''
             };
 
+            // Aquí se define la estructura de la addenda con la nueva etiqueta autoconcluyente
             const addenda = {
-                'cfdi:Addenda': {
-                    'cfdi:AddendaEmisor': {
-                        'cfdi:Proveedor': {
+                'cfdi:AddendaEmisor': {
+                    'cfdi:Proveedor': {
+                        '$': {
+                            'IdBase': idCia,
+                            'provider_id': dataCfdi.providerId,
+                            'external_id': response.data.external_id || '',
+                            'bank': bankData.bank,
+                            'clabe': bankData.clabe,
+                            'account': bankData.account,
+                            'grupo_prov': bankData.grupo_prov,
+                            'grupo_fiscal': bankData.grupo_fiscal,
+                            'contact': contactData.nombre,
+                            'contact_email': contactData.correo,
+                            'contact_phone': contactData.telefono,
+                            'Terminos': response.data.credit_days || '',
+                            'CuentaContable': bankData.cuenta_contable,
+                            'TipoProveedor': response.data.type,
+                        },
+                        'cfdi:DomicilioProv': {
                             '$': {
-                                'IdBase': idCia,
-                                'provider_id': dataCfdi.providerId, // Agregado el provider_id
-                                'external_id': response.data.external_id || '',
-                                'bank': bankData.bank,
-                                'clabe': bankData.clabe,
-                                'account': bankData.account,
-                                'grupo_prov': bankData.grupo_prov,
-                                'grupo_fiscal': bankData.grupo_fiscal,
-                                'contact': contactData.nombre,
-                                'contact_email': contactData.correo,
-                                'contact_phone': contactData.telefono,
-                                'Terminos': response.data.credit_days || '30',
-                                'CuentaContable': bankData.cuenta_contable,
-                                'TipoProveedor': response.data.type,
-                            },
-                            'cfdi:DomicilioProv': {
-                                '$': {
-                                    'Calle': addressData.calle,
-                                    'NumeroExterior': addressData.noExterior,
-                                    'NumeroInterior': addressData.noInterior,
-                                    'Colonia': addressData.colonia,
-                                    'Localidad': addressData.localidad,
-                                    'Municipio': addressData.municipio,
-                                    'Estado': addressData.estado,
-                                    'Pais': addressData.pais,
-                                    'CodigoPostal': addressData.codigoPostal
-                                }
+                                'Calle': addressData.calle,
+                                'NumeroExterior': addressData.noExterior,
+                                'NumeroInterior': addressData.noInterior,
+                                'Colonia': addressData.colonia,
+                                'Localidad': addressData.localidad,
+                                'Municipio': addressData.municipio,
+                                'Estado': addressData.estado,
+                                'Pais': addressData.pais,
+                                'CodigoPostal': addressData.codigoPostal
                             }
                         }
+                    }
+                },
+                // Nueva etiqueta auto cerrable con atributos OrdenCompra y AFE.
+                'cfdi:DoctoDatosAdi': {
+                    '$': {
+                        'OrdenCompra': 'valorOrdenCompra', // Reemplaza 'valorOrdenCompra' por el valor real
+                        'AFE': 'valorAFE'                  // Reemplaza 'valorAFE' por el valor real
                     }
                 }
             };
 
+            // Si el orden de las etiquetas es crítico, puedes definir la addenda como un arreglo:
+            // result['cfdi:Comprobante']['cfdi:Addenda'] = [
+            //     { 'cfdi:AddendaEmisor': addenda['cfdi:AddendaEmisor'] },
+            //     { 'cfdi:DoctoDatosAdi': addenda['cfdi:DoctoDatosAdi'] }
+            // ];
             result['cfdi:Comprobante']['cfdi:Addenda'] = addenda;
 
             const xmlBuilderInstance = new xmlBuilder();
