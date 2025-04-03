@@ -24,6 +24,27 @@ tenantIds.push(...tenantIdValues);
 apiKeys.push(...apiKeyValues);
 apiSecrets.push(...apiSecretValues);
 
+/**
+ * Función auxiliar para extraer OrdenCompra y AFE desde additional_info.
+ * Se espera que additional_info sea un arreglo de objetos con la estructura:
+ * { field: { external_id: 'Orden_de_compra' or 'AFE', ... }, value: { raw: 'valor' } }
+ */
+function getAfeAndOrden(additional_info) {
+    const ordenObj = additional_info.find(item =>
+        item.field &&
+        item.field.external_id &&
+        item.field.external_id.toLowerCase() === 'orden_de_compra'
+    );
+    const afeObj = additional_info.find(item =>
+        item.field &&
+        item.field.external_id &&
+        item.field.external_id.toLowerCase() === 'afe'
+    );
+    const ordenCompra = ordenObj && ordenObj.value ? ordenObj.value.raw : '';
+    const afe = afeObj && afeObj.value ? afeObj.value.raw : '';
+    return { ordenCompra, afe };
+}
+
 async function downloadCFDI(index) {
     const cfdiData = [];
 
@@ -32,7 +53,9 @@ async function downloadCFDI(index) {
         cfdiData.push({
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
-            rfcReceptor: type.cfdi.receptor.rfc,
+            rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
+            // Se agrega additional_info para extraer OrdenCompra y AFE
+            additional_info: type.metadata.additional_info
         });
     });
 
@@ -41,7 +64,8 @@ async function downloadCFDI(index) {
         cfdiData.push({
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
-            rfcReceptor: type.cfdi.receptor.rfc,
+            rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
+            additional_info: type.metadata.additional_info
         });
     });
 
@@ -58,7 +82,9 @@ async function downloadCFDI(index) {
                 'PDPTenantSecret': apiSecret,
             },
         });
-        urls.push(response.data.xml);
+        if (response.data.xml) {
+            urls.push(response.data.xml);
+        }
     }
 
     for (let i = 0; i < urls.length; i++) {
@@ -200,7 +226,10 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 'correo': firstContactValue ? firstContactValue.value.email : ''
             };
 
-            // Aquí se define la estructura de la addenda con la nueva etiqueta autoconcluyente
+            // Extraer los valores de OrdenCompra y AFE desde additional_info
+            const { ordenCompra, afe } = dataCfdi.additional_info ? getAfeAndOrden(dataCfdi.additional_info) : { ordenCompra: '', afe: '' };
+
+            // Se define la estructura de la addenda con la nueva etiqueta autoconcluyente
             const addenda = {
                 'cfdi:AddendaEmisor': {
                     'cfdi:Proveedor': {
@@ -235,16 +264,16 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                         }
                     }
                 },
-                // Nueva etiqueta auto cerrable con atributos OrdenCompra y AFE.
+                // Se agrega la etiqueta autoconcluyente con los valores extraídos
                 'cfdi:DoctoDatosAdi': {
                     '$': {
-                        'OrdenCompra': 'valorOrdenCompra', // Reemplaza 'valorOrdenCompra' por el valor real
-                        'AFE': 'valorAFE'                  // Reemplaza 'valorAFE' por el valor real
+                        'OrdenCompra': ordenCompra,
+                        'AFE': afe
                     }
                 }
             };
 
-            // Si el orden de las etiquetas es crítico, puedes definir la addenda como un arreglo:
+            // Si el orden es crítico, puedes definir la addenda como un arreglo:
             // result['cfdi:Comprobante']['cfdi:Addenda'] = [
             //     { 'cfdi:AddendaEmisor': addenda['cfdi:AddendaEmisor'] },
             //     { 'cfdi:DoctoDatosAdi': addenda['cfdi:DoctoDatosAdi'] }
@@ -269,3 +298,9 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
 module.exports = {
     downloadCFDI
 };
+
+downloadCFDI(0).catch(err => {
+    console.error('Error en downloadCFDI:', err);
+    logGenerator('downloadCFDI', 'error', err);
+}
+);
