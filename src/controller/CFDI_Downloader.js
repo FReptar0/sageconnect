@@ -5,6 +5,7 @@ const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
 const path_env = dotenv.config({ path: '.env.path' });
 const fs = require('fs');
 const path = require('path');
+const os = require('os'); // Opcional en Windows si ya tienes la ruta absoluta
 const { runQuery } = require('../utils/SQLServerConnection');
 const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;
@@ -54,7 +55,6 @@ async function downloadCFDI(index) {
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
             rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
-            // Se agrega additional_info para extraer OrdenCompra y AFE
             additional_info: type.metadata.additional_info
         });
     });
@@ -75,6 +75,13 @@ async function downloadCFDI(index) {
     const urls = [];
     const outPathWFileNames = [];
 
+    // En Windows, se espera que path_env.parsed.PATH ya sea una ruta absoluta, por ejemplo "C:\XMLSFOCALTEC"
+    const downloadsDir = path_env.parsed.PATH;
+    // Crear el directorio si no existe
+    if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+    }
+
     for (let i = 0; i < cfdiData.length; i++) {
         const response = await axios.get(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis/${cfdiData[i].cfdiId}/files`, {
             headers: {
@@ -84,15 +91,16 @@ async function downloadCFDI(index) {
         });
         if (response.data.xml) {
             urls.push(response.data.xml);
+        } else {
+            console.error(`No se recibió una URL válida para el CFDI con ID ${cfdiData[i].cfdiId}`);
         }
     }
 
     for (let i = 0; i < urls.length; i++) {
         const name = path.basename(urls[i]).split('?')[0];
-        const outPath = path.join(path_env.parsed.PATH, name);
+        const outPath = path.join(downloadsDir, name);
         outPathWFileNames.push(outPath);
         const fileStream = await axios.get(urls[i], { responseType: 'stream' });
-
         const xmlPath = outPath;
 
         fileStream.data
@@ -104,7 +112,7 @@ async function downloadCFDI(index) {
             .on('error', (err) => {
                 console.log('Error al descargar el archivo: ' + err);
                 logGenerator('CFDI_Downloader', 'error', 'Error al descargar el archivo: ' + err);
-                // Si ocurre un error se elimina el archivo
+                // Si ocurre un error, intenta eliminar el archivo (si existe)
                 fs.unlink(xmlPath, (unlinkErr) => {
                     if (unlinkErr) {
                         console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -138,11 +146,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         const dbResponse = await runQuery(query).catch(() => {
             console.log('Error al ejecutar la consulta:', query);
             logGenerator('CFDI_Downloader', 'error', 'Error al ejecutar la consulta: ' + query);
-            return {
-                recordset: [{
-                    Resultado: 'NOT_FOUND'
-                }]
-            };
+            return { recordset: [{ Resultado: 'NOT_FOUND' }] };
         });
 
         const idCia = dbResponse.recordset[0].Resultado || '';
@@ -162,7 +166,6 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         if (!firstBankAccountValue) {
             console.log('No se tienen los datos del banco. Eliminando archivo:', xmlPath);
             logGenerator('CFDI_Downloader', 'error', 'No se tienen los datos del banco. Eliminando archivo: ' + xmlPath);
-            // Elimina el archivo si no se encuentran los datos del banco
             fs.unlink(xmlPath, (unlinkErr) => {
                 if (unlinkErr) {
                     console.error(`Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
@@ -203,9 +206,9 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 'bank': firstBankAccountValue ? firstBankAccountValue.value.bank_name : '',
                 'clabe': firstBankAccountValue ? firstBankAccountValue.value.clabe : '',
                 'account': firstBankAccountValue ? firstBankAccountValue.value.account : '',
-                'grupo_prov': grupo_prov ? grupo_prov : '',
-                'grupo_fiscal': grupo_fiscal ? grupo_fiscal : '',
-                'cuenta_contable': cuenta_contable ? cuenta_contable : ''
+                'grupo_prov': grupo_prov || '',
+                'grupo_fiscal': grupo_fiscal || '',
+                'cuenta_contable': cuenta_contable || ''
             };
 
             const addressData = {
@@ -226,12 +229,16 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 'correo': firstContactValue ? firstContactValue.value.email : ''
             };
 
-            // Extraer los valores de OrdenCompra y AFE desde additional_info
             const { ordenCompra, afe } = dataCfdi.additional_info ? getAfeAndOrden(dataCfdi.additional_info) : { ordenCompra: '', afe: '' };
 
-            // Se define la estructura de la addenda con la nueva etiqueta autoconcluyente
             const addenda = {
                 'cfdi:AddendaEmisor': {
+                    'cfdi:DoctoDatosAdi': {
+                        '$': {
+                            'OrdenCompra': ordenCompra,
+                            'AFE': afe
+                        }
+                    },
                     'cfdi:Proveedor': {
                         '$': {
                             'IdBase': idCia,
@@ -262,22 +269,12 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                                 'CodigoPostal': addressData.codigoPostal
                             }
                         }
-                    }
-                },
-                // Se agrega la etiqueta autoconcluyente con los valores extraídos
-                'cfdi:DoctoDatosAdi': {
-                    '$': {
-                        'OrdenCompra': ordenCompra,
-                        'AFE': afe
-                    }
+                    },
+                    // Aquí se anida DoctoDatosAdi dentro de AddendaEmisor
+
                 }
             };
 
-            // Si el orden es crítico, puedes definir la addenda como un arreglo:
-            // result['cfdi:Comprobante']['cfdi:Addenda'] = [
-            //     { 'cfdi:AddendaEmisor': addenda['cfdi:AddendaEmisor'] },
-            //     { 'cfdi:DoctoDatosAdi': addenda['cfdi:DoctoDatosAdi'] }
-            // ];
             result['cfdi:Comprobante']['cfdi:Addenda'] = addenda;
 
             const xmlBuilderInstance = new xmlBuilder();
@@ -302,5 +299,4 @@ module.exports = {
 downloadCFDI(0).catch(err => {
     console.error('Error en downloadCFDI:', err);
     logGenerator('downloadCFDI', 'error', err);
-}
-);
+});
