@@ -89,11 +89,7 @@ async function downloadCFDI(index) {
                 'PDPTenantSecret': apiSecret,
             },
         });
-        if (response.data.xml) {
-            urls.push(response.data.xml);
-        } else {
-            console.error(`No se recibió una URL válida para el CFDI con ID ${cfdiData[i].cfdiId}`);
-        }
+        urls.push(response.data.xml);
     }
 
     for (let i = 0; i < urls.length; i++) {
