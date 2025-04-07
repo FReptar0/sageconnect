@@ -1,15 +1,19 @@
-// buildProvidersXML.js
+// buildProvidersXML.js (o Providers_Downloader.js)
 
 require('dotenv').config({ path: '.env' });
+const dotenv = require('dotenv');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getProviders } = require('../utils/GetProviders');
 
+// Cargar la variable de entorno que contiene la ruta de descargas
+const path_env = dotenv.config({ path: '.env.path' });
 
 /**
- * Formatea un timestamp a formato "dd/mm/yyyyTHH:MM:SS:MMMZ"
+ * Formatea un timestamp a formato "dd-mm-yyyyTHH:MM:SS:MMMZ"
  * @param {number} timestamp
  * @returns {string} Fecha formateada
  */
@@ -26,6 +30,26 @@ function formatTimestamp(timestamp) {
     return `${day}-${month}-${year}T${hours}:${minutes}:${seconds}:${milliseconds}Z`;
 }
 
+/**
+ * Función auxiliar para extraer OrdenCompra y AFE desde additional_info.
+ * Se espera que additional_info sea un arreglo de objetos con la estructura:
+ * { field: { external_id: 'Orden_de_compra' o 'AFE', ... }, value: { raw: 'valor' } }
+ */
+function getAfeAndOrden(additional_info) {
+    const ordenObj = additional_info.find(item =>
+        item.field &&
+        item.field.external_id &&
+        item.field.external_id.toLowerCase() === 'orden_de_compra'
+    );
+    const afeObj = additional_info.find(item =>
+        item.field &&
+        item.field.external_id &&
+        item.field.external_id.toLowerCase() === 'afe'
+    );
+    const ordenCompra = ordenObj && ordenObj.value ? ordenObj.value.raw : '';
+    const afe = afeObj && afeObj.value ? afeObj.value.raw : '';
+    return { ordenCompra, afe };
+}
 
 /**
  * Construye un archivo XML con la información de los proveedores.
@@ -57,35 +81,25 @@ async function buildProvidersXML(index) {
         const Rfc = provider.rfc || '';
         const TipoProveedor = provider.type || '';
         const provider_id = provider.id || '';
-        // Para NumRegIdTrib
         const NumRegIdTrib = provider.tax_id || '';
-        // Asumimos que expedient.valid es un booleano (si no existe, se pone false)
-        // const ExpedientValid = provider.expedient && typeof provider.expedient.valid === 'boolean'
-        //     ? provider.expedient.valid
-        //     : false;
-        // credit_days -> para Terminos
         const Terminos = provider.credit_days ? String(provider.credit_days) : '0';
-        // Se utiliza provider.expedient.approved para la fecha; se formatea usando formatTimestamp
-
         const approvedTimestamp = (provider.expedient && provider.expedient.approved) ? provider.expedient.approved : Date.now();
         const FechaActualizacion = formatTimestamp(approvedTimestamp);
-
 
         // -- BUSCAR CAMPOS DENTRO DE "fields" --
         let grupo_prov = '';
         let grupo_fiscal = '';
         let cuenta_contable = '';
-        let metodoPago = 'PPD';  // Default
-        let formaPago = '2';     // Default
+        let metodoPago = 'PPD';  // Valor por defecto
+        let formaPago = '2';     // Valor por defecto
 
         const fields = provider.expedient && provider.expedient.fields ? provider.expedient.fields : {};
         const fieldKeys = Object.keys(fields);
 
         fieldKeys.forEach(key => {
             const field = fields[key];
-            if (!field.field_external_id) return; // Saltar si no tiene field_external_id
+            if (!field.field_external_id) return;
             const fieldName = field.field_external_id.toLowerCase();
-
             if (fieldName === 'grupo_de_proveedores') {
                 grupo_prov = field.value_external_id || '';
             } else if (fieldName === 'grupo_de_impuestos') {
@@ -157,15 +171,13 @@ async function buildProvidersXML(index) {
                 account: firstBank.account || '',
                 Sucursal: firstBank.subsidiary_number || firstBank.subsidiary || '',
                 SWIFT: firstBank.code || '',
-                // REFDO = reference en el API (si existe)
                 REFDO: firstBank.reference || ''
             }
         };
 
         // Extraer la moneda (currency) de la cuenta bancaria
-        const Moneda = firstBank.currency || 'MXN'; // Elige el valor por defecto que necesites
+        const Moneda = firstBank.currency || 'MXN';
 
-        // -- ESTRUCTURA DEL <Proveedor> --
         return {
             $: {
                 external_id,
@@ -173,14 +185,14 @@ async function buildProvidersXML(index) {
                 Rfc,
                 TipoProveedor,
                 grupo_prov,
-                RegimenFiscalReceptor: process.env.REGIMEN || '', // Ajusta si deseas otro régimen
+                RegimenFiscalReceptor: process.env.REGIMEN || '',
                 MetodoPago: metodoPago,
                 FormaPago: formaPago,
                 provider_id,
                 grupo_fiscal,
                 Terminos,
                 CuentaContable: cuenta_contable,
-                Moneda, // <-- Aquí se asigna la moneda dinámica
+                Moneda,
                 NumRegIdTrib,
                 FechaActualizacion,
             },
@@ -206,8 +218,22 @@ async function buildProvidersXML(index) {
     });
     const xml = builder.buildObject(xmlObj);
 
-    // 6. Guardar en un archivo (por ejemplo, providers.xml) 
-    const outputPath = path.join(__dirname, 'providers.xml');
+    // 6. Guardar el archivo XML en la misma ruta de descargas, en una carpeta "providers"
+    let downloadsDir = path_env.parsed.PATH;
+    if (downloadsDir.startsWith('~')) {
+        if (downloadsDir.startsWith('~/')) {
+            downloadsDir = path.join(os.homedir(), downloadsDir.slice(2));
+        } else {
+            downloadsDir = path.join(os.homedir(), downloadsDir.slice(1));
+        }
+    }
+    // Crear la carpeta "providers" si no existe
+    const providersDir = path.join(downloadsDir, 'providers');
+    if (!fs.existsSync(providersDir)) {
+        fs.mkdirSync(providersDir, { recursive: true });
+    }
+    const outputPath = path.join(providersDir, 'providers.xml');
+
     try {
         fs.writeFileSync(outputPath, xml, 'utf8');
         console.log('Archivo XML generado en:', outputPath);
@@ -217,9 +243,9 @@ async function buildProvidersXML(index) {
     }
 }
 
-buildProvidersXML(0).catch(err => {
-    console.error('Error en buildProvidersXML:', err);
-    logGenerator('buildProvidersXML', 'ERROR', err);
-});
+// buildProvidersXML(0).catch(err => {
+//     console.error('Error en buildProvidersXML:', err);
+//     logGenerator('buildProvidersXML', 'ERROR', err);
+// });
 
 module.exports = { buildProvidersXML };
