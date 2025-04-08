@@ -30,26 +30,6 @@ function formatTimestamp(timestamp) {
     return `${day}-${month}-${year}T${hours}:${minutes}:${seconds}:${milliseconds}Z`;
 }
 
-/**
- * Función auxiliar para extraer OrdenCompra y AFE desde additional_info.
- * Se espera que additional_info sea un arreglo de objetos con la estructura:
- * { field: { external_id: 'Orden_de_compra' o 'AFE', ... }, value: { raw: 'valor' } }
- */
-function getAfeAndOrden(additional_info) {
-    const ordenObj = additional_info.find(item =>
-        item.field &&
-        item.field.external_id &&
-        item.field.external_id.toLowerCase() === 'orden_de_compra'
-    );
-    const afeObj = additional_info.find(item =>
-        item.field &&
-        item.field.external_id &&
-        item.field.external_id.toLowerCase() === 'afe'
-    );
-    const ordenCompra = ordenObj && ordenObj.value ? ordenObj.value.raw : '';
-    const afe = afeObj && afeObj.value ? afeObj.value.raw : '';
-    return { ordenCompra, afe };
-}
 
 /**
  * Construye un archivo XML con la información de los proveedores.

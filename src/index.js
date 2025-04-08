@@ -5,6 +5,7 @@ const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
 const { spawn } = require('child_process');
 const { sendMail } = require('./utils/EmailSender');
+const { buildProvidersXML } = require('./controller/Providers_Downloader');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -44,19 +45,22 @@ forResponse = async () => {
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
 
-        //TODO Integrar funcion de agregado de informacion de proveedores
+        // buildProvidersXML function
+        await buildProvidersXML(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
         // CFDI_Downloader function
         await downloadCFDI(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Function to check payments in Sage and upload timbrados data
-        await checkPayments(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // await checkPayments(i);
+        // await new Promise(resolve => setTimeout(resolve, 5000));
 
 
         // Function to upload payments to the portal de proveedores
-        await uploadPayments(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // await uploadPayments(i);
+        // await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 
