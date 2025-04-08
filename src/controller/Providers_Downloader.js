@@ -9,7 +9,7 @@ const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getProviders } = require('../utils/GetProviders');
 
-// Cargar la variable de entorno que contiene la ruta de descargas
+// Cargar la variable de entorno que contiene la ruta donde se guardarán los archivos
 const path_env = dotenv.config({ path: '.env.path' });
 
 /**
@@ -30,6 +30,15 @@ function formatTimestamp(timestamp) {
     return `${day}-${month}-${year}T${hours}:${minutes}:${seconds}:${milliseconds}Z`;
 }
 
+/**
+ * Formatea la fecha actual a "yyyy-mm-dd"
+ * @returns {string} Fecha formateada
+ */
+function formatToday() {
+    const today = new Date();
+    const pad = (n, width = 2) => n.toString().padStart(width, '0');
+    return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+}
 
 /**
  * Construye un archivo XML con la información de los proveedores.
@@ -80,6 +89,7 @@ async function buildProvidersXML(index) {
             const field = fields[key];
             if (!field.field_external_id) return;
             const fieldName = field.field_external_id.toLowerCase();
+
             if (fieldName === 'grupo_de_proveedores') {
                 grupo_prov = field.value_external_id || '';
             } else if (fieldName === 'grupo_de_impuestos') {
@@ -198,7 +208,8 @@ async function buildProvidersXML(index) {
     });
     const xml = builder.buildObject(xmlObj);
 
-    // 6. Guardar el archivo XML en la misma ruta de descargas, en una carpeta "providers"
+    // 6. Guardar el archivo XML en la ruta definida en la variable de entorno,
+    //    con el nombre "providers-yyyy-mm-dd.xml"
     let downloadsDir = path_env.parsed.PATH;
     if (downloadsDir.startsWith('~')) {
         if (downloadsDir.startsWith('~/')) {
@@ -207,12 +218,8 @@ async function buildProvidersXML(index) {
             downloadsDir = path.join(os.homedir(), downloadsDir.slice(1));
         }
     }
-    // Crear la carpeta "providers" si no existe
-    const providersDir = path.join(downloadsDir, 'providers');
-    if (!fs.existsSync(providersDir)) {
-        fs.mkdirSync(providersDir, { recursive: true });
-    }
-    const outputPath = path.join(providersDir, 'providers.xml');
+    const currentDate = formatToday();
+    const outputPath = path.join(downloadsDir, `providers-${currentDate}.xml`);
 
     try {
         fs.writeFileSync(outputPath, xml, 'utf8');
@@ -223,9 +230,9 @@ async function buildProvidersXML(index) {
     }
 }
 
-// buildProvidersXML(0).catch(err => {
-//     console.error('Error en buildProvidersXML:', err);
-//     logGenerator('buildProvidersXML', 'ERROR', err);
-// });
+buildProvidersXML(0).catch(err => {
+    console.error('Error en buildProvidersXML:', err);
+    logGenerator('buildProvidersXML', 'ERROR', err);
+});
 
 module.exports = { buildProvidersXML };
