@@ -230,9 +230,9 @@ async function buildProvidersXML(index) {
     }
 }
 
-buildProvidersXML(0).catch(err => {
-    console.error('Error en buildProvidersXML:', err);
-    logGenerator('buildProvidersXML', 'ERROR', err);
-});
+// buildProvidersXML(0).catch(err => {
+//     console.error('Error en buildProvidersXML:', err);
+//     logGenerator('buildProvidersXML', 'ERROR', err);
+// });
 
 module.exports = { buildProvidersXML };

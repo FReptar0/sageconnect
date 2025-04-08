@@ -292,7 +292,7 @@ module.exports = {
     downloadCFDI
 };
 
-downloadCFDI(0).catch(err => {
-    console.error('Error en downloadCFDI:', err);
-    logGenerator('downloadCFDI', 'error', err);
-});
+// downloadCFDI(0).catch(err => {
+//     console.error('Error en downloadCFDI:', err);
+//     logGenerator('downloadCFDI', 'error', err);
+// });
