@@ -66,6 +66,9 @@ forResponse = async () => {
 
 forResponse().then(() => {
     // The spawn function is used to execute the import process
+    console.log('IMPORT_CFDIS_ROUTE:', env.parsed.IMPORT_CFDIS_ROUTE);
+    console.log('ARG:', env.parsed.ARG);
+
     if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
