@@ -31,13 +31,19 @@ function formatTimestamp(timestamp) {
 }
 
 /**
- * Formatea la fecha actual a "yyyy-mm-dd"
+ * Formatea la fecha actual para el nombre del archivo en el formato "yyMMdd-hhmmss"
  * @returns {string} Fecha formateada
  */
-function formatToday() {
-    const today = new Date();
+function formatDateForFilename() {
+    const now = new Date();
     const pad = (n, width = 2) => n.toString().padStart(width, '0');
-    return `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const year = now.getFullYear().toString().slice(-2); // últimos dos dígitos del año
+    const month = pad(now.getMonth() + 1);
+    const day = pad(now.getDate());
+    const hours = pad(now.getHours());
+    const minutes = pad(now.getMinutes());
+    const seconds = pad(now.getSeconds());
+    return `${year}${month}${day}-${hours}${minutes}${seconds}`;
 }
 
 /**
@@ -208,8 +214,8 @@ async function buildProvidersXML(index) {
     });
     const xml = builder.buildObject(xmlObj);
 
-    // 6. Guardar el archivo XML en la ruta definida en la variable de entorno,
-    //    con el nombre "providers-yyyy-mm-dd.xml"
+    // 6. Guardar el archivo XML en la ruta definida en path_env, 
+    //    con el nombre "providers-yyMMdd-hhmmss.xml"
     let downloadsDir = path_env.parsed.PATH;
     if (downloadsDir.startsWith('~')) {
         if (downloadsDir.startsWith('~/')) {
@@ -218,8 +224,8 @@ async function buildProvidersXML(index) {
             downloadsDir = path.join(os.homedir(), downloadsDir.slice(1));
         }
     }
-    const currentDate = formatToday();
-    const outputPath = path.join(downloadsDir, `providers-${currentDate}.xml`);
+    const outputFileName = `providers-${formatDateForFilename()}.xml`;
+    const outputPath = path.join(downloadsDir, outputFileName);
 
     try {
         fs.writeFileSync(outputPath, xml, 'utf8');
