@@ -6,6 +6,7 @@ const { downloadCFDI } = require('./controller/CFDI_Downloader');
 const { spawn } = require('child_process');
 const { sendMail } = require('./utils/EmailSender');
 const { buildProvidersXML } = require('./controller/Providers_Downloader');
+const { logGenerator } = require('./utils/Logger');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -25,6 +26,9 @@ app.use(function (req, res) {
 
 const server = app.listen(3030, () => {
     console.log('Server is up on port 3030');
+    const msg = 'El servidor se inició correctamente en el puerto 3030';
+    console.log(msg);
+    logGenerator('server_start', 'info', msg);
 });
 
 try {
