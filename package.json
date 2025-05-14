@@ -15,6 +15,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "fs": "^0.0.1-security",
+    "joi": "^17.13.3",
     "log4js": "^6.9.1",
     "mssql": "^11.0.1",
     "node-notifier": "^10.0.1",
