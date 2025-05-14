@@ -1,4 +1,4 @@
-const { runQuery } = require('../utils/SQLServerConnection');
+const { runQuery } = require('../src/utils/SQLServerConnection');
 
 async function testQuery() {
     // Tu consulta original, con WHERE estático
