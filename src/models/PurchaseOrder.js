@@ -120,7 +120,7 @@ const externPurchaseOrderSchema = Joi.object({
     subtotal: Joi.number().precision(2).min(0).required(),
     total: Joi.number().precision(2).min(0).required(),
     vat_sum: Joi.number().precision(2).min(0).default(0),
-    withhold_tax_sum: Joi.number().precision(2).min(0).default(0),
+    withhold_tax_sum: Joi.number().precision(2).default(0),
 
     warehouse: Joi.string().allow('', null),
     provider_external_id: Joi.string().max(50).required(),
