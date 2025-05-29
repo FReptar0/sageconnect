@@ -12,7 +12,7 @@ const {
   DATABASES
 } = creds;
 
-// utilerías tuyas
+// utilerías
 const { runQuery } = require('../src/utils/SQLServerConnection');
 const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
@@ -27,7 +27,7 @@ const index = 0;
 
 async function testQuery() {
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-  // 1) Ejecuta tu consulta a COPDAT para los dos POs
+  // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
 select 

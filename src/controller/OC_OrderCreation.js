@@ -11,13 +11,13 @@ const {
   DATABASES
 } = creds;
 
-// utilerías tuyas
+// utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
-// preparamos arrays de tenants/keys/etc. y sólo usamos el primero en este test
+// preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
 const apiKeys = API_KEY.split(',');
 const apiSecrets = API_SECRET.split(',');
