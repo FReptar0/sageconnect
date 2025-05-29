@@ -298,4 +298,6 @@ order by A.PONUMBER, B.DETAILNUM;
   }
 }
 
-createPurchaseOrders();
+module.exports = {
+  createPurchaseOrders
+}
