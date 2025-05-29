@@ -3,6 +3,7 @@ const { minutesToMilliseconds } = require('./utils/TransformTime');
 const { checkPayments } = require('./controller/Payment');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
+const { createPurchaseOrders } = require('./controller/OC_OrderCreation');
 const { spawn } = require('child_process');
 const { sendMail } = require('./utils/EmailSender');
 const { buildProvidersXML } = require('./controller/Providers_Downloader');
@@ -64,6 +65,10 @@ forResponse = async () => {
 
         // Function to upload payments to the portal de proveedores
         // await uploadPayments(i);
+        // await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Function to upload purchase orders to the portal de proveedores
+        // await createPurchaseOrders(i);
         // await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
