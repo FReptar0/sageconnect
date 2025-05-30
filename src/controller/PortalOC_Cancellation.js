@@ -13,7 +13,6 @@ const {
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
-const e = require('express');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -93,7 +92,7 @@ async function cancellationPurchaseOrders(index) {
             continue; // continuar con la siguiente orden
         }
 
-        // 4. Si la orden existe, actualizar el estado a 'CANCELLED'
+        // 3.2. Si la orden existe, actualizar el estado a 'CANCELLED'
         if (existingOrder.length > 0) {
             const updateSql = `
         UPDATE dbo.fesaOCFocaltec
