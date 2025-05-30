@@ -1,5 +1,3 @@
-// utils/OC_GroupOrdersByNumber.js
-
 /**
  * Agrupa un arreglo de filas planas en órdenes con su array de líneas,
  * usando el campo NUM como clave y devolviendo el array ordenado por NUM.
