@@ -192,6 +192,7 @@ order by A.PONUMBER, B.DETAILNUM;
       WHERE ocSage    = '${po.external_id}'
         AND idDatabase= '${databases[index]}'
         AND idFocaltec IS NOT NULL
+        AND status = 'POSTED'
     `;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
@@ -286,7 +287,7 @@ order by A.PONUMBER, B.DETAILNUM;
         INSERT INTO dbo.fesaOCFocaltec
           (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
         VALUES
-          ('',
+          (NULL,
            '${po.external_id}',
            'ERROR',
            GETDATE(),
