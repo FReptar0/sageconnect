@@ -199,7 +199,7 @@ order by A.PONUMBER, B.DETAILNUM;
     }
 
     // 4.2) Limpiar placeholders
-    delete po.company_external_id;
+    //delete po.company_external_id;
     if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
     if (po.requisition_number === 0) delete po.requisition_number;
 
