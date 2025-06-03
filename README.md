@@ -114,7 +114,7 @@ The following environment variables must be configured for the program to run co
 | API_KEY | This is one of the key values used by focaltec | EDaYeHfGbgnpevkE,QjgN7i3EHh7kOnuE,6hNTwGkVj9zLZgDX |
 | API_SECRET | This is another of the key values used by focaltec | NMcqO1qxQmx66yEQ3tqzFspxe2ALwXbrtcfIY8upZdeiPbDY,iUJRIrquQvFa6LvDzeDlQIk8clwYc14kuiEVGysRioqkcFyt,SDZHVho74TJK2xyshLsl6VSvWRYCt16fBJ00BDnZ3CUXjeZN |
 | DATABASES | It is the name of the database corresponding to each company. | CMXDAT,TSMDAT,ARKDAT |
-| EXTERNAL_IDS 1 It is the external id that focaltec assigns to every company | CGO031231JM7, CGO031231JM7, CGO031231JM7 |
+| EXTERNAL_IDS | It is the external id that focaltec assigns to every company | CGO031231JM7, CGO031231JM7, CGO031231JM7 |
 
 > :bangbang: Make sure that the values correspond to each other, for example, if the first TENANT_ID is for Charger, then the first API_KEY, API_SECRET and DATABASE must be for Charger.
 
