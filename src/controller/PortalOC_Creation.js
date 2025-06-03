@@ -51,7 +51,7 @@ select
   ''                                           as [CFDI_PAYMENT_METHOD],
   RTRIM(C2.[VALUE])                            as [CFDI_USE],
   RTRIM(A.DESCRIPTIO) + ' ' + RTRIM(A.COMMENT) as [COMMENTS],
-  '0123456789'                                 as [COMPANY_EXTERNAL_ID],
+  'CGO031231JM7'                                 as [COMPANY_EXTERNAL_ID],
   CASE WHEN RTRIM(A.CURRENCY)='MXP' THEN 'MXN' ELSE RTRIM(A.CURRENCY) END as [CURRENCY],
   CAST(
     SUBSTRING(CAST(A.[DATE] AS VARCHAR),1,4) + '-' +
