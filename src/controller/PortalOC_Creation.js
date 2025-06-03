@@ -8,7 +8,8 @@ const {
   API_KEY,
   API_SECRET,
   URL,
-  DATABASES
+  DATABASES,
+  EXTERNAL_IDS
 } = creds;
 
 // utilerías
@@ -22,6 +23,7 @@ const tenantIds = TENANT_ID.split(',');
 const apiKeys = API_KEY.split(',');
 const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
+const externalId = EXTERNAL_IDS.split(',');
 
 async function createPurchaseOrders(index) {
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
@@ -51,7 +53,7 @@ select
   ''                                           as [CFDI_PAYMENT_METHOD],
   RTRIM(C2.[VALUE])                            as [CFDI_USE],
   RTRIM(A.DESCRIPTIO) + ' ' + RTRIM(A.COMMENT) as [COMMENTS],
-  'CGO031231JM7'                                 as [COMPANY_EXTERNAL_ID],
+  '${externalId[index]}'                                 as [COMPANY_EXTERNAL_ID],
   CASE WHEN RTRIM(A.CURRENCY)='MXP' THEN 'MXN' ELSE RTRIM(A.CURRENCY) END as [CURRENCY],
   CAST(
     SUBSTRING(CAST(A.[DATE] AS VARCHAR),1,4) + '-' +
