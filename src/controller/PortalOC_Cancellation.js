@@ -22,11 +22,16 @@ const databases = DATABASES.split(',');
 
 
 async function cancellationPurchaseOrders(index) {
-    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    // fecha de hoy en formato YYYYMMDD
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // 'YYYYMMDD' la fecha debe ser 20250603
 
     // 1. Obtener órdenes de compra canceladas
     // TODO: Usar la query que Santiago nos pase el valor seran solo PONumbers
-    const query = ``;
+    const query = `select A.PONUMBER
+                    from POPORH1 A
+                    where
+                    (SELECT SUM(B.OQCANCELED) FROM POPORL B WHERE B.PORHSEQ=A.PORHSEQ)>0 AND
+                    A.ISCOMPLETE=1 AND A.DTCOMPLETE='${today}' `;
 
     let cancelledOrders;
     try {
@@ -41,9 +46,9 @@ async function cancellationPurchaseOrders(index) {
         const ponumber = cancelledOrders[i].PONUMBER.trim();
 
         const checkSql = `
-      SELECT idFocaltec
-      FROM dbo.fesaOCFocaltec
-      WHERE ocSage    = '${ponumber}'
+        SELECT idFocaltec
+        FROM dbo.fesaOCFocaltec
+        WHERE ocSage    = '${ponumber}'
         AND idDatabase= '${databases[index]}'
         AND idFocaltec IS NOT NULL
         AND status = 'POSTED'
@@ -70,7 +75,7 @@ async function cancellationPurchaseOrders(index) {
         };
 
         try {
-            const response = await axios.post(endpoint, body,
+            const response = await axios.put(endpoint, body,
                 {
                     headers: {
                         'PDPTenantKey': apiKeys[index],
