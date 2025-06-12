@@ -88,7 +88,7 @@ select
   B.SQORDERED                                  as [LINES_QUANTITY],
   ''                                           as [LINES_REQUISITION_LINE_ID],
   B.EXTENDED                                   as [LINES_SUBTOTAL],
-  B.EXTENDED + B.TAXAMOUNT                     as [LINES_TOTAL],
+  B.EXTENDED                                   as [LINES_TOTAL],
   RTRIM(B.ORDERUNIT)                           as [LINES_UNIT_OF_MEASURE],
   0                                            as [LINES_VAT_TAXES_AMOUNT],
   ''                                           as [LINES_VAT_TAXES_CODE],
@@ -167,7 +167,7 @@ where
 order by A.PONUMBER, B.DETAILNUM;
 `;
 
-
+  //TODO: Si los metadata values vienen vacios mandar un none 
   let recordset;
   try {
     ({ recordset } = await runQuery(sql, databases[index]));
@@ -300,6 +300,11 @@ order by A.PONUMBER, B.DETAILNUM;
     }
   }
 }
+
+// createPurchaseOrders(0).catch(err => {
+//   console.error('❌ Error en createPurchaseOrders:', err);
+//   // Aquí podrías agregar un log si tienes una función de logging
+// });
 
 module.exports = {
   createPurchaseOrders

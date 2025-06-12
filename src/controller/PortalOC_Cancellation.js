@@ -1,3 +1,5 @@
+// src/controller/PortalPurchaseOrderCancellation.js
+
 const axios = require('axios');
 const dotenv = require('dotenv');
 
@@ -11,8 +13,9 @@ const {
     DATABASES
 } = creds;
 
-// utilerías
+// utilería de conexión
 const { runQuery } = require('../utils/SQLServerConnection');
+const e = require('express');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -20,106 +23,110 @@ const apiKeys = API_KEY.split(',');
 const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
 
-
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // 'YYYYMMDD' la fecha debe ser 20250603
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-    // 1. Obtener órdenes de compra canceladas
-    // TODO: Usar la query que Santiago nos pase el valor seran solo PONumbers
-    const query = `select A.PONUMBER
-                    from POPORH1 A
-                    where
-                    (SELECT SUM(B.OQCANCELED) FROM POPORL B WHERE B.PORHSEQ=A.PORHSEQ)>0 AND
-                    A.ISCOMPLETE=1 AND A.DTCOMPLETE='${today}' `;
-
-    let cancelledOrders;
+    // 1) Obtener POs canceladas en Sage
+    const sql = `
+    SELECT RTRIM(A.PONUMBER) AS PONUMBER
+      FROM POPORH1 A
+     WHERE (SELECT SUM(B.OQCANCELED)
+              FROM POPORL B
+             WHERE B.PORHSEQ = A.PORHSEQ) > 0
+       AND A.ISCOMPLETE = 1
+       AND A.DTCOMPLETE  = '${today}'
+  `;
+    let recordset;
     try {
-        cancelledOrders = await runQuery(query, databases[index]);
-    } catch (error) {
-        console.error(`Error al ejecutar la consulta en el tenant ${tenantIds[index]}:`, error);
+        ({ recordset } = await runQuery(sql, databases[index]));
+        console.log(`🔍 Recuperadas ${recordset.length} filas de la base`);
+    } catch (err) {
+        console.error(`❌ Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}:`, err);
         return;
     }
 
-    // 2. Comprobar si ya existe ese PONumber en fesaOCFocaltec
-    for (let i = 0; i < cancelledOrders.length; i++) {
-        const ponumber = cancelledOrders[i].PONUMBER.trim();
+    // 2) Para cada PO, verificar y cancelar
+    for (let i = 0; i < recordset.length; i++) {
+        const ponumber = recordset[i].PONUMBER;
+        console.log(`\n⏳ Procesando [${i + 1}/${recordset.length}] PO ${ponumber}`);
 
+        // 2.1) Verificar en fesaOCFocaltec
         const checkSql = `
-        SELECT idFocaltec
+      SELECT RTRIM(idFocaltec) AS idFocaltec
         FROM dbo.fesaOCFocaltec
-        WHERE ocSage    = '${ponumber}'
-        AND idDatabase= '${databases[index]}'
-        AND idFocaltec IS NOT NULL
-        AND status = 'POSTED'
+       WHERE ocSage     = '${ponumber}'
+         AND idDatabase = '${databases[index]}'
+         AND idFocaltec IS NOT NULL
+         AND status     = 'POSTED'
     `;
-
-        let existingOrder;
+        let existing;
         try {
-            existingOrder = await runQuery(checkSql, databases[index]);
-        } catch (error) {
-            console.error(`Error al verificar la orden ${ponumber} en el tenant ${tenantIds[index]}:`, error);
-            continue; // continuar con la siguiente orden
+            ({ recordset: existing } = await runQuery(checkSql, 'FESA'));
+        } catch (err) {
+            console.error(`❌ Error al verificar existencia en FESA para ${ponumber}:`, err);
+            continue;
+        }
+        if (existing.length === 0) {
+            console.log(`⚠ PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
+            continue;
         }
 
-        // 3. Si no existe, saltar a la siguiente orden
-        if (existingOrder.length === 0) {
-            console.log(`Orden ${ponumber} no encontrada en el tenant ${tenantIds[index]}, saltando...`);
-            continue; // saltar a la siguiente orden
-        }
-
-        // 3.1 Cancelar en el portal de proveedores
-        const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/purchase-orders/${existingOrder[0].idFocaltec}/status`;
-        const body = {
-            status: 'CANCELLED'
-        };
-
+        // 2.2) Cancelar en portal (PUT)
+        const idFocaltec = existing[0].idFocaltec;
+        console.log(idFocaltec)
+        const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/purchase-orders/${idFocaltec}/status`;
         try {
-            const response = await axios.put(endpoint, body,
+            const resp = await axios.put(
+                endpoint,
+                { status: 'CANCELLED' },
                 {
                     headers: {
                         'PDPTenantKey': apiKeys[index],
                         'PDPTenantSecret': apiSecrets[index],
                         'Content-Type': 'application/json'
-                    }
-                })
-
+                    },
+                    timeout: 30000
+                }
+            );
             console.log(
-                `📤 [${i + 1} / ${cancelledOrders.length}] PO ${ponumber} cancelada en el portal` +
-                `▶ Status: ${response.status} ${response.statusText} - Tenant: ${tenantIds[index]}`
-            )
-
-        } catch (error) {
-            console.error(`⚠ [${i + 1} / ${cancelledOrders.length}] Error al cancelar la PO ${ponumber} en el portal:`, error.message);
-            console.error(`Detalles:`, error.response ? error.response.data : 'No response data');
-            // Si hay un error al cancelar en el portal, no actualizamos la base de datos
-            console.error(`La orden ${ponumber} no se actualizará a CANCELLED en la base de datos.`);
-            continue; // continuar con la siguiente orden
-        }
-
-        // 3.2. Si la orden existe, actualizar el estado a 'CANCELLED'
-        if (existingOrder.length > 0) {
-            const updateSql = `
-        UPDATE dbo.fesaOCFocaltec
-        SET status = 'CANCELLED',
-            lastUpdate = GETDATE()
-        WHERE ocSage = '${ponumber}'
-            AND idDatabase = '${databases[index]}'
-            AND idFocaltec IS NOT NULL
-            AND status = 'POSTED'
-        `;
-
-            try {
-                await runQuery(updateSql, databases[index]);
-                console.log(`Orden ${ponumber} actualizada a CANCELLED en el tenant ${tenantIds[index]}`);
-            } catch (error) {
-                console.error(`Error al actualizar la orden ${ponumber} en el tenant ${tenantIds[index]}:`, error);
+                `📤 [${i + 1}/${recordset.length}] PO ${ponumber} cancelada en portal\n` +
+                `   ▶ Endpoint: ${endpoint}\n` +
+                `   ▶ Status:   ${resp.status} ${resp.statusText}`
+            );
+        } catch (err) {
+            console.error(`🚨 [${i + 1}/${recordset.length}] Error cancelando PO ${ponumber}:`);
+            if (err.response) {
+                console.error(`   ▶ ${err.response.status} ${err.response.statusText}`);
+                console.error(`   ▶ Body:`, err.response.data);
+            } else {
+                console.error(`   ▶ ${err.message}`);
             }
-
+            continue;
         }
 
+        // 2.3) Actualizar FESA a CANCELLED
+        const updateSql = `
+      UPDATE dbo.fesaOCFocaltec
+         SET status     = 'CANCELLED',
+             lastUpdate = GETDATE()
+       WHERE ocSage     = '${ponumber}'
+         AND idDatabase = '${databases[index]}'
+         AND idFocaltec IS NOT NULL
+         AND status     = 'POSTED'
+    `;
+        try {
+            await runQuery(updateSql, 'FESA');
+            console.log(`✅ PO ${ponumber} marcada CANCELLED en FESA`);
+        } catch (err) {
+            console.error(`❌ Error actualizando FESA para PO ${ponumber}:`, err);
+        }
     }
 }
+
+// cancellationPurchaseOrders(0).catch(err=>{
+//     console.log(err)
+// })
 
 module.exports = {
     cancellationPurchaseOrders

@@ -7,7 +7,7 @@ const { createPurchaseOrders } = require('./controller/PortalOC_Creation');
 const { spawn } = require('child_process');
 const { sendMail } = require('./utils/EmailSender');
 const { buildProvidersXML } = require('./controller/Providers_Downloader');
-const { logGenerator } = require('./utils/Logger');
+const { logGenerator } = require('./utils/LogGenerator');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
