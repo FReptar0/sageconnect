@@ -5,7 +5,6 @@ const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
 const path_env = dotenv.config({ path: '.env.path' });
 const fs = require('fs');
 const path = require('path');
-const os = require('os'); // Opcional en Windows si ya tienes la ruta absoluta
 const { runQuery } = require('../utils/SQLServerConnection');
 const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;

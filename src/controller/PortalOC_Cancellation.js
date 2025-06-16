@@ -15,7 +15,6 @@ const {
 
 // utilería de conexión
 const { runQuery } = require('../utils/SQLServerConnection');
-const e = require('express');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
