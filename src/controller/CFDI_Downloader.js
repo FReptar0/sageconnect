@@ -28,19 +28,33 @@ apiSecrets.push(...apiSecretValues);
  * Función auxiliar para extraer OrdenCompra y AFE desde additional_info.
  * Se espera que additional_info sea un arreglo de objetos con la estructura:
  * { field: { external_id: 'Orden_de_compra' or 'AFE', ... }, value: { raw: 'valor' } }
+ * Si existe 'OC', se usa ese valor y se ignora 'orden_de_compra'.
+ * Si no existe ninguno, se deja en blanco.
  */
 function getAfeAndOrden(additional_info) {
-    const ordenObj = additional_info.find(item =>
+    let ordenCompra = '';
+    // Buscar primero OC
+    const ocObj = additional_info.find(item =>
         item.field &&
         item.field.external_id &&
-        item.field.external_id.toLowerCase() === 'orden_de_compra'
+        item.field.external_id.toLowerCase() === 'oc'
     );
+    if (ocObj && ocObj.value) {
+        ordenCompra = ocObj.value.raw;
+    } else {
+        // Si no hay OC, buscar orden_de_compra
+        const ordenObj = additional_info.find(item =>
+            item.field &&
+            item.field.external_id &&
+            item.field.external_id.toLowerCase() === 'orden_de_compra'
+        );
+        ordenCompra = ordenObj && ordenObj.value ? ordenObj.value.raw : '';
+    }
     const afeObj = additional_info.find(item =>
         item.field &&
         item.field.external_id &&
         item.field.external_id.toLowerCase() === 'afe'
     );
-    const ordenCompra = ordenObj && ordenObj.value ? ordenObj.value.raw : '';
     const afe = afeObj && afeObj.value ? afeObj.value.raw : '';
     return { ordenCompra, afe };
 }
