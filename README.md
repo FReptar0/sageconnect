@@ -135,6 +135,26 @@ These are the credentials needed to send emails using the google API
 >
 > :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
+## Preserving Local Environment Files
+
+This project tracks several `.env` files in the repo:
+
+- `.env`
+- `.env.credentials.database`
+- `.env.credentials.focaltec`
+- `.env.credentials.mailing`
+- `.env.path`
+
+To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
+
+```bash
+git update-index --skip-worktree .env
+git update-index --skip-worktree .env.credentials.database
+git update-index --skip-worktree .env.credentials.focaltec
+git update-index --skip-worktree .env.credentials.mailing
+git update-index --skip-worktree .env.path
+
+
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
 1. Go to the following [link](https://console.cloud.google.com/apis/)
