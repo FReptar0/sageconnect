@@ -54,7 +54,7 @@ async function buildProvidersXML(index) {
     // 1. Obtener proveedores
     let providers = await getProviders(index);
     if (!providers || providers.length === 0) {
-        console.log('No hay proveedores para procesar.');
+        console.log('[WARN] No hay proveedores para procesar.');
         return;
     }
 
@@ -229,9 +229,9 @@ async function buildProvidersXML(index) {
 
     try {
         fs.writeFileSync(outputPath, xml, 'utf8');
-        console.log('Archivo XML generado en:', outputPath);
+        console.log('[OK] Archivo XML generado en:', outputPath);
     } catch (err) {
-        console.error('Error al escribir el archivo XML:', err);
+        console.error('[ERROR] Error al escribir el archivo XML:', err);
         logGenerator('buildProvidersXML', 'ERROR', err);
     }
 }

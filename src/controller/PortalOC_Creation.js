@@ -25,6 +25,8 @@ const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
 const externalId = EXTERNAL_IDS.split(',');
 
+const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+
 async function createPurchaseOrders(index) {
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
@@ -171,7 +173,7 @@ order by A.PONUMBER, B.DETAILNUM;
   let recordset;
   try {
     ({ recordset } = await runQuery(sql, databases[index]));
-    console.log(`🔍 Recuperadas ${recordset.length} filas de la base`);
+    console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
   } catch (dbErr) {
     console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
     return;
@@ -196,7 +198,7 @@ order by A.PONUMBER, B.DETAILNUM;
     `;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
-      console.log(`⚠ [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      console.log(`[WARN] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       continue;
     }
 
@@ -208,10 +210,10 @@ order by A.PONUMBER, B.DETAILNUM;
     // 4.3) Validar con Joi
     try {
       validateExternPurchaseOrder(po);
-      console.log(`✅ [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación Joi`);
+      console.log(`[OK] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación Joi`);
     } catch (valErr) {
-      console.error(`❌ Joi validation failed for PO ${po.external_id}:`);
-      valErr.details.forEach(d => console.error(`   • ${d.message}`));
+      console.error(`[ERROR] Joi validation failed for PO ${po.external_id}:`);
+      valErr.details.forEach(d => console.error(`   -> ${d.message}`));
 
       // Insert ERROR en fesaOCFocaltec
       const respAPI = valErr.details.map(d => d.message).join('; ');
@@ -233,7 +235,7 @@ order by A.PONUMBER, B.DETAILNUM;
     }
 
     // 4.4) Enviar al portal
-    const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/purchase-orders`;
+    const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
       const resp = await axios.post(
         endpoint,
@@ -248,8 +250,8 @@ order by A.PONUMBER, B.DETAILNUM;
         }
       );
       console.log(
-        `📤 [${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
-        `   ▶ Status: ${resp.status} ${resp.statusText}`
+        `[INFO] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
+        `   -> Status: ${resp.status} ${resp.statusText}`
       );
 
       // 4.5) Insert POSTED en fesaOCFocaltec
@@ -270,15 +272,15 @@ order by A.PONUMBER, B.DETAILNUM;
       await runQuery(sqlOk, 'FESA');
 
     } catch (err) {
-      console.error(`🚨 [${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
+      console.error(`[ERROR] [${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
       let respAPI;
       if (err.response) {
-        console.error(`   ▶ Status: ${err.response.status} ${err.response.statusText}`);
-        console.error(`   ▶ Body:`, err.response.data);
+        console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
+        console.error(`   -> Body:`, err.response.data);
         const { code, description } = err.response.data;
         respAPI = `${code}: ${description}`;
       } else {
-        console.error('   ▶ No hubo respuesta del servidor o timeout.');
+        console.error('   -> No hubo respuesta del servidor o timeout.');
         respAPI = err.message;
       }
 

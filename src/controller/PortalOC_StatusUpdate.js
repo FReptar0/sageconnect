@@ -33,20 +33,22 @@ const agentOptions = {
 const httpAgent = new http.Agent(agentOptions);
 const httpsAgent = new https.Agent(agentOptions);
 
+const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+
 async function main() {
     const [, , ocSage, status, idDatabase] = process.argv;
 
     if (!ocSage || !status || !idDatabase) {
-        console.error('Uso: node updatePOStatus.js <ocSage> <status> <idDatabase>');
+        console.error('[ERROR] Uso: node updatePOStatus.js <ocSage> <status> <idDatabase>');
         process.exit(1);
     }
     if (!VALID_STATUSES.has(status)) {
-        console.error(`status inválido. Debe ser uno de: ${[...VALID_STATUSES].join(',')}`);
+        console.error(`[ERROR] status inválido. Debe ser uno de: ${[...VALID_STATUSES].join(',')}`);
         process.exit(1);
     }
     const dbIndex = databases.indexOf(idDatabase);
     if (dbIndex < 0) {
-        console.error(`idDatabase desconocido: '${idDatabase}'`);
+        console.error(`[ERROR] idDatabase desconocido: '${idDatabase}'`);
         process.exit(1);
     }
 
@@ -63,13 +65,13 @@ async function main() {
     `;
         const { recordset } = await runQuery(checkSql, 'FESA');
         if (!recordset.length) {
-            logGenerator('updatePOStatus', 'warn', `No se encontró registro válido para OC=${ocSage}, DB=${idDatabase}`);
+            logGenerator('updatePOStatus', 'warn', `[WARN] No se encontró registro válido para OC=${ocSage}, DB=${idDatabase}`);
             process.exit(1);
         }
         const idFocaltec = recordset[0].idFocaltec;
 
         // 2) Enviar PUT al portal usando el puerto local 3030
-        const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[dbIndex]}/purchase-orders/${idFocaltec}/status`;
+        const endpoint = `${urlBase(dbIndex)}/purchase-orders/${idFocaltec}/status`;
         let apiResp;
         try {
             apiResp = await axios.put(
@@ -86,12 +88,12 @@ async function main() {
                     timeout: 30000
                 }
             );
-            logGenerator('updatePOStatus', 'info', `Portal respondio ${apiResp.status} para OC=${ocSage}`);
+            logGenerator('updatePOStatus', 'info', `[INFO] Portal respondio ${apiResp.status} para OC=${ocSage}`);
         } catch (err) {
             const msg = err.response
                 ? `${err.response.status} ${JSON.stringify(err.response.data)}`
                 : err.message;
-            logGenerator('updatePOStatus', 'error', `Error al llamar portal: ${msg}`);
+            logGenerator('updatePOStatus', 'error', `[ERROR] Error al llamar portal: ${msg}`);
             process.exit(1);
         }
 
@@ -105,14 +107,14 @@ async function main() {
          AND idFocaltec IS NOT NULL
     `;
         await runQuery(updateSql, 'FESA');
-        logGenerator('updatePOStatus', 'info', `Control actualizado para OC=${ocSage} a ${status}`);
+        logGenerator('updatePOStatus', 'info', `[INFO] Control actualizado para OC=${ocSage} a ${status}`);
 
-        console.log(`✔ OC ${ocSage} actualizado a ${status}`);
+        console.log(`[OK] OC ${ocSage} actualizado a ${status}`);
         process.exit(0);
 
     } catch (err) {
-        logGenerator('updatePOStatus', 'error', `Error inesperado: ${err.message}`);
-        console.error(err);
+        logGenerator('updatePOStatus', 'error', `[ERROR] Error inesperado: ${err.message}`);
+        console.error('[ERROR]', err);
         process.exit(1);
     }
 }

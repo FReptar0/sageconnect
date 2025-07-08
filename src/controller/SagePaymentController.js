@@ -69,7 +69,7 @@ async function checkPayments(index) {
                 ,'${resultPayments[i].cfdi.timbre.uuid}' 
                 ,1,60,0,0,0,1)`;
 
-                console.log("UUID:")
+                console.log('[INFO] UUID:')
                 console.log(resultPayments[i].cfdi.timbre.uuid)
 
                 const insertUUIDResult = await runQuery(insertUUIDQuery, idCiaResult.recordset[0].DataBaseName)
@@ -90,7 +90,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'info', `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 } else {
                     const data = {
@@ -101,7 +101,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'error', `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'error', `[ERROR] No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 }
             }
@@ -129,7 +129,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'info', `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'info', `[OK] Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 } else {
                     const data = {
@@ -140,7 +140,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'error', `No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'error', `[ERROR] No se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 }
             }
@@ -173,7 +173,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'info', `Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'info', `[OK] Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 } else {
                     const data = {
@@ -184,7 +184,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'error', `No se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'error', `[ERROR] No se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 }
             }
@@ -211,7 +211,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'info', `Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'info', `[OK] Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 } else {
                     const data = {
@@ -222,7 +222,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                     }
-                    logGenerator('Payment', 'error', `No se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                    logGenerator('Payment', 'error', `[ERROR] No se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                     emails.push(data);
                 }
             }
@@ -236,7 +236,7 @@ async function checkPayments(index) {
                 message: "Error al obtener el idCia",
                 position: index,
             }
-            logGenerator('Payment', 'error', `Error al obtener el idCia: No se encontró el idCia`);
+            logGenerator('Payment', 'error', '[ERROR] Error al obtener el idCia: No se encontró el idCia');
             emails.push(data);
         }
     }

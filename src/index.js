@@ -74,52 +74,56 @@ forResponse = async () => {
 
 forResponse().then(() => {
     // The spawn function is used to execute the import process
-    console.log('IMPORT_CFDIS_ROUTE:', env.parsed.IMPORT_CFDIS_ROUTE);
-    console.log('ARG:', env.parsed.ARG);
+    console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${env.parsed.IMPORT_CFDIS_ROUTE}`);
+    console.log(`[INFO] ARG: ${env.parsed.ARG}`);
 
     if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
 
         // Stdout is used to capture the data messages
         childProcess.stdout.on('data', (data) => {
-            console.log(`stdout: ${data}`);
+            console.log(`[INFO] Proceso de importación STDOUT: ${data}`);
         });
 
         // Stderr is used to capture the error messages
         childProcess.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
+            console.error(`[ERROR] Proceso de importación STDERR: ${data}`);
             const dataMail = {
                 h1: 'Error en el proceso de importación',
                 p: 'El proceso de importación de CFDIs ha fallado',
                 status: 500,
-                message: `stderr: ${data}`,
+                message: `[ERROR] STDERR: ${data}`,
                 position: 1,
                 idCia: 'Global'
             }
 
             sendMail(dataMail).catch((error) => {
-                console.log(error);
+                console.error('[ERROR] Fallo al enviar correo de error de importación:', error);
             });
         });
 
         // Close is used to capture the close event
         childProcess.on('close', (code) => {
-            console.log(`child process exited with code ${code}`);
+            if (code === 0) {
+                console.log(`[OK] Proceso de importación finalizado correctamente con código ${code}`);
+            } else {
+                console.error(`[ERROR] Proceso de importación finalizó con código ${code}`);
+            }
         });
     } else {
-        console.log('No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG');
+        console.warn('[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG. El proceso de importación de CFDIs no se ejecutará.');
 
         const data = {
             h1: 'Error en el proceso de importación',
             p: 'El proceso de importación de CFDIs ha fallado',
             status: 500,
-            message: 'No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG',
+            message: '[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG',
             position: 1,
             idCia: 'Global'
         }
 
         sendMail(data).catch((error) => {
-            console.log(error);
+            console.error('[ERROR] Fallo al enviar correo de error de importación:', error);
         });
     }
 
@@ -127,6 +131,6 @@ forResponse().then(() => {
     console.log(error);
 }).finally(() => {
     server.close(() => {
-        console.log('Server is closed');
+        console.log('[INFO] Server is closed');
     });
 });

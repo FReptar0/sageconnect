@@ -21,6 +21,7 @@ const tenantIds = TENANT_ID.split(',');
 const apiKeys = API_KEY.split(',');
 const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
+const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
@@ -39,16 +40,16 @@ async function cancellationPurchaseOrders(index) {
     let recordset;
     try {
         ({ recordset } = await runQuery(sql, databases[index]));
-        console.log(`🔍 Recuperadas ${recordset.length} filas de la base`);
+        console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
     } catch (err) {
-        console.error(`❌ Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}:`, err);
+        console.error(`[ERROR] Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}:`, err);
         return;
     }
 
     // 2) Para cada PO, verificar y cancelar
     for (let i = 0; i < recordset.length; i++) {
         const ponumber = recordset[i].PONUMBER;
-        console.log(`\n⏳ Procesando [${i + 1}/${recordset.length}] PO ${ponumber}`);
+        console.log(`\n[PROCESS] Procesando [${i + 1}/${recordset.length}] PO ${ponumber}`);
 
         // 2.1) Verificar en fesaOCFocaltec
         const checkSql = `
@@ -67,14 +68,14 @@ async function cancellationPurchaseOrders(index) {
             continue;
         }
         if (existing.length === 0) {
-            console.log(`⚠ PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
+            console.log(`[WARN] PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
             continue;
         }
 
         // 2.2) Cancelar en portal (PUT)
         const idFocaltec = existing[0].idFocaltec;
         console.log(idFocaltec)
-        const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/purchase-orders/${idFocaltec}/status`;
+        const endpoint = `${urlBase(index)}/purchase-orders/${idFocaltec}/status`;
         try {
             const resp = await axios.put(
                 endpoint,
@@ -89,17 +90,17 @@ async function cancellationPurchaseOrders(index) {
                 }
             );
             console.log(
-                `📤 [${i + 1}/${recordset.length}] PO ${ponumber} cancelada en portal\n` +
-                `   ▶ Endpoint: ${endpoint}\n` +
-                `   ▶ Status:   ${resp.status} ${resp.statusText}`
+                `[INFO] [${i + 1}/${recordset.length}] PO ${ponumber} cancelada en portal\n` +
+                `   -> Endpoint: ${endpoint}\n` +
+                `   -> Status:   ${resp.status} ${resp.statusText}`
             );
         } catch (err) {
-            console.error(`🚨 [${i + 1}/${recordset.length}] Error cancelando PO ${ponumber}:`);
+            console.error(`[ERROR] [${i + 1}/${recordset.length}] Error cancelando PO ${ponumber}:`);
             if (err.response) {
-                console.error(`   ▶ ${err.response.status} ${err.response.statusText}`);
-                console.error(`   ▶ Body:`, err.response.data);
+                console.error(`   -> ${err.response.status} ${err.response.statusText}`);
+                console.error(`   -> Body:`, err.response.data);
             } else {
-                console.error(`   ▶ ${err.message}`);
+                console.error(`   -> ${err.message}`);
             }
             continue;
         }
@@ -116,9 +117,9 @@ async function cancellationPurchaseOrders(index) {
     `;
         try {
             await runQuery(updateSql, 'FESA');
-            console.log(`✅ PO ${ponumber} marcada CANCELLED en FESA`);
+            console.log(`[OK] PO ${ponumber} marcada CANCELLED en FESA`);
         } catch (err) {
-            console.error(`❌ Error actualizando FESA para PO ${ponumber}:`, err);
+            console.error(`[ERROR] Error actualizando FESA para PO ${ponumber}:`, err);
         }
     }
 }
