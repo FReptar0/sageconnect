@@ -1,243 +1,311 @@
 const { runQuery } = require('../utils/SQLServerConnection');
-const { sendMail } = require('../utils/EmailSender');
+// const { sendMail }     = require('../utils/EmailSender'); // email sending disabled
+const { logGenerator } = require('../utils/LogGenerator');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
-const { logGenerator } = require('../utils/LogGenerator');
 
-const database = [];
-const tenantIds = []
-const apiKeys = []
-const apiSecrets = []
+const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
 
-const url = credentials.parsed.URL;
-const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
-const apiKeyValues = credentials.parsed.API_KEY.split(',');
-const apiSecretValues = credentials.parsed.API_SECRET.split(',');
-const databaseValues = credentials.parsed.DATABASES.split(',');
+const {
+    TENANT_ID,
+    API_KEY,
+    API_SECRET,
+    URL,
+    DATABASES
+} = credentials;
 
-tenantIds.push(...tenantIdValues);
-apiKeys.push(...apiKeyValues);
-apiSecrets.push(...apiSecretValues);
-database.push(...databaseValues);
+// preparamos arrays de tenants/keys/etc.
+const tenantIds = TENANT_ID.split(',');
+const apiKeys = API_KEY.split(',');
+const apiSecrets = API_SECRET.split(',');
+const database = DATABASES.split(',');
 
 async function uploadPayments(index) {
     try {
+        const currentDate = new Date()
+            .toISOString()
+            .slice(0, 10)
+            .replace(/-/g, '');
 
-        const currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+        console.log(`\n=== Iniciando uploadPayments para tenant index=${index} (db=${database[index]}) con fecha desde ${currentDate} ===`);
 
-        // Get the daily payments from Sage
+        // TODO: Fecha setearla 20250618, agregar campo de full_paid a la tabla de control,
+        // TODO: Agregar filtro para cuando en un solo batch vengan facturas completamente pagadas y facturas parciales, se deberan mandar en dos consultas (preliminarmete)
 
-        const queryEncabezadosPago = `SELECT A.* FROM (SELECT P.CNTBTCH as LotePago, P.CNTENTR as AsientoPago, RTRIM(BK.ADDR1) AS bank_account_id, B.IDBANK, P.DATEBUS as FechaAsentamiento
-        , P.DOCNBR as external_id,P.TEXTRMIT AS comments, P.TXTRMITREF AS reference
-        , CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency
-        ,P.DATERMIT as payment_date, RTRIM(P.IDVEND) as provider_external_id
-        , P.AMTRMIT as total_amount
-        , 'TRANSFER' as operation_type
-        , P.RATEEXCHHC as TipoCambioPago
-        , ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD ='RFC' AND VENDORID = P.IDVEND ),'') AS RFC
-        , ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD ='PROVIDERID' AND VENDORID = P.IDVEND ),'') AS PROVIDERID
-        FROM APBTA B, BKACCT BK, APTCR P
-        WHERE B.IDBANK = BK.BANK  AND B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
-        AND P.ERRENTRY = 0 AND P.RMITTYPE = 1
-        AND B.PAYMTYPE='PY' AND B.BATCHSTAT = 3 AND P.DATEBUS>=${currentDate}
-        AND P.DOCNBR NOT IN (SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec WHERE idCia = P.AUDTORG AND  NoPagoSage = P.DOCNBR )
-        AND P.DOCNBR NOT IN (SELECT IDINVC FROM APPYM WHERE IDBANK = B.IDBANK AND CNTBTCH = P.CNTBTCH AND CNTITEM =P.CNTENTR AND SWCHKCLRD = 2 )) AS A WHERE PROVIDERID <> ''`;
+        // 1) Get today’s payments from Sage, but exclude only those already in our control table
+        const queryEncabezadosPago = `
+SELECT A.* FROM (
+  SELECT
+    P.CNTBTCH    AS LotePago,
+    P.CNTENTR    AS AsientoPago,
+    RTRIM(BK.ADDR1)   AS bank_account_id,
+    B.IDBANK,
+    P.DATEBUS    AS FechaAsentamiento,
+    RTRIM(P.DOCNBR)     AS external_id,
+    P.TEXTRMIT   AS comments,
+    P.TXTRMITREF AS reference,
+    CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency,
+    P.DATERMIT   AS payment_date,
+    RTRIM(P.IDVEND)   AS provider_external_id,
+    P.AMTRMIT    AS total_amount,
+    'TRANSFER'   AS operation_type,
+    P.RATEEXCHHC AS TipoCambioPago,
+    ISNULL(
+      (SELECT [VALUE]
+       FROM APVENO
+       WHERE OPTFIELD = 'RFC'
+         AND VENDORID = P.IDVEND
+      ),
+      ''
+    ) AS RFC,
+    ISNULL(
+      (SELECT [VALUE]
+       FROM APVENO
+       WHERE OPTFIELD = 'PROVIDERID'
+         AND VENDORID = P.IDVEND
+      ),
+      ''
+    ) AS PROVIDERID
+  FROM APBTA B
+  JOIN BKACCT BK ON B.IDBANK    = BK.BANK
+  JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
+                  AND B.CNTBTCH   = P.CNTBTCH
+  WHERE B.PAYMTYPE   = 'PY'
+    AND B.BATCHSTAT  = 3
+    AND P.ERRENTRY   = 0
+    AND P.RMITTYPE   = 1
+    AND P.DATEBUS   >= ${currentDate}
+    AND P.DOCNBR NOT IN (
+      SELECT NoPagoSage
+      FROM fesa.dbo.fesaPagosFocaltec
+      WHERE idCia       = P.AUDTORG
+        AND NoPagoSage  = P.DOCNBR
+    )
+    AND P.DOCNBR NOT IN (
+      SELECT IDINVC
+      FROM APPYM
+      WHERE IDBANK    = B.IDBANK
+        AND CNTBTCH   = P.CNTBTCH
+        AND CNTITEM   = P.CNTENTR
+        AND SWCHKCLRD = 2
+    )
+) AS A
+`;
+        console.log('Ejecutando queryEncabezadosPago...');
+        const payments = await runQuery(queryEncabezadosPago, database[index])
+            .catch(err => {
+                logGenerator('PortalPaymentController', 'error', `Error queryEncabezadosPago: ${err.message}`);
+                console.error('❌ Falló queryEncabezadosPago:', err.message);
+                return { recordset: [] };
+            });
 
-        const payments = await runQuery(queryEncabezadosPago, database[index]).catch((err) => {
-            console.log(err)
-            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryEncabezadosPago ${err}`)
-            return {
-                recordset: []
+        console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos.`);
+
+        // 2) Filtrar registros sin PROVIDERID
+        const beforeCount = payments.recordset.length;
+        payments.recordset = payments.recordset.filter(r => {
+            if (!r.PROVIDERID || r.PROVIDERID.trim() === '') {
+                logGenerator(
+                    'PortalPaymentController',
+                    'warn',
+                    `Proveedor ${r.provider_external_id} no tiene PROVIDERID seteado.`
+                );
+                console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío`);
+                return false;
             }
-        })
+            return true;
+        });
+        console.log(`[INFO] Se omitieron ${beforeCount - payments.recordset.length} pagos sin PROVIDERID.`);
 
-        const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
-        const pagosRegistrados = await runQuery(queryPagosRegistrados).catch((err) => {
-            console.log(err);
-            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryPagosRegistrados ${err}`)
-            return {
-                recordset: []
-            }
-        })
+        // 3) Filtrar por control table (todos los NoPagoSage ya existentes)
+        const queryPagosRegistrados = `
+      SELECT NoPagoSage
+      FROM fesa.dbo.fesaPagosFocaltec
+    `;
+        console.log('[INFO] Ejecutando queryPagosRegistrados...');
+        const pagosRegistrados = await runQuery(queryPagosRegistrados)
+            .catch(err => {
+                logGenerator('PortalPaymentController', 'error', `Error queryPagosRegistrados: ${err.message}`);
+                console.error('❌ Falló queryPagosRegistrados:', err.message);
+                return { recordset: [] };
+            });
 
-        // If an external_id corresponds to some NoPagoSage, verify in which position of the array it is and delete it
-        if (pagosRegistrados.recordset.length > 0) {
-            for (let i = 0; i < pagosRegistrados.recordset.length; i++) {
-                for (let j = 0; j < payments.recordset.length; j++) {
-                    if (pagosRegistrados.recordset[i].NoPagoSage === payments.recordset[j].external_id) {
-                        payments.recordset.splice(j, 1);
-                    }
-                }
-            }
+        const existingSet = new Set(pagosRegistrados.recordset.map(r => r.NoPagoSage));
+        const beforeFilter = payments.recordset.length;
+        payments.recordset = payments.recordset.filter(p => !existingSet.has(p.external_id));
+        console.log(`[INFO] Se omitieron ${beforeFilter - payments.recordset.length} pagos ya registrados en control.`);
+
+        if (!payments.recordset.length) {
+            console.log('[OK] No hay pagos nuevos para procesar.');
+            return;
         }
 
-        if (payments.recordset.length > 0) {
-            for (let i = 0; i < payments.recordset.length; i++) {
-                const cfdis = [];
+        // 4) Procesar cada pago restante
+        for (let i = 0; i < payments.recordset.length; i++) {
+            const hdr = payments.recordset[i];
+            console.log(`\n[PROCESS] Procesando pago [${i + 1}/${payments.recordset.length}]: ${hdr.external_id}`);
 
-                // Consult the invoices paid with the LotePago and AsientoPago of the previous query
-                const queryFacturasPagadas = `SELECT DP.CNTBTCH as LotePago,DP.CNTRMIT as AsientoPago,  RTRIM(DP.IDVEND) as IDVEND, RTRIM(DP.IDINVC) AS IDINVC, H.AMTGROSDST AS invoice_amount, DP.DOCTYPE
-            , CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency
-            , H.EXCHRATEHC  AS invoice_exchange_rate
-            , DP.AMTPAYM  AS payment_amount
-            , ISNULL((SELECT RTRIM([VALUE]) FROM APIBHO  WHERE CNTBTCH = H.CNTBTCH  AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'),'') AS UUID
-            FROM APTCP DP , APIBH H, APIBC C
-            WHERE DP.BATCHTYPE ='PY' AND DP.CNTBTCH= ${payments.recordset[i].LotePago} AND DP.CNTRMIT = ${payments.recordset[i].AsientoPago} AND DP.DOCTYPE = 1
-            AND H.ORIGCOMP='' AND DP.IDVEND = H.IDVEND  AND DP.IDINVC = H.IDINVC  AND H.ERRENTRY = 0 AND H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3`;
-                const invoices = await runQuery(queryFacturasPagadas, database[index]).catch((err) => {
-                    console.log(err)
-                    logGenerator('PortalPaymentController', 'error', `Error al ejecutar la consulta de pagos queryFacturasPagadas ${err}`)
-                    return {
-                        recordset: []
-                    }
-                })
+            // 4.1) Consultar facturas asociadas
+            const queryFacturasPagadas = `
+        SELECT
+          DP.CNTBTCH        AS LotePago,
+          DP.CNTRMIT        AS AsientoPago,
+          RTRIM(DP.IDINVC)  AS invoice_external_id,
+          H.AMTGROSDST      AS invoice_amount,
+          CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
+          H.EXCHRATEHC      AS invoice_exchange_rate,
+          DP.AMTPAYM        AS payment_amount,
+          ISNULL(
+            (SELECT SWPAID
+             FROM APOBL
+             WHERE IDINVC = DP.IDINVC
+               AND IDVEND = DP.IDVEND),
+            0
+          )                   AS FULL_PAID,
+          ISNULL(
+            (SELECT RTRIM([VALUE])
+             FROM APIBHO
+             WHERE CNTBTCH = H.CNTBTCH
+               AND CNTITEM = H.CNTITEM
+               AND OPTFIELD = 'FOLIOCFD'
+            ),
+            ''
+          )                   AS UUID
+        FROM APTCP DP
+        JOIN APIBH H ON DP.IDVEND = H.IDVEND
+                   AND DP.IDINVC = H.IDINVC
+                   AND H.ERRENTRY = 0
+        JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH
+                   AND C.BTCHSTTS = 3
+        WHERE DP.BATCHTYPE = 'PY'
+          AND DP.CNTBTCH   = ${hdr.LotePago}
+          AND DP.CNTRMIT   = ${hdr.AsientoPago}
+          AND DP.DOCTYPE   = 1
+      `;
+            console.log(`  [INFO] Ejecutando queryFacturasPagadas para lote ${hdr.LotePago} / asiento ${hdr.AsientoPago}...`);
+            const invoices = await runQuery(queryFacturasPagadas, database[index])
+                .catch(err => {
+                    logGenerator('PortalPaymentController', 'error', `Error queryFacturasPagadas: ${err.message}`);
+                    console.error('  [ERROR] Falló queryFacturasPagadas:', err.message);
+                    return { recordset: [] };
+                });
 
-                if (invoices.recordset.length > 0) {
-                    for (let j = 0; j < invoices.recordset.length; j++) {
-                        const cfdi = {
-                            "amount": invoices.recordset[j].payment_amount,
-                            "currency": invoices.recordset[j].invoice_currency,
-                            "exchange_rate": invoices.recordset[j].invoice_exchange_rate,
-                            "payment_amount": invoices.recordset[j].payment_amount,
-                            "payment_currency": payments.recordset[i].bk_currency,
-                            "uuid": invoices.recordset[j].UUID,
-                        }
-                        cfdis.push(cfdi);
-                    }
-                    const date = payments.recordset[i].payment_date.toString();
+            if (!invoices.recordset.length) {
+                console.log(`  [INFO] No hay facturas pagadas para Lote ${hdr.LotePago} / Asiento ${hdr.AsientoPago}.`);
+                continue;
+            }
 
-                    const payment_date = date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6, 8) + 'T10:00:00.000Z'
+            // 4.2) Construir cfdis con lógica de exchange_rate
+            const cfdis = invoices.recordset.map(inv => {
+                const sameCurrency = inv.invoice_currency === hdr.bk_currency;
+                return {
+                    amount: inv.invoice_amount,
+                    currency: inv.invoice_currency,
+                    exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
+                    payment_amount: inv.payment_amount,
+                    payment_currency: hdr.bk_currency,
+                    uuid: inv.UUID
+                };
+            });
 
-                    const payment = {
-                        "bank_account_id": payments.recordset[i].bank_account_id,
-                        "cfdis": cfdis,
-                        "comments": payments.recordset[i].comments,
-                        "currency": payments.recordset[i].bk_currency,
-                        "external_id": payments.recordset[i].external_id,
-                        "ignore_amounts": false,
-                        "mark_existing_cfdi_as_payed": true,
-                        "open": false,
-                        "operation_type": payments.recordset[i].operation_type,
-                        "payment_date": payment_date,
-                        "provider_external_id": payments.recordset[i].provider_external_id,
-                        "reference": payments.recordset[i].reference,
-                        "total_amount": payments.recordset[i].total_amount,
-                    }
+            const allFull = invoices.recordset.every(inv =>
+                inv.FULL_PAID === 1 || inv.FULL_PAID === '1'
+            );
+            console.log(`  [INFO] Estado pago completo? ${allFull}`);
 
-                    const response = await axios.post(`${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`, payment, {
-                        headers: {
-                            'PDPTenantKey': apiKeys[index],
-                            'PDPTenantSecret': apiSecrets[index]
-                        }
-                    }).catch(error => {
-                        console.log(error);
-                        logGenerator('PortalPaymentController', 'error', `Error al ejecutar la peticion POST de pagos ${error}`)
-                        return {
-                            status: 500,
-                            data: error
-                        }
+            const d = hdr.payment_date.toString(); // YYYYMMDD
+            const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
+
+            // 4.3) Payload
+            const payload = {
+                bank_account_id: hdr.bank_account_id,
+                cfdis,
+                comments: hdr.comments,
+                currency: hdr.bk_currency,
+                external_id: hdr.external_id,
+                ignore_amounts: false,
+                // mark_existing_cfdi_as_payed: allFull,
+                open: !allFull,
+                operation_type: hdr.operation_type,
+                payment_date,
+                provider_external_id: hdr.provider_external_id,
+                reference: hdr.reference,
+                total_amount: hdr.total_amount
+            };
+
+            console.log('  [INFO] Payload generado:', JSON.stringify(payload, null, 2));
+
+            // 4.4) Enviar al portal
+            const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
+            console.log(`  [INFO] POST ${endpoint}`);
+            const resp = await axios.post(endpoint, payload, {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index],
+                    'Content-Type': 'application/json'
+                }
+            }).catch(err => {
+                logGenerator('PortalPaymentController', 'error', `Error POST payment: ${err.message}`);
+                return err.response || { status: 500, data: err.message };
+            });
+
+            if (resp.status === 200) {
+                console.log(`  [OK] Pago ${hdr.external_id} enviado con éxito (200)`);
+                logGenerator(
+                    'PortalPaymentController',
+                    'success',
+                    `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[index]}`
+                );
+
+                // 4.5) Registrar en control table
+                const statusTag = allFull ? 'PAID' : 'PARTIAL';
+                const insertSql = `
+          INSERT INTO fesa.dbo.fesaPagosFocaltec
+            (idCia, NoPagoSage, status)
+          VALUES
+            ('${database[index]}',
+             '${hdr.external_id}',
+             '${statusTag}'
+            )
+        `;
+                console.log(`  [INFO] INSERT control table con status='${statusTag}'`);
+                const result = await runQuery(insertSql)
+                    .catch(err => {
+                        logGenerator('PortalPaymentController', 'error', `Insert control table failed: ${err.message}`);
+                        console.error('  ❌ Falló INSERT control table:', err.message);
+                        return { rowsAffected: [0] };
                     });
 
-                    if (response.status === 200) {
-                        const message = 'Se ejecuto correctamente el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id;
-
-                        const data = {
-                            h1: 'Alta de pagos en portal',
-                            p: 'Se ejecuto el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id,
-                            status: response.status,
-                            message: message,
-                            position: index,
-                            idCia: database[index]
-                        }
-
-                        logGenerator('PortalPaymentController', 'success', `Se ejecuto correctamente el proceso de alta de pagos en portal, para la compañia ${database[index]} con el NoPagoSage ${payments.recordset[i].external_id}`)
-
-                        await sendMail(data).catch((err) => {
-                            console.log(err)
-                            logGenerator('PortalPaymentController', 'error', `Error al enviar el correo de alta de pagos en portal ${err}`)
-                        })
-
-                        // Insert the idCia and NoPagoSage in the fesaPagosFocaltec table
-                        const queryInsert = `INSERT INTO fesa.dbo.fesaPagosFocaltec (idCia, NoPagoSage) VALUES ('${database[index]}', '${payments.recordset[i].external_id}')`;
-                        const result = await runQuery(queryInsert).catch((err) => {
-                            console.log(err)
-                            logGenerator('PortalPaymentController', 'error', `Error al ejecutar la insercion de pagos en fesaPagosFocaltec ${err}`)
-                            return {
-                                rowsAffected: [0]
-                            }
-                        })
-
-                        if (result.rowsAffected[0] > 0) {
-                            console.log('Se inserto correctamente el pago en la tabla fesaPagosFocaltec');
-                            logGenerator('PortalPaymentController', 'success', `Se inserto correctamente el pago en la tabla fesaPagosFocaltec`)
-                        } else {
-                            console.log('No se inserto el pago en la tabla fesaPagosFocaltec');
-                            logGenerator('PortalPaymentController', 'error', `No se inserto el pago en la tabla fesaPagosFocaltec`)
-                        }
-                    } else {
-                        console.log('No se pudo insertar el pago en portal');
-
-                        const data = {
-                            h1: 'Alta de pagos en portal',
-                            p: 'No se ejecuto el proceso de alta de pagos en portal, para la compañia ' + database[index] + ' con el NoPagoSage ' + payments.recordset[i].external_id,
-                            status: response.status,
-                            message: response.data,
-                            position: index,
-                            idCia: database[index]
-                        }
-
-                        logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso de alta de pagos en portal, para la compañia ${database[index]} con el NoPagoSage ${payments.recordset[i].external_id}`)
-
-                        await sendMail(data).catch((err) => {
-                            console.log(err)
-                            logGenerator('PortalPaymentController', 'error', `Error al enviar el correo de alta de pagos en portal ${err}`)
-                        })
-
-                        try {
-                            notifier.notify({
-                                title: 'Error al ejecutar el proceso de alta de pagos en portal',
-                                message: 'No se ejecuto el proceso: ' + response.data,
-                                sound: true,
-                                wait: true,
-                                icon: process.cwd() + '/public/img/cerrar.png'
-                            });
-                            logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso: ${response.data}`)
-                        } catch (error) {
-                            console.log(error)
-                            logGenerator('PortalPaymentController', 'error', `Error al ejecutar el proceso de alta de pagos en portal ${error}`)
-                            console.log("No se ejecuto el proceso: " + response.data)
-                        }
-                    }
-
+                if (result.rowsAffected[0]) {
+                    console.log(`  [OK] Control table actualizado para pago ${hdr.external_id}.`);
                 } else {
-                    console.log('No hay facturas pagadas para subir a portal');
+                    console.warn(`  [WARN] No se insertó control para pago ${hdr.external_id}.`);
                 }
+
+            } else {
+                console.error(`  [ERROR] Falló envío pago ${hdr.external_id}: ${resp.status}`);
+                console.error('    Detalle:', resp.data);
+                logGenerator(
+                    'PortalPaymentController',
+                    'error',
+                    `Error al enviar pago ${hdr.external_id}: ${resp.status} ${JSON.stringify(resp.data)}`
+                );
             }
-        } else {
-            console.log('No hay pagos para subir a portal');
         }
 
-    } catch (error) {
-        //console.log(error);
-        try {
-            notifier.notify({
-                title: 'Error al ejecutar el proceso de alta de pagos en portal',
-                message: 'No se ejecuto el proceso: ' + error,
-                sound: true,
-                wait: true,
-                icon: process.cwd() + '/public/img/cerrar.png'
-            });
-            logGenerator('PortalPaymentController', 'error', `No se ejecuto el proceso: ${error}`)
-        } catch (err) {
-            console.log(err);
-            logGenerator('PortalPaymentController', 'error', `Error al ejecutar el proceso de alta de pagos en portal ${err}`)
-        }
+    } catch (err) {
+        console.error('[ERROR] Error inesperado en uploadPayments:', err.message);
+        logGenerator('PortalPaymentController', 'error', `Unexpected error: ${err.message}`);
+        notifier.notify({
+            title: 'Error en uploadPayments',
+            message: err.message,
+            sound: true,
+            wait: true
+        });
     }
-
 }
 
 module.exports = {
-    uploadPayments,
-}
+    uploadPayments
+};

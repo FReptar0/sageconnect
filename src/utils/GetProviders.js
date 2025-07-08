@@ -22,6 +22,8 @@ apiKeys.push(...apiKeyValues);
 apiSecrets.push(...apiSecretValues);
 databases.push(...databaseValues);
 
+const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers`;
+
 /**
  * Consulta la información de proveedores desde el API aplicando filtros por estado y fechas.
  * @param {number} index - Índice del tenant a procesar.
@@ -30,10 +32,11 @@ databases.push(...databaseValues);
 async function getProviders(index) {
     // Se usa el mes actual como referencia para las fechas de aceptación
     let today = new Date().toISOString().slice(0, 10);
-    console.log('Today:', today);
+    console.log('[INFO] Today:', today);
     try {
         const response = await axios.get(
-            `${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers?statusExpedient=ACCEPTED&expedientAcceptedFrom=${today}&expedientAcceptedTo=${today}&status=ENABLED&pageSize=-1`,
+            urlBase(index) +
+            `?statusExpedient=ACCEPTED&expedientAcceptedFrom=${today}&expedientAcceptedTo=${today}&status=ENABLED&pageSize=-1`,
             {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
@@ -42,20 +45,19 @@ async function getProviders(index) {
             }
         );
         
-    
         if (response.data.total === 0) {
-            console.log('No providers found');
+            console.log('[INFO] No providers found');
             logGenerator('getProviders', 'INFO', 'No providers found');
             return [];
         }
 
         return response.data.items;
     } catch (error) {
-        console.error('Error fetching providers:', error);
+        console.error('[ERROR] Error fetching providers:', error);
         logGenerator('getProviders', 'ERROR', error);
         notifier.notify({
             title: 'Focaltec',
-            message: `Error fetching providers: ${error.message}`,
+            message: `[ERROR] Error fetching providers: ${error.message}`,
             sound: true,
             wait: true
         });

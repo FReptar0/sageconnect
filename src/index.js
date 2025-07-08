@@ -59,17 +59,16 @@ forResponse = async () => {
         await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Function to check payments in Sage and upload timbrados data
-        // await checkPayments(i);
-        // await new Promise(resolve => setTimeout(resolve, 5000));
-
+        await checkPayments(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Function to upload payments to the portal de proveedores
-        // await uploadPayments(i);
-        // await new Promise(resolve => setTimeout(resolve, 5000));
+        await uploadPayments(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Function to upload purchase orders to the portal de proveedores
-        // await createPurchaseOrders(i);
-        // await new Promise(resolve => setTimeout(resolve, 5000));
+        await createPurchaseOrders(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 

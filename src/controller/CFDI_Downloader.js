@@ -1,4 +1,4 @@
-const { getTypeE, getTypeI } = require('../utils/GetTypesCFDI');
+const { getTypeE, getTypeI, getTypeIToSend } = require('../utils/GetTypesCFDI');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -74,6 +74,16 @@ async function downloadCFDI(index) {
 
     const typeI = await getTypeI(index);
     typeI.forEach((type) => {
+        cfdiData.push({
+            cfdiId: type.id,
+            providerId: type.metadata.provider_id,
+            rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
+            additional_info: type.metadata.additional_info
+        });
+    });
+
+    const typeIToSend = await getTypeIToSend(index);
+    typeIToSend.forEach((type) => {
         cfdiData.push({
             cfdiId: type.id,
             providerId: type.metadata.provider_id,

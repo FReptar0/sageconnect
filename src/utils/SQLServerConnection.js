@@ -6,6 +6,8 @@ const dbConfig = {
     password: process.env.PASSWORD,
     server: process.env.SERVER,
     database: process.env.DATABASE, // By default, the database is FESA
+    connectionTimeout: 10000,          // 10 s para conectarse
+    requestTimeout: 10000,          // 10 s para cada query
 };
 
 async function runQuery(query, database = 'FESA') {
