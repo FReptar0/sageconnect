@@ -85,7 +85,7 @@ select
   RTRIM(B.ITEMDESC)                            as [LINES_DESCRIPTION],
   B.PORLSEQ                                    as [LINES_EXTERNAL_ID],
   ''                                           as [LINES_METADATA],
-  B.DETAILNUM                                  as [LINES_NUM],
+  ROW_NUMBER() OVER (PARTITION BY A.PONUMBER ORDER BY B.PORLREV) as [LINES_NUM],
   B.UNITCOST                                   as [LINES_PRICE],
   B.SQORDERED                                  as [LINES_QUANTITY],
   ''                                           as [LINES_REQUISITION_LINE_ID],
@@ -166,7 +166,7 @@ where
      where Empresa = 'COPDAT'
        and PONumber = A.PONUMBER
   ) = '${today}'
-order by A.PONUMBER, B.DETAILNUM;
+order by A.PONUMBER, B.PORLREV;
 `;
 
   //TODO: Si los metadata values vienen vacios mandar un none 
