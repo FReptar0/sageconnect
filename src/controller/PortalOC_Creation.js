@@ -186,6 +186,11 @@ order by A.PONUMBER, B.PORLREV;
   // 4) Procesar cada PO
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
+    // Imprimir el PO que realmente se enviará al API (después de limpiar placeholders y validación)
+    let poToSend = { ...po };
+    if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
+    if (poToSend.requisition_number === 0) delete poToSend.requisition_number;
+    console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
 
     // 4.1) Comprobar si ya existe en fesaOCFocaltec
     const checkSql = `
