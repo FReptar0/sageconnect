@@ -159,6 +159,7 @@ async function getTypeI(index) {
                 `;
                 const poCheckResult = await runQuery(poCheckQuery, databases[index]);
                 if (poCheckResult.recordset[0].NREG > 0) {
+                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
                     continue;
                 }
 
@@ -279,7 +280,7 @@ async function getTypeIToSend(index) {
             try {
                 const poCheckResult = await runQuery(poCheckQuery, databases[index]);
                 if (poCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage OC`);
+                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
                     continue;
                 }
             } catch (err) {
@@ -379,7 +380,7 @@ async function getTypeE(index) {
                 `;
                 const crnCheckResult = await runQuery(crnCheckQuery, databases[index]);
                 if (crnCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage NC`);
+                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage NC (ya registrado en notas de crédito)`);
                     continue;
                 }
 
