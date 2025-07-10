@@ -7,6 +7,8 @@ const { createPurchaseOrders } = require('./controller/PortalOC_Creation');
 const { spawn } = require('child_process');
 const { sendMail } = require('./utils/EmailSender');
 const { buildProvidersXML } = require('./controller/Providers_Downloader');
+const { cancellationPurchaseOrders } = require('./controller/PortalOC_Cancellation');
+const { closePurchaseOrders } = require('./controller/PortalOC_Close'); // Uncomment if you have a closePurchaseOrders function
 const { logGenerator } = require('./utils/LogGenerator');
 
 const dotenv = require('dotenv');
@@ -69,6 +71,14 @@ forResponse = async () => {
         // Function to upload purchase orders to the portal de proveedores
         await createPurchaseOrders(i);
         await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Function to cancel purchase orders in the portal de proveedores
+        await cancellationPurchaseOrders(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        // Function to close purchase orders in the portal de proveedores
+        // await closePurchaseOrders(i);
+        // await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 
