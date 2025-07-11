@@ -264,16 +264,18 @@ SELECT A.* FROM (
 
                 // 4.5) Registrar en control table
                 const statusTag = allFull ? 'PAID' : 'PARTIAL';
+                // Insertar también el idFocaltec (id del portal)
                 const insertSql = `
           INSERT INTO fesa.dbo.fesaPagosFocaltec
-            (idCia, NoPagoSage, status)
+            (idCia, NoPagoSage, status, idFocaltec)
           VALUES
             ('${database[index]}',
              '${hdr.external_id}',
-             '${statusTag}'
+             '${statusTag}',
+             ${idPortal ? `'${idPortal}'` : 'NULL'}
             )
         `;
-                console.log(`  [INFO] INSERT control table con status='${statusTag}'`);
+                console.log(`  [INFO] INSERT control table con status='${statusTag}' y idFocaltec=${idPortal ?? 'NULL'}`);
                 const result = await runQuery(insertSql)
                     .catch(err => {
                         logGenerator('PortalPaymentController', 'error', `Insert control table failed: ${err.message}`);
