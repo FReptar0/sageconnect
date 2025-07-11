@@ -251,11 +251,15 @@ SELECT A.* FROM (
             });
 
             if (resp.status === 200) {
+                const idPortal = resp.data && resp.data.id ? resp.data.id : undefined;
                 console.log(`  [OK] Pago ${hdr.external_id} enviado con éxito (200)`);
+                if (idPortal) {
+                    console.log(`    [INFO] ID asignado por portal: ${idPortal}`);
+                }
                 logGenerator(
                     'PortalPaymentController',
                     'success',
-                    `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[index]}`
+                    `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[index]}, ID portal: ${idPortal ?? 'N/A'}`
                 );
 
                 // 4.5) Registrar en control table
