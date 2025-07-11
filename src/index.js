@@ -77,8 +77,8 @@ forResponse = async () => {
         await new Promise(resolve => setTimeout(resolve, 5000));
 
         // Function to close purchase orders in the portal de proveedores
-        // await closePurchaseOrders(i);
-        // await new Promise(resolve => setTimeout(resolve, 5000));
+        await closePurchaseOrders(i);
+        await new Promise(resolve => setTimeout(resolve, 5000));
     }
 }
 
