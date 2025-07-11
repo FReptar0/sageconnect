@@ -24,7 +24,7 @@ const databases = DATABASES.split(',');
 
 const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
-async function cancellationPurchaseOrders(index) {
+async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10).replace(/-/g, '');
@@ -130,5 +130,5 @@ async function cancellationPurchaseOrders(index) {
 // })
 
 module.exports = {
-    cancellationPurchaseOrders
+    closePurchaseOrders
 };
