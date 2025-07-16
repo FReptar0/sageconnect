@@ -54,7 +54,7 @@ function parseExternPurchaseOrder(po) {
         code: String(line.code).trim(),
         description: String(line.description).trim(),
         external_id: String(line.external_id),
-        num: line.num,
+        num: Number(line.num),
 
         quantity: line.quantity,
         unit_of_measure: line.unit_of_measure?.trim() || '',
