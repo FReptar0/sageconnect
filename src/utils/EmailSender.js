@@ -35,9 +35,13 @@ async function sendMail(data) {
             .split(',')[data.position]
             || process.env.MAILING_NOTICES.split(',')[0];
 
+        // Obtener correos de copia (CC) desde las variables de entorno
+        const cc = process.env.MAILING_CC ? process.env.MAILING_CC.split(',') : [];
+
         const mailOptions = {
             from: process.env.eFrom,
             to,
+            cc,
             subject: `${data.idCia || 'NOT FOUND'} - ${data.h1}`,
             html
         };
@@ -45,8 +49,8 @@ async function sendMail(data) {
         const result = await transport.sendMail(mailOptions);
         return result;
     } catch (error) {
-        const simple = new Error(err.message);
-        logGenerator('EmailSender', 'error', err.stack);
+        const simple = new Error(error.message);
+        logGenerator('EmailSender', 'error', error.stack);
         throw simple;
     }
 }
