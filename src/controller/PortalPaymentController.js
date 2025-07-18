@@ -1,5 +1,4 @@
 const { runQuery } = require('../utils/SQLServerConnection');
-// const { sendMail }     = require('../utils/EmailSender'); // email sending disabled
 const { logGenerator } = require('../utils/LogGenerator');
 const axios = require('axios');
 const notifier = require('node-notifier');
