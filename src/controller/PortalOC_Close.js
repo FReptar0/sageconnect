@@ -26,20 +26,29 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const today = new Date();
+    const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())
+        .toISOString()
+        .slice(0, 10)
+        .replace(/-/g, '');
 
     // 1) Obtener POs canceladas en Sage
-    // TODO: Agregar la consulta SQL que enviara Santi
-    const sql = `SELECT RTRIM(A.PONUMBER) AS PONUMBER
+    const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER
       FROM POPORH1 A
-     WHERE (SELECT SUM(B.OQCANCELED)
-              FROM POPORL B
-             WHERE B.PORHSEQ = A.PORHSEQ) = 0
+      LEFT OUTER JOIN PORCPH1 B ON A.PORHSEQ = B.PORHSEQ
+     WHERE (SELECT SUM(B.OQCANCELED) FROM POPORL B WHERE B.PORHSEQ = A.PORHSEQ) = 0
        AND A.ISCOMPLETE = 1
-       AND A.DTCOMPLETE  = '${today}'`;
+       AND A.DTCOMPLETE >= '${oneMonthAgo}'
+       AND B.ISINVOICED = 1
+       AND B.ISCOMPLETE = 1`;
+
     let recordset;
     try {
         ({ recordset } = await runQuery(sql, databases[index]));
+        if (recordset.length === 0) {
+            console.log(`[INFO] No se encontraron registros para la fecha ${oneMonthAgo.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}`);
+            return;
+        }
         console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
     } catch (err) {
         console.error(`[ERROR] Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}:`, err);
