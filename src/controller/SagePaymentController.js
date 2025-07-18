@@ -1,8 +1,27 @@
 const { getTypeP } = require('../utils/GetTypesCFDI')
 const { runQuery } = require('../utils/SQLServerConnection');
 const { sendMail } = require('../utils/EmailSender');
-const notifier = require('node-notifier');
 const { logGenerator } = require('../utils/LogGenerator');
+
+async function sendGroupedEmails(emails) {
+    const maxRetries = 3;
+
+    const sendEmailWithRetry = async (email, retries = 0) => {
+        try {
+            await sendMail(email);
+            logGenerator('Payment', 'info', `[OK] Correo enviado: ${email.h1}`);
+        } catch (err) {
+            if (retries < maxRetries) {
+                logGenerator('Payment', 'warn', `[WARN] Reintentando envío de correo: ${email.h1}. Intento ${retries + 1}`);
+                await sendEmailWithRetry(email, retries + 1);
+            } else {
+                logGenerator('Payment', 'error', `[ERROR] Falló el envío de correo tras ${maxRetries} intentos: ${email.h1}. Error: ${err.message}`);
+            }
+        }
+    };
+
+    await Promise.all(emails.map(email => sendEmailWithRetry(email)));
+}
 
 async function checkPayments(index) {
     const resultPayments = await getTypeP(index);
@@ -242,23 +261,7 @@ async function checkPayments(index) {
     }
 
     if (emails.length > 0) {
-        for (let i = 0; i < emails.length; i++) {
-            sendMail(emails[i]).catch((err) => {
-                notifier.notify({
-                    title: 'Error al enviar correo',
-                    message: 'No se envio el correo, error: ' + err,
-                    position: index,
-                    sound: true,
-                    wait: true,
-                    icon: process.cwd() + '/public/img/cerrar.png'
-                }).catch((err1) => {
-                    logGenerator('Payment', 'error', `Error al enviar correo: ${err} - ${err1}`);
-                    console.log(err);
-                    console.log(err1);
-                });
-            });
-
-        }
+        await sendGroupedEmails(emails);
     }
 }
 
