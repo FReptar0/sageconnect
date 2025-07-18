@@ -225,8 +225,7 @@ SELECT A.* FROM (
                 currency: hdr.bk_currency,
                 external_id: hdr.external_id,
                 ignore_amounts: false,
-                // mark_existing_cfdi_as_payed: allFull,
-                open: !allFull,
+                open: false, // Campo fijo
                 operation_type: hdr.operation_type,
                 payment_date,
                 provider_external_id: hdr.provider_external_id,
