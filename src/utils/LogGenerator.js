@@ -1,37 +1,31 @@
-const log = require('log4js');
+const winston = require('winston');
 const dotenv = require('dotenv');
 const path_env = dotenv.config({ path: '.env.path' });
 
 logGenerator = (fileName, logLevel, logMessage) => {
-
     const date = new Date();
     fileName = `${date.toISOString().split('T')[0]}_${fileName}`;
 
-    log.configure({
-        appenders: { logs: { type: 'file', filename: path_env.parsed.LOG_PATH + 'sageconnect/' + fileName + '.log'} },
-        //appenders: { logs: { type: 'file', filename: 'logs/log.log'} },
-        categories: { default: { appenders: ['logs'], level: 'info' } }
+    const logger = winston.createLogger({
+        level: logLevel,
+        format: winston.format.combine(
+            winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+            winston.format.printf(({ timestamp, level, message }) => {
+                return `${timestamp} [${level.toUpperCase()}]: ${message}`;
+            })
+        ),
+        transports: [
+            new winston.transports.File({
+                filename: `${path_env.parsed.LOG_PATH}sageconnect/${fileName}.log`,
+                level: logLevel
+            })
+        ]
     });
-    const logger = log.getLogger(fileName);
-    switch (logLevel) {
-        case 'info':
-            logger.info(logMessage);
-            break;
-        case 'error':
-            logger.error(logMessage);
-            break;
-        case 'debug':
-            logger.debug(logMessage);
-            break;
-        case 'warn':
-            logger.warn(logMessage);
-            break;
-        default:
-            logger.info(logMessage);
-            break;
-    }
-}
+
+    // Log the message
+    logger.log({ level: logLevel, message: logMessage });
+};
 
 module.exports = {
     logGenerator
-}
+};
