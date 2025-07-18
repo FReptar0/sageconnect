@@ -118,21 +118,39 @@ The following environment variables must be configured for the program to run co
 
 > :bangbang: Make sure that the values correspond to each other, for example, if the first TENANT_ID is for Charger, then the first API_KEY, API_SECRET and DATABASE must be for Charger.
 
+
 ### .env.credentials.mailing
 
-These are the credentials needed to send emails using the google API
+You can use either Google API credentials (OAuth2) or your own SMTP server for sending emails. Use the variable `MAIL_PROVIDER` to select the provider:
+
+- `MAIL_PROVIDER=google` → Use Google API (OAuth2)
+- `MAIL_PROVIDER=custom` (or unset) → Use your own SMTP server
+
+#### For Google API (OAuth2):
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
-| CLIENT_ID | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 213110698827-j2ih3tvkp4hlc4prngfa5hr9qdh2r9bq.apps.googleusercontent.com | .env.credentials.mailing |
-| SECRET_CLIENT | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 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 | .env.credentials.mailing  |
-| REFRESH_TOKEN | It is a value that Google will provide for the use of its API, later we will see how to obtain it. | 1//04MQuKAFpXo-_CgYIARAAGAQSNwF-L9IrQKynzPc1WJTkShu3Afzt5z_A_gPcXzdUw5TPTz8u1lgbUnXpZqR7Wcj8rgBMLQWqyTE | .env.credentials.mailing  |
-| REDIRECT_URI | **This value will never change** | <https://developers.google.com/oauthplayground> | .env.credentials.mailing |
-| SEND_MAILS | This is the email address that was registered to use Google's email API. | <fernando.rodriguez@tersoft.mx> | .env.credentials.mailing |
-| MAILING_NOTICES | These are the e-mail addresses to which the mails for each company should be sent. | <fernando.rodriguez@tersoft.mx>,<fernando.rodriguez+1@tersoft.mx>,<fernando.rodriguez+2@tersoft.mx> | .env.credentials.mailing |
+| MAIL_PROVIDER | Set to `google` to use Google API | google |
+| CLIENT_ID | Google API client ID | 213110698827-j2ih3tvkp4hlc4prngfa5hr9qdh2r9bq.apps.googleusercontent.com |
+| SECRET_CLIENT | Google API client secret | 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 |
+| REFRESH_TOKEN | Google API refresh token | 1//04MQuKAFpXo-_CgYIARAAGAQSNwF-L9IrQKynzPc1WJTkShu3Afzt5z_A_gPcXzdUw5TPTz8u1lgbUnXpZqR7Wcj8rgBMLQWqyTE |
+| REDIRECT_URI | Always <https://developers.google.com/oauthplayground> | <https://developers.google.com/oauthplayground> |
+| SEND_MAILS | The email address registered with Google API | <fernando.rodriguez@tersoft.mx> |
+| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<fernando.rodriguez+1@tersoft.mx> |
 
-> :bangbang: Make sure that the MAILING_NOTES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
->
+#### For custom SMTP server:
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| MAIL_PROVIDER | Set to `custom` to use your SMTP server (or leave unset) | custom |
+| eFrom | Sender email address | Notificacionescozamin@capstonecopper.com |
+| ePass | Password for SMTP auth (leave empty if not needed) | (your password) |
+| eServer | SMTP server address | 10.230.0.24 |
+| ePuerto | SMTP port | 25 |
+| eSSL | TRUE for SSL, FALSE otherwise | FALSE |
+| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<santiagopj19@gmail.com> |
+
+> :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
 > :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
 ## Preserving Local Environment Files
