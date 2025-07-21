@@ -188,6 +188,15 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 > :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
 > :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
+### .env.path
+
+These are the paths where the CFDI's will be saved
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
+
+---
 ## Preserving Local Environment Files
 
 This project tracks several `.env` files in the repo:
@@ -207,15 +216,6 @@ git update-index --skip-worktree .env.credentials.focaltec
 git update-index --skip-worktree .env.credentials.mailing
 git update-index --skip-worktree .env.path
 ```
-
-### .env.path
-
-These are the paths where the CFDI's will be saved
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
-
 ---
 
 ## :gear: How to deploy it
