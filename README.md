@@ -173,7 +173,6 @@ git update-index --skip-worktree .env.credentials.mailing
 git update-index --skip-worktree .env.path
 ```
 
-```bash
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
 1. Go to the following [link](https://console.cloud.google.com/apis/)
@@ -208,7 +207,6 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 30. Click on the **Allow** button
 31. Click on the **Exchange authorization code for tokens** button
 32. Copy the **Refresh token** value and paste it in the corresponding field in the .env.credentials.mailing file
-```
 
 ### .env.path
 
