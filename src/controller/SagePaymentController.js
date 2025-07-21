@@ -24,16 +24,24 @@ async function sendGroupedEmails(emails) {
 }
 
 async function checkPayments(index) {
+    console.log(`[INFO] Iniciando checkPayments para index=${index}`);
+
     const resultPayments = await getTypeP(index);
 
-    if (resultPayments.length === 0)
+    console.log(`[INFO] Pagos obtenidos: ${resultPayments.length}`);
+
+    if (resultPayments.length === 0) {
+        console.log(`[INFO] No se encontraron pagos para procesar en index=${index}`);
         return;
+    }
 
     let emails = [];
 
     let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
     for (let i = 0; i < resultPayments.length; i++) {
+        console.log(`[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} para index=${index}`);
+
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
         const idCiaResult = await runQuery(idCiaQuery)
             .catch(
@@ -261,7 +269,11 @@ async function checkPayments(index) {
     }
 
     if (emails.length > 0) {
+        console.log(`[INFO] Enviando ${emails.length} correos agrupados para index=${index}`);
         await sendGroupedEmails(emails);
+        console.log(`[INFO] Correos enviados exitosamente para index=${index}`);
+    } else {
+        console.log(`[INFO] No hay correos para enviar en index=${index}`);
     }
 }
 
