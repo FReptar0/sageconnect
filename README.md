@@ -153,26 +153,6 @@ You can use either Google API credentials (OAuth2) or your own SMTP server for s
 > :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
 > :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
-## Preserving Local Environment Files
-
-This project tracks several `.env` files in the repo:
-
-- `.env`
-- `.env.credentials.database`
-- `.env.credentials.focaltec`
-- `.env.credentials.mailing`
-- `.env.path`
-
-To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
-
-```bash
-git update-index --skip-worktree .env
-git update-index --skip-worktree .env.credentials.database
-git update-index --skip-worktree .env.credentials.focaltec
-git update-index --skip-worktree .env.credentials.mailing
-git update-index --skip-worktree .env.path
-```
-
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
 1. Go to the following [link](https://console.cloud.google.com/apis/)
@@ -207,6 +187,26 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 30. Click on the **Allow** button
 31. Click on the **Exchange authorization code for tokens** button
 32. Copy the **Refresh token** value and paste it in the corresponding field in the .env.credentials.mailing file
+
+## Preserving Local Environment Files
+
+This project tracks several `.env` files in the repo:
+
+- `.env`
+- `.env.credentials.database`
+- `.env.credentials.focaltec`
+- `.env.credentials.mailing`
+- `.env.path`
+
+To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
+
+```bash
+git update-index --skip-worktree .env
+git update-index --skip-worktree .env.credentials.database
+git update-index --skip-worktree .env.credentials.focaltec
+git update-index --skip-worktree .env.credentials.mailing
+git update-index --skip-worktree .env.path
+```
 
 ### .env.path
 
