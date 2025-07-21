@@ -138,21 +138,6 @@ You can use either Google API credentials (OAuth2) or your own SMTP server for s
 | SEND_MAILS | The email address registered with Google API | <fernando.rodriguez@tersoft.mx> |
 | MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<fernando.rodriguez+1@tersoft.mx> |
 
-#### For custom SMTP server:
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| MAIL_PROVIDER | Set to `custom` to use your SMTP server (or leave unset) | custom |
-| eFrom | Sender email address | Notificacionescozamin@capstonecopper.com |
-| ePass | Password for SMTP auth (leave empty if not needed) | (your password) |
-| eServer | SMTP server address | 10.230.0.24 |
-| ePuerto | SMTP port | 25 |
-| eSSL | TRUE for SSL, FALSE otherwise | FALSE |
-| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<santiagopj19@gmail.com> |
-
-> :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
-> :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
-
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
 1. Go to the following [link](https://console.cloud.google.com/apis/)
@@ -187,6 +172,21 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 30. Click on the **Allow** button
 31. Click on the **Exchange authorization code for tokens** button
 32. Copy the **Refresh token** value and paste it in the corresponding field in the .env.credentials.mailing file
+
+#### For custom SMTP server:
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| MAIL_PROVIDER | Set to `custom` to use your SMTP server (or leave unset) | custom |
+| eFrom | Sender email address | Notificacionescozamin@capstonecopper.com |
+| ePass | Password for SMTP auth (leave empty if not needed) | (your password) |
+| eServer | SMTP server address | 10.230.0.24 |
+| ePuerto | SMTP port | 25 |
+| eSSL | TRUE for SSL, FALSE otherwise | FALSE |
+| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<santiagopj19@gmail.com> |
+
+> :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
+> :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
 ## Preserving Local Environment Files
 
