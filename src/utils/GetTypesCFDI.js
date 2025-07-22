@@ -1,4 +1,3 @@
-const notifier = require('node-notifier');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 const axios = require('axios');
 const { runQuery } = require('./SQLServerConnection');
@@ -195,13 +194,6 @@ async function getTypeI(index) {
     } catch (error) {
         try {
             logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
-            notifier.notify({
-                title: 'Focaltec',
-                message: 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n',
-                sound: true,
-                wait: true,
-                icon: process.cwd() + '/public/img/cerrar.png'
-            });
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
             console.log('Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
@@ -316,17 +308,6 @@ async function getTypeIToSend(index) {
         return data;
     } catch (error) {
         logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "I" TO_SEND :\n${error.stack}`);
-        try {
-            notifier.notify({
-                title: 'Focaltec',
-                message: 'Error al obtener el tipo I TO_SEND: ' + error.message,
-                sound: true,
-                wait: true,
-                icon: process.cwd() + '/public/img/cerrar.png'
-            });
-        } catch (notifyErr) {
-            console.log('Error al enviar notificación: ' + notifyErr.message);
-        }
         return [];
     }
 }
@@ -415,13 +396,6 @@ async function getTypeE(index) {
         return data;
     } catch (error) {
         logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
-        notifier.notify({
-            title: 'Focaltec',
-            message: 'Error al obtener el tipo de comprobante "E": ' + error,
-            sound: true,
-            wait: true,
-            icon: process.cwd() + '/public/img/cerrar.png'
-        });
         return [];
     }
 }
