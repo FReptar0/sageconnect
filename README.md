@@ -1,6 +1,6 @@
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FReptar0/sageconnect)
-
 # SAGECONNECT
+
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FReptar0/sageconnect)
 
 **SAGECONNECT** is an automation software that streamlines the process of interconnecting the **SAGE 300** ERP with the **portaldeproveedores.mx** API. The software simplifies administrative processes such as _supplier registration, invoice management, payment processing, and payment supplements in both systems_. By maintaining data atomicity in both systems, SAGECONNECT ensures that all changes made in one system are accurately reflected in the other, thereby reducing errors and increasing efficiency. With SAGECONNECT, businesses can seamlessly manage their financial operations while reducing manual effort and minimizing the risk of errors.
 
@@ -34,7 +34,7 @@ The following is a series of instructions for installing the necessary programs 
 
 #### Git
 
-To download Git you must do it from the following [link](https://git-scm.com/download/win)
+To download Git you must do it from the following [Download Git for Windows](https://git-scm.com/download/win)
 
 ##### Git Installation steps
 
@@ -43,7 +43,7 @@ To download Git you must do it from the following [link](https://git-scm.com/dow
 
 #### Node.js
 
-To download Node.js you must do it from the following [link](https://nodejs.org/en/download)
+To download Node.js you must do it from the following [Node.js download page](https://nodejs.org/en/download)
 
 ##### Node.js Installation steps
 
@@ -89,7 +89,7 @@ The following environment variables must be configured for the program to run co
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 2 |
-| IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe | .env|
+| IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe |
 | ARG | This is the argument that must be provided for the executable to perform its task. | CMXDAT |
 
 ### .env.credentials.database
@@ -118,7 +118,6 @@ The following environment variables must be configured for the program to run co
 
 > :bangbang: Make sure that the values correspond to each other, for example, if the first TENANT_ID is for Charger, then the first API_KEY, API_SECRET and DATABASE must be for Charger.
 
-
 ### .env.credentials.mailing
 
 You can use either Google API credentials (OAuth2) or your own SMTP server for sending emails. Use the variable `MAIL_PROVIDER` to select the provider:
@@ -126,7 +125,7 @@ You can use either Google API credentials (OAuth2) or your own SMTP server for s
 - `MAIL_PROVIDER=google` → Use Google API (OAuth2)
 - `MAIL_PROVIDER=custom` (or unset) → Use your own SMTP server
 
-#### For Google API (OAuth2):
+#### For Google API (OAuth2)
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
@@ -140,7 +139,7 @@ You can use either Google API credentials (OAuth2) or your own SMTP server for s
 
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
-1. Go to the following [link](https://console.cloud.google.com/apis/)
+1. Go to the following [Google Cloud Console APIs page](https://console.cloud.google.com/apis/)
 2. Click on the **Select a project** button
 3. Click on the **New Project** button
 4. Enter the name of the project and click on the **Create** button
@@ -162,7 +161,7 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 20. Enter the following URL in the **Add URI** field: <https://developers.google.com/oauthplayground>
 21. Click on the **Create** button
 22. Copy the **Client ID** and **Client Secret** values and paste them in the corresponding fields in the .env.credentials.mailing file
-23. Go to the following [link](https://developers.google.com/oauthplayground/)
+23. Go to the following [Google OAuth Playground](https://developers.google.com/oauthplayground/)
 24. Click on the **Settings** button
 25. Select the **Use your own OAuth credentials** option
 26. Paste the **Client ID** and **Client Secret** values in the corresponding fields
@@ -173,12 +172,12 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 31. Click on the **Exchange authorization code for tokens** button
 32. Copy the **Refresh token** value and paste it in the corresponding field in the .env.credentials.mailing file
 
-#### For custom SMTP server:
+#### For custom SMTP server
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | MAIL_PROVIDER | Set to `custom` to use your SMTP server (or leave unset) | custom |
-| eFrom | Sender email address | Notificacionescozamin@capstonecopper.com |
+| eFrom | Sender email address | <Notificacionescozamin@capstonecopper.com> |
 | ePass | Password for SMTP auth (leave empty if not needed) | (your password) |
 | eServer | SMTP server address | 10.230.0.24 |
 | ePuerto | SMTP port | 25 |
@@ -197,6 +196,7 @@ These are the paths where the CFDI's will be saved
 | PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
 
 ---
+
 ## Preserving Local Environment Files
 
 This project tracks several `.env` files in the repo:
@@ -216,6 +216,7 @@ git update-index --skip-worktree .env.credentials.focaltec
 git update-index --skip-worktree .env.credentials.mailing
 git update-index --skip-worktree .env.path
 ```
+
 ---
 
 ## :gear: How to deploy it
@@ -235,4 +236,4 @@ npx pm2 start src/index.js --watch --ignore-watch="node_modules" --name sageconn
 npx pm2 save
 ```
 
-If you need more information on the use of PM2 you can visit the following [link](https://pm2.keymetrics.io/docs/usage/quick-start/)
+If you need more information on the use of PM2 you can visit the following [PM2 Quick Start Guide](https://pm2.keymetrics.io/docs/usage/quick-start/)
