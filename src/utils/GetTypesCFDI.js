@@ -19,6 +19,12 @@ apiKeys.push(...apiKeyValues);
 apiSecrets.push(...apiSecretValues);
 databases.push(...databaseValues);
 
+const PARAM_RFC_RECEPTOR = 'RFCReceptor';
+const PARAM_FOLIO_CFD = 'FOLIOCFD';
+const CFDI_TYPE_PAYMENT = 'PAYMENT_CFDI';
+const CFDI_TYPE_INVOICE = 'INVOICE';
+const CFDI_TYPE_CREDIT_NOTE = 'CREDIT_NOTE';
+
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
 
 async function getTypeP(index) {
@@ -33,7 +39,7 @@ async function getTypeP(index) {
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
-            `&cfdiType=PAYMENT_CFDI`,
+            `&cfdiType=${CFDI_TYPE_PAYMENT}`,
             {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
@@ -43,7 +49,7 @@ async function getTypeP(index) {
         );
 
         if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo P');
+            logInfo('GetTypesCFDI', 'No hay CFDI de tipo P');
             return [];
         }
 
@@ -72,54 +78,41 @@ async function getTypeP(index) {
                                 ]
                             };
                         } else {
-                            console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
-                            logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
+                            logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
                             continue;
                         }
                     } catch (error) {
-                        console.log(`[ERROR] No se pudo obtener información del pago con ID ${paymentId}:`, error.message);
-                        logGenerator('GetTypesCFDI', 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
+                        logError('GetTypesCFDI', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
                         continue;
                     }
                 } else {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
                     continue;
                 }
             }
 
-            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
             try {
-                const rfcResult = await runQuery(rfcQuery);
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                if (!await validateRFC(item.cfdi.receptor.rfc, index)) {
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
 
-                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
-                if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
+                if (await isUUIDRegistered(item.cfdi.timbre.uuid, index)) {
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
                     continue;
                 }
 
-                console.log(`[OK] UUID ${item.cfdi.timbre.uuid} conservado`);
+                logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} conservado`);
                 data.push(item);
             } catch (error) {
-                console.log(`[ERROR] Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
+                logError('GetTypesCFDI', `Error ejecutando validaciones para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
                 continue;
             }
         }
 
         return data;
     } catch (error) {
-        try {
-            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
-        } catch (err) {
-            console.log('Error al enviar notificación: ' + err);
-        }
+        logError('GetTypesCFDI', `Error al obtener el tipo de comprobante "P": ${error.message}`);
         return [];
     }
 }
@@ -136,7 +129,7 @@ async function getTypeI(index) {
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
-            `&cfdiType=INVOICE` +
+            `&cfdiType=${CFDI_TYPE_INVOICE}` +
             `&stage=PENDING_TO_PAY`,
             {
                 headers: {
@@ -147,25 +140,22 @@ async function getTypeI(index) {
         );
 
         if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo I');
+            logInfo('GetTypesCFDI', 'No hay CFDI de tipo I');
             return [];
         }
 
         const data = [];
         for (const item of response.data.items) {
-            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
             try {
-                const rfcResult = await runQuery(rfcQuery);
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                if (!await validateRFC(item.cfdi.receptor.rfc, index)) {
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
 
-                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = '${PARAM_FOLIO_CFD}' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
+                const cfdiResult = await executeQuery(cfdiQuery, index, 'CFDI Query');
                 if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
                     continue;
                 }
 
@@ -173,35 +163,29 @@ async function getTypeI(index) {
                     SELECT COUNT(O.[VALUE]) AS NREG
                       FROM POINVH1 H
                       JOIN POINVHO O ON H.INVHSEQ = O.INVHSEQ
-                     WHERE O.OPTFIELD = 'FOLIOCFD'
+                     WHERE O.OPTFIELD = '${PARAM_FOLIO_CFD}'
                        AND O.[VALUE]  = '${item.cfdi.timbre.uuid}'
                 `;
-                const poCheckResult = await runQuery(poCheckQuery, databases[index]);
+                const poCheckResult = await executeQuery(poCheckQuery, index, 'PO Check Query');
                 if (poCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
+                    logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
                     continue;
                 }
 
-                console.log(`[OK] UUID ${item.cfdi.timbre.uuid} conservado`);
+                logInfo('GetTypesCFDI', `UUID ${item.cfdi.timbre.uuid} conservado`);
                 data.push(item);
             } catch (error) {
-                console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
+                logError('GetTypesCFDI', `Error ejecutando validaciones para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
+                continue;
             }
         }
 
         return data;
     } catch (error) {
-        try {
-            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
-        } catch (err) {
-            console.log('Error al enviar notificacion: ' + err);
-            console.log('Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
-        }
+        logError('GetTypesCFDI', `Error al obtener el tipo de comprobante "I": ${error.message}`);
         return [];
     }
 }
-
 
 async function getTypeIToSend(index) {
     let date = new Date();
@@ -215,7 +199,7 @@ async function getTypeIToSend(index) {
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
-            `&cfdiType=INVOICE` +
+            `&cfdiType=${CFDI_TYPE_INVOICE}` +
             `&status=TO_SEND`,
             {
                 headers: {
@@ -226,7 +210,7 @@ async function getTypeIToSend(index) {
         );
 
         if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo I TO_SEND');
+            logInfo('GetTypesCFDI', 'No hay CFDI de tipo I TO_SEND');
             return [];
         }
 
@@ -235,79 +219,56 @@ async function getTypeIToSend(index) {
             const uuid = item.cfdi.timbre.uuid;
             const rels = item.cfdi.cfdis_relacionados;
             if (!Array.isArray(rels) || !rels.some(r => r.tipo_relacion === '07')) {
-                console.log(`[INFO] UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
-                logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
+                logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
                 continue;
             }
 
-            const rfc = item.cfdi.receptor.rfc;
-            const rfcQuery = `
-                SELECT COUNT(*) AS NREG
-                  FROM fesaParam
-                 WHERE Parametro = 'RFCReceptor'
-                   AND VALOR     = '${rfc}';
-            `;
             try {
-                const rfcResult = await runQuery(rfcQuery);
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
+                if (!await validateRFC(item.cfdi.receptor.rfc, index)) {
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por falta de ${PARAM_RFC_RECEPTOR} en fesa`);
                     continue;
                 }
-            } catch (err) {
-                console.log(`Error ejecutando rfcQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando rfcQuery para UUID ${uuid}: ${err.stack}`);
-                continue;
-            }
 
-            const cfdiQuery = `
-                SELECT COUNT(*) AS NREG
-                  FROM APIBH H
-                  JOIN APIBHO O
-                    ON H.CNTBTCH = O.CNTBTCH
-                   AND H.CNTITEM = O.CNTITEM
-                 WHERE H.ERRENTRY = 0
-                   AND O.OPTFIELD = 'FOLIOCFD'
-                   AND [VALUE]    = '${uuid}';
-            `;
-            try {
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                const cfdiQuery = `
+                    SELECT COUNT(*) AS NREG
+                      FROM APIBH H
+                      JOIN APIBHO O
+                        ON H.CNTBTCH = O.CNTBTCH
+                       AND H.CNTITEM = O.CNTITEM
+                     WHERE H.ERRENTRY = 0
+                       AND O.OPTFIELD = '${PARAM_FOLIO_CFD}'
+                       AND [VALUE]    = '${uuid}';
+                `;
+                const cfdiResult = await executeQuery(cfdiQuery, index, 'CFDI Query');
                 if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por ser ya timbrado`);
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por ser ya timbrado`);
                     continue;
                 }
-            } catch (err) {
-                console.log(`Error ejecutando cfdiQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando cfdiQuery para UUID ${uuid}: ${err.stack}`);
-                continue;
-            }
 
-            const poCheckQuery = `
-                SELECT COUNT(O.[VALUE]) AS NREG
-                  FROM POINVH1 H
-                  JOIN POINVHO O ON H.INVHSEQ = O.INVHSEQ
-                 WHERE O.OPTFIELD = 'FOLIOCFD'
-                   AND O.[VALUE]  = '${uuid}'
-            `;
-            try {
-                const poCheckResult = await runQuery(poCheckQuery, databases[index]);
+                const poCheckQuery = `
+                    SELECT COUNT(O.[VALUE]) AS NREG
+                      FROM POINVH1 H
+                      JOIN POINVHO O ON H.INVHSEQ = O.INVHSEQ
+                     WHERE O.OPTFIELD = '${PARAM_FOLIO_CFD}'
+                       AND O.[VALUE]  = '${uuid}'
+                `;
+                const poCheckResult = await executeQuery(poCheckQuery, index, 'PO Check Query');
                 if (poCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
                     continue;
                 }
-            } catch (err) {
-                console.log(`Error ejecutando poCheckQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando poCheckQuery para UUID ${uuid}: ${err.stack}`);
+
+                logInfo('GetTypesCFDI', `UUID ${uuid} conservado`);
+                data.push(item);
+            } catch (error) {
+                logError('GetTypesCFDI', `Error ejecutando validaciones para UUID ${uuid}: ${error.message}`);
                 continue;
             }
-
-            console.log(`[OK] UUID ${uuid} conservado`);
-            data.push(item);
         }
 
         return data;
     } catch (error) {
-        logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "I" TO_SEND :\n${error.stack}`);
+        logError('GetTypesCFDI', `Error al obtener el tipo de comprobante "I" TO_SEND: ${error.message}`);
         return [];
     }
 }
@@ -324,7 +285,7 @@ async function getTypeE(index) {
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
-            `&cfdiType=CREDIT_NOTE`,
+            `&cfdiType=${CFDI_TYPE_CREDIT_NOTE}`,
             {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
@@ -334,7 +295,7 @@ async function getTypeE(index) {
         );
 
         if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo E');
+            logInfo('GetTypesCFDI', 'No hay CFDI de tipo E');
             return [];
         }
 
@@ -342,17 +303,9 @@ async function getTypeE(index) {
         for (const item of response.data.items) {
             const uuid = item.cfdi.timbre.uuid;
 
-            const rfcQuery = `
-                SELECT COUNT(*) AS NREG
-                  FROM fesaParam
-                 WHERE Parametro = 'RFCReceptor'
-                   AND VALOR     = '${item.cfdi.receptor.rfc}';
-            `;
             try {
-                const rfcResult = await runQuery(rfcQuery);
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
+                if (!await validateRFC(item.cfdi.receptor.rfc, index)) {
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por falta de ${PARAM_RFC_RECEPTOR} en fesa`);
                     continue;
                 }
 
@@ -363,12 +316,12 @@ async function getTypeE(index) {
                         ON H.CNTBTCH = O.CNTBTCH
                        AND H.CNTITEM = O.CNTITEM
                      WHERE H.ERRENTRY = 0
-                       AND O.OPTFIELD = 'FOLIOCFD'
+                       AND O.OPTFIELD = '${PARAM_FOLIO_CFD}'
                        AND [VALUE]    = '${uuid}';
                 `;
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
+                const cfdiResult = await executeQuery(cfdiQuery, index, 'CFDI Query');
                 if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por ser ya timbrado`);
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por ser ya timbrado`);
                     continue;
                 }
 
@@ -376,30 +329,86 @@ async function getTypeE(index) {
                     SELECT COUNT(O.[VALUE]) AS NREG
                       FROM POCRNH1 H
                       JOIN POCRNHO O ON H.CRNHSEQ = O.CRNHSEQ
-                     WHERE O.OPTFIELD = 'FOLIOCFD'
+                     WHERE O.OPTFIELD = '${PARAM_FOLIO_CFD}'
                        AND O.[VALUE]  = '${uuid}'
                 `;
-                const crnCheckResult = await runQuery(crnCheckQuery, databases[index]);
+                const crnCheckResult = await executeQuery(crnCheckQuery, index, 'CRN Check Query');
                 if (crnCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage NC (ya registrado en notas de crédito)`);
+                    logInfo('GetTypesCFDI', `UUID ${uuid} eliminado por existir en Sage NC (ya registrado en notas de crédito)`);
                     continue;
                 }
 
-                console.log(`[OK] UUID ${uuid} conservado`);
+                logInfo('GetTypesCFDI', `UUID ${uuid} conservado`);
                 data.push(item);
             } catch (error) {
-                console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator('GetTypesCFDI', 'error', `Error executing query: \n${error}\n`);
+                logError('GetTypesCFDI', `Error ejecutando validaciones para UUID ${uuid}: ${error.message}`);
+                continue;
             }
         }
 
         return data;
     } catch (error) {
-        logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
+        logError('GetTypesCFDI', `Error al obtener el tipo de comprobante "E": ${error.message}`);
         return [];
     }
 }
 
+async function isUUIDRegistered(uuid, index) {
+    const query = `
+        SELECT COUNT(*) AS NREG
+          FROM APIBH H
+          JOIN APIBHO O
+            ON H.CNTBTCH = O.CNTBTCH
+           AND H.CNTITEM = O.CNTITEM
+         WHERE H.ERRENTRY = 0
+           AND O.OPTFIELD = '${PARAM_FOLIO_CFD}'
+           AND [VALUE]    = '${uuid}';
+    `;
+    try {
+        const result = await runQuery(query, databases[index]);
+        logInfo('isUUIDRegistered', `Consulta ejecutada exitosamente para UUID: ${uuid}, Resultado: ${result.recordset[0].NREG}`);
+        return result.recordset[0].NREG > 0;
+    } catch (error) {
+        logError('isUUIDRegistered', `Error al verificar UUID ${uuid} en la base de datos: ${error.message}`);
+        return false;
+    }
+}
+
+async function validateRFC(rfc, index) {
+    const query = `
+        SELECT COUNT(*) AS NREG
+          FROM fesaParam
+         WHERE Parametro = '${PARAM_RFC_RECEPTOR}'
+           AND VALOR     = '${rfc}';
+    `;
+    try {
+        const result = await runQuery(query, databases[index]);
+        logInfo('validateRFC', `Consulta ejecutada exitosamente para RFC: ${rfc}, Resultado: ${result.recordset[0].NREG}`);
+        return result.recordset[0].NREG > 0;
+    } catch (error) {
+        logError('validateRFC', `Error al validar RFC ${rfc} en la base de datos: ${error.message}`);
+        return false;
+    }
+}
+
+async function executeQuery(query, index, context) {
+    try {
+        return await runQuery(query, databases[index]);
+    } catch (error) {
+        logGenerator('GetTypesCFDI', 'error', `Error ejecutando consulta en ${context}: ${error.message}`);
+        throw error;
+    }
+}
+
+function logInfo(context, message) {
+    console.log(`[INFO] ${message}`);
+    logGenerator(context, 'info', message);
+}
+
+function logError(context, message) {
+    console.log(`[ERROR] ${message}`);
+    logGenerator(context, 'error', message);
+}
 
 module.exports = {
     getTypeP,
