@@ -48,16 +48,45 @@ async function getTypeP(index) {
             return [];
         }
 
-
         const data = [];
         for (const item of response.data.items) {
+            if (!item.metadata.payment_info || item.metadata.payment_info.payments.length === 0) {
+                if (item.payment_complement_info && item.payment_complement_info[0].payment_id) {
+                    const paymentId = item.payment_complement_info[0].payment_id;
+                    try {
+                        const paymentResponse = await axios.get(
+                            `${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments/${paymentId}`,
+                            {
+                                headers: {
+                                    'PDPTenantKey': apiKeys[index],
+                                    'PDPTenantSecret': apiSecrets[index]
+                                }
+                            }
+                        );
 
-            console.log(item.metadata.payment_info.payments.length);
-
-            if (item.metadata.payment_info.payments.length === 0) {
-                console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos`);
-                logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos`);
-                continue; // Skip this item
+                        if (paymentResponse.data) {
+                            item.metadata.payment_info = {
+                                payments: [
+                                    {
+                                        external_id: paymentResponse.data.external_id
+                                    }
+                                ]
+                            };
+                        } else {
+                            console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
+                            logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
+                            continue;
+                        }
+                    } catch (error) {
+                        console.log(`[ERROR] No se pudo obtener información del pago con ID ${paymentId}:`, error.message);
+                        logGenerator('GetTypesCFDI', 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
+                        continue;
+                    }
+                } else {
+                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
+                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
+                    continue;
+                }
             }
 
             const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
@@ -66,40 +95,31 @@ async function getTypeP(index) {
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    continue; // Skip this item
+                    continue;
                 }
 
                 const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
                 const cfdiResult = await runQuery(cfdiQuery, databases[index]);
                 if (cfdiResult.recordset[0].NREG > 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
-                    continue; // Skip this item
+                    continue;
                 }
 
                 console.log(`[OK] UUID ${item.cfdi.timbre.uuid} conservado`);
-                data.push(item); // Keep this item
+                data.push(item);
             } catch (error) {
-                console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
+                console.log(`[ERROR] Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
+                logGenerator('GetTypesCFDI', 'error', `Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
+                continue;
             }
         }
 
         return data;
-
-        //return response.data.items;
     } catch (error) {
         try {
             logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
-            notifier.notify({
-                title: 'Focaltec',
-                message: 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n',
-                sound: true,
-                wait: true,
-                icon: process.cwd() + '/public/img/cerrar.png'
-            });
         } catch (err) {
-            console.log('Error al enviar notificacion: ' + err);
-            console.log('Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
+            console.log('Error al enviar notificación: ' + err);
         }
         return [];
     }
