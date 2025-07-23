@@ -28,7 +28,6 @@ app.use(function (req, res) {
 });
 
 const server = app.listen(3030, () => {
-    console.log('Server is up on port 3030');
     const msg = 'El servidor se inició correctamente en el puerto 3030';
     console.log(msg);
     logGenerator('server_start', 'info', msg);
@@ -37,49 +36,58 @@ const server = app.listen(3030, () => {
 try {
     notifier.notify({
         title: 'Bienvenido!',
-        message: 'El servidor se inicio correctamente en el puerto 3030',
+        message: 'El servidor se inició correctamente en el puerto 3030',
         sound: true,
         wait: true
     });
+    logGenerator('server_start', 'info', '[INFO] Notificación enviada correctamente.');
 } catch (error) {
-    console.log(error)
+    console.error('[ERROR] Fallo al enviar la notificación:', error);
+    logGenerator('server_start', 'error', `[ERROR] Fallo al enviar la notificación: ${error.message}`);
 }
 
 forResponse = async () => {
-    // imprimir la fecha y hora actual en formato ISO
     const date = new Date();
-    console.log(date.toISOString());
+    logGenerator('forResponse', 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
+
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
+        try {
+            logGenerator('forResponse', 'info', `[INFO] Procesando tenant con índice ${i}`);
 
-        // buildProvidersXML function
-        await buildProvidersXML(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await buildProvidersXML(i);
+            logGenerator('forResponse', 'info', `[INFO] buildProvidersXML completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // CFDI_Downloader function
-        await downloadCFDI(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await downloadCFDI(i);
+            logGenerator('forResponse', 'info', `[INFO] downloadCFDI completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Function to check payments in Sage and upload timbrados data
-        await checkPayments(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await checkPayments(i);
+            logGenerator('forResponse', 'info', `[INFO] checkPayments completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Function to upload payments to the portal de proveedores
-        await uploadPayments(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await uploadPayments(i);
+            logGenerator('forResponse', 'info', `[INFO] uploadPayments completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Function to upload purchase orders to the portal de proveedores
-        await createPurchaseOrders(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await createPurchaseOrders(i);
+            logGenerator('forResponse', 'info', `[INFO] createPurchaseOrders completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Function to cancel purchase orders in the portal de proveedores
-        await cancellationPurchaseOrders(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await cancellationPurchaseOrders(i);
+            logGenerator('forResponse', 'info', `[INFO] cancellationPurchaseOrders completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
-        // Function to close purchase orders in the portal de proveedores
-        await closePurchaseOrders(i);
-        await new Promise(resolve => setTimeout(resolve, 5000));
+            await closePurchaseOrders(i);
+            logGenerator('forResponse', 'info', `[INFO] closePurchaseOrders completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (error) {
+            logGenerator('forResponse', 'error', `[ERROR] Error procesando el índice ${i}: ${error.message}`);
+        }
     }
+
+    logGenerator('forResponse', 'info', '[END] Proceso forResponse completado.');
 }
 
 forResponse().then(() => {
