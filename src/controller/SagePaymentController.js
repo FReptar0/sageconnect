@@ -24,23 +24,27 @@ async function sendGroupedEmails(emails) {
 }
 
 async function checkPayments(index) {
+    let emails = [];
+    let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
     console.log(`[INFO] Iniciando checkPayments para index=${index}`);
 
     const resultPayments = await getTypeP(index);
 
     console.log(`[INFO] Pagos obtenidos: ${resultPayments.length}`);
 
+    logGenerator('Payment', 'info', `[INFO] Iniciando checkPayments para index=${index}. Total de pagos obtenidos: ${resultPayments.length}`);
+    console.log(`[INFO] Iniciando checkPayments para index=${index}. Total de pagos obtenidos: ${resultPayments.length}`);
+
     if (resultPayments.length === 0) {
+        logGenerator('Payment', 'info', `[INFO] No se encontraron pagos para procesar en index=${index}`);
         console.log(`[INFO] No se encontraron pagos para procesar en index=${index}`);
         return;
     }
 
-    let emails = [];
-
-    let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
     for (let i = 0; i < resultPayments.length; i++) {
         console.log(`[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} para index=${index}`);
+        logGenerator('Payment', 'info', `[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} para index=${index}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`);
 
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
         const idCiaResult = await runQuery(idCiaQuery)
@@ -54,8 +58,11 @@ async function checkPayments(index) {
                     return { recordset: [] }
                 });
 
-        if (idCiaResult.recordset.length === 0)
+        if (idCiaResult.recordset.length === 0) {
+            logGenerator('Payment', 'info', `[INFO] No se encontró el idCia para el RFC ${resultPayments[i].cfdi.receptor.rfc} en index=${index}`);
+            console.log(`[INFO] No se encontró el idCia para el RFC ${resultPayments[i].cfdi.receptor.rfc} en index=${index}`);
             continue;
+        }
 
         if (idCiaResult.recordset.length > 0) {
             const optionalFieldsQuery = `SELECT [BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac] FROM (SELECT PARAMETRO, RTRIM(VALOR) AS VALOR FROM fesaParam WHERE PARAMETRO IN ('BancoAP','NumCtaAP','FechaCFD','FolioCFD','FormaPago','MetodoPago','PasswordA','UserAccpac') AND idCia = '${idCiaResult.recordset[0].idCia}') AS t PIVOT (MIN(VALOR) FOR PARAMETRO IN ([BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac])) AS p;`;
@@ -68,8 +75,11 @@ async function checkPayments(index) {
                         return { recordset: [] }
                     });
 
-            if (optionalFieldsResult.recordset.length === 0)
+            if (optionalFieldsResult.recordset.length === 0) {
+                logGenerator('Payment', 'info', `[INFO] No se encontraron campos opcionales para el idCia ${idCiaResult.recordset[0].idCia} en index=${index}`);
+                console.log(`[INFO] No se encontraron campos opcionales para el idCia ${idCiaResult.recordset[0].idCia} en index=${index}`);
                 continue;
+            }
 
             const timbradoDataQuery = `SELECT H.CNTBTCH, H.CNTENTR, RTRIM(ISNULL(O.[VALUE], 'NOEXISTECO')) AS UUIDPAGO, RTRIM(ISNULL(F.[VALUE], 'NOEXISTECO')) AS FECHATIM FROM APTCR H LEFT JOIN APTCRO O ON O.CNTBTCH = H.CNTBTCH AND O.CNTENTR = H.CNTENTR AND O.OPTFIELD = '${optionalFieldsResult.recordset[0].FolioCFD}' LEFT JOIN APTCRO F ON F.CNTBTCH = H.CNTBTCH AND F.CNTENTR = H.CNTENTR AND F.OPTFIELD = '${optionalFieldsResult.recordset[0].FechaCFD}' WHERE H.BTCHTYPE = 'PY' AND H.ERRENTRY = 0 AND H.DOCNBR = '${resultPayments[i].metadata.payment_info.payments[0].external_id}'`
             const timbradoDataResult = await runQuery(timbradoDataQuery, idCiaResult.recordset[0].DataBaseName)
@@ -81,11 +91,17 @@ async function checkPayments(index) {
                         return { recordset: [] }
                     });
 
-            if (timbradoDataResult.recordset.length === 0)
+            if (timbradoDataResult.recordset.length === 0) {
+                logGenerator('Payment', 'info', `[INFO] No se encontraron datos de timbrado para el pago ${resultPayments[i].metadata.payment_info.payments[0].external_id} en index=${index}`);
+                console.log(`[INFO] No se encontraron datos de timbrado para el pago ${resultPayments[i].metadata.payment_info.payments[0].external_id} en index=${index}`);
                 continue;
+            }
 
-            if (timbradoDataResult.recordset[0].UUIDPAGO.length === 36 && timbradoDataResult.recordset[0].FECHATIM.length === 19)
+            if (timbradoDataResult.recordset[0].UUIDPAGO.length === 36 && timbradoDataResult.recordset[0].FECHATIM.length === 19) {
+                logGenerator('Payment', 'info', `[INFO] El pago con UUID ${timbradoDataResult.recordset[0].UUIDPAGO} ya está registrado y tiene fecha de timbrado ${timbradoDataResult.recordset[0].FECHATIM}. Se omite el procesamiento.`);
+                console.log(`[INFO] El pago con UUID ${timbradoDataResult.recordset[0].UUIDPAGO} ya está registrado y tiene fecha de timbrado ${timbradoDataResult.recordset[0].FECHATIM}. Se omite el procesamiento.`);
                 continue;
+            }
 
             if (timbradoDataResult.recordset[0].UUIDPAGO === 'NOEXISTECO') {
                 const insertUUIDQuery = `INSERT INTO APTCRO 
@@ -96,8 +112,7 @@ async function checkPayments(index) {
                 ,'${resultPayments[i].cfdi.timbre.uuid}' 
                 ,1,60,0,0,0,1)`;
 
-                console.log('[INFO] UUID:')
-                console.log(resultPayments[i].cfdi.timbre.uuid)
+                console.log('[INFO] UUID: ', resultPayments[i].cfdi.timbre.uuid);
 
                 const insertUUIDResult = await runQuery(insertUUIDQuery, idCiaResult.recordset[0].DataBaseName)
                     .catch(
@@ -111,24 +126,26 @@ async function checkPayments(index) {
                 if (insertUUIDResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se insertó el UUID",
-                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
+                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`,
                         status: 200,
-                        message: "Se insertó el UUID",
+                        message: "Se insertó el UUID exitosamente",
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
-                    }
-                    logGenerator('Payment', 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                        database: idCiaResult.recordset[0].DataBaseName,
+                        timestamp: new Date().toISOString()
+                    };
+                    logGenerator('Payment', 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles: ${JSON.stringify(data)}`);
                     emails.push(data);
                 } else {
                     const data = {
                         h1: "Error al insertar el UUID",
-                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
+                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`,
                         status: 500,
                         message: "Error al insertar el UUID",
                         position: index,
-                        idCia: idCiaResult.recordset[0].idCia,
-                    }
-                    logGenerator('Payment', 'error', `[ERROR] No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
+                        idCia: idCiaResult.recordset[0].idCia
+                    };
+                    logGenerator('Payment', 'error', `[ERROR] No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles: ${JSON.stringify(data)}`);
                     emails.push(data);
                 }
             }
@@ -269,10 +286,13 @@ async function checkPayments(index) {
     }
 
     if (emails.length > 0) {
+        logGenerator('Payment', 'info', `[INFO] Enviando ${emails.length} correos agrupados para index=${index}. Detalles de los correos: ${JSON.stringify(emails)}`);
         console.log(`[INFO] Enviando ${emails.length} correos agrupados para index=${index}`);
         await sendGroupedEmails(emails);
+        logGenerator('Payment', 'info', `[INFO] Correos enviados exitosamente para index=${index}`);
         console.log(`[INFO] Correos enviados exitosamente para index=${index}`);
     } else {
+        logGenerator('Payment', 'info', `[INFO] No hay correos para enviar en index=${index}`);
         console.log(`[INFO] No hay correos para enviar en index=${index}`);
     }
 }
