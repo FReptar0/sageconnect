@@ -205,7 +205,7 @@ async function getTypeI(index) {
 
 async function getTypeIToSend(index) {
     let date = new Date();
-    let dateFrom = new Date(date.setMonth(date.getMonth() - 2)).toISOString().slice(0, 7);
+    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
     let dateUntil = new Date().toISOString().slice(0, 10);
 
     try {
