@@ -30,13 +30,22 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/pr
  * @returns {Promise<Array>} - Arreglo de proveedores filtrados.
  */
 async function getProviders(index) {
-    // Se usa el mes actual como referencia para las fechas de aceptación
-    let today = new Date().toISOString().slice(0, 10);
-    console.log('[INFO] Today:', today);
+    // Se usa desde hace un mes hasta hoy como referencia para las fechas de aceptación
+    let today = new Date();
+    let oneMonthAgo = new Date(today);
+    oneMonthAgo.setMonth(today.getMonth() - 1);
+    
+    let fromDate = oneMonthAgo.toISOString().slice(0, 10);
+    let toDate = today.toISOString().slice(0, 10);
+    
+    console.log('[INFO] Today:', toDate);
+    console.log('[INFO] From date (one month ago):', fromDate);
+    console.log('[INFO] To date (today):', toDate);
+    
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?statusExpedient=ACCEPTED&expedientAcceptedFrom=${today}&expedientAcceptedTo=${today}&status=ENABLED&pageSize=-1`,
+            `?statusExpedient=ACCEPTED&expedientAcceptedFrom=${fromDate}&expedientAcceptedTo=${toDate}&status=ENABLED&pageSize=-1`,
             {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
@@ -46,18 +55,20 @@ async function getProviders(index) {
         );
         
         if (response.data.total === 0) {
-            console.log('[INFO] No providers found');
-            logGenerator('getProviders', 'INFO', 'No providers found');
+            console.log(`[INFO] No providers found from ${fromDate} to ${toDate}`);
+            logGenerator('getProviders', 'info', `No providers found from ${fromDate} to ${toDate}`);
             return [];
         }
 
+        console.log(`[INFO] Found ${response.data.total} providers from ${fromDate} to ${toDate}`);
+        logGenerator('getProviders', 'info', `Found ${response.data.total} providers from ${fromDate} to ${toDate}`);
         return response.data.items;
     } catch (error) {
-        console.error('[ERROR] Error fetching providers:', error);
-        logGenerator('getProviders', 'ERROR', error);
+        console.error(`[ERROR] Error fetching providers from ${fromDate} to ${toDate}:`, error);
+        logGenerator('getProviders', 'error', `Error fetching providers from ${fromDate} to ${toDate}: ${error.message}`);
         notifier.notify({
             title: 'Focaltec',
-            message: `[ERROR] Error fetching providers: ${error.message}`,
+            message: `[ERROR] Error fetching providers from ${fromDate} to ${toDate}: ${error.message}`,
             sound: true,
             wait: true
         });
