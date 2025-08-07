@@ -47,7 +47,7 @@ select
   ISNULL(RTRIM(F.ZIP),'')                      as [ADDRESSES_ZIP],
   'F' + LEFT(
     (SELECT RTRIM(VDESC)
-       FROM COPDAT.dbo.CSOPTFD
+       FROM ${databases[index]}.dbo.CSOPTFD
       WHERE OPTFIELD = 'METODOPAGO'
         AND VALUE    = E2.[VALUE]
     ), 2
@@ -131,41 +131,41 @@ select
     (CASE WHEN A.TXEXCLUDE4>0 THEN 0 ELSE A.TXEXCLUDE4 END) +
     (CASE WHEN A.TXEXCLUDE5>0 THEN 0 ELSE A.TXEXCLUDE5 END)
   )                                            as [WITHHOLD_TAX_SUM]
-from COPDAT.dbo.POPORH1 A
-left outer join COPDAT.dbo.POPORH2 A1
+from ${databases[index]}.dbo.POPORH1 A
+left outer join ${databases[index]}.dbo.POPORH2 A1
   on A.PORHSEQ = A1.PORHSEQ
-left outer join COPDAT.dbo.POPORL B
+left outer join ${databases[index]}.dbo.POPORL B
   on A.PORHSEQ = B.PORHSEQ
-left outer join COPDAT.dbo.POPORHO C1
+left outer join ${databases[index]}.dbo.POPORHO C1
   on A.PORHSEQ = C1.PORHSEQ
  and C1.OPTFIELD = 'AFE'
-left outer join COPDAT.dbo.POPORHO C2
+left outer join ${databases[index]}.dbo.POPORHO C2
   on A.PORHSEQ = C2.PORHSEQ
  and C2.OPTFIELD = 'USOCFDI'
-left outer join COPDAT.dbo.APVEN D
+left outer join ${databases[index]}.dbo.APVEN D
   on A.VDCODE = D.VENDORID
-left outer join COPDAT.dbo.APVENO E1
+left outer join ${databases[index]}.dbo.APVENO E1
   on D.VENDORID = E1.VENDORID
  and E1.OPTFIELD = 'FORMAPAGO'
-left outer join COPDAT.dbo.APVENO E2
+left outer join ${databases[index]}.dbo.APVENO E2
   on D.VENDORID = E2.VENDORID
  and E2.OPTFIELD = 'METODOPAGO'
-left outer join COPDAT.dbo.APVENO E3
+left outer join ${databases[index]}.dbo.APVENO E3
   on D.VENDORID = E3.VENDORID
  and E3.OPTFIELD = 'PROVIDERID'
-left outer join COPDAT.dbo.ICLOC F
+left outer join ${databases[index]}.dbo.ICLOC F
   on B.[LOCATION] = F.[LOCATION]
 left outer join Autorizaciones_electronicas.dbo.Autoriza_OC X
   on A.PONUMBER = X.PONumber
 where
   X.Autorizada = 1
-  and X.Empresa = 'COPDAT'
+  and X.Empresa = '${databases[index]}'
   and (
     select max(Fecha)
       from Autorizaciones_electronicas.dbo.Autoriza_OC_detalle
-     where Empresa = 'COPDAT'
+     where Empresa = '${databases[index]}'
        and PONumber = A.PONUMBER
-  ) = '${today}'
+  ) = CAST(GETDATE() AS DATE)
 order by A.PONUMBER, B.PORLREV;
 `;
 
