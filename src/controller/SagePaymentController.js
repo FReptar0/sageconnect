@@ -126,7 +126,7 @@ async function checkPayments(index) {
                 if (insertUUIDResult.rowsAffected[0] > 0) {
                     const data = {
                         h1: "Se insertó el UUID",
-                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`,
+                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}.`,
                         status: 200,
                         message: "Se insertó el UUID exitosamente",
                         position: index,
@@ -139,7 +139,7 @@ async function checkPayments(index) {
                 } else {
                     const data = {
                         h1: "Error al insertar el UUID",
-                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`,
+                        p: `No se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}.`,
                         status: 500,
                         message: "Error al insertar el UUID",
                         position: index,
