@@ -32,7 +32,8 @@ async function uploadPayments(index) {
         // TODO: Fecha setearla 20250618, agregar campo de full_paid a la tabla de control,
         // TODO: Agregar filtro para cuando en un solo batch vengan facturas completamente pagadas y facturas parciales, se deberan mandar en dos consultas (preliminarmete)
 
-        // 1) Get today’s payments from Sage, but exclude only those already in our control table
+                // 1) Get today's payments from Sage, but exclude only those already in our control table
+        // Agregando filtro de 60 minutos desde la creación del pago
         const queryEncabezadosPago = `
 SELECT A.* FROM (
   SELECT
@@ -65,7 +66,21 @@ SELECT A.* FROM (
          AND VENDORID = P.IDVEND
       ),
       ''
-    ) AS PROVIDERID
+    ) AS PROVIDERID,
+    -- Calculamos la diferencia en minutos desde la creación del registro
+    DATEDIFF(
+        MINUTE,
+        DATEADD(
+            mi,
+            DATEDIFF(mi, GETUTCDATE(), GETDATE()),
+            CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))) 
+            + ' ' +
+            LEFT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 4), 2) + ':' +
+            RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 4), 2) + ':' +
+            RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 6), 2)
+        ),
+        SYSDATETIME()
+    ) AS DIFERENCIA_MINUTOS
   FROM APBTA B
   JOIN BKACCT BK ON B.IDBANK    = BK.BANK
   JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
@@ -74,7 +89,7 @@ SELECT A.* FROM (
     AND B.BATCHSTAT  = 3
     AND P.ERRENTRY   = 0
     AND P.RMITTYPE   = 1
-    AND P.DATEBUS   >= ${currentDate}
+    AND P.AUDTDATE   >= ${currentDate}
     AND P.DOCNBR NOT IN (
       SELECT NoPagoSage
       FROM fesa.dbo.fesaPagosFocaltec
@@ -89,9 +104,23 @@ SELECT A.* FROM (
         AND CNTITEM   = P.CNTENTR
         AND SWCHKCLRD = 2
     )
+    -- Filtro para solo procesar pagos con al menos 60 minutos de antigüedad
+    AND DATEDIFF(
+        MINUTE,
+        DATEADD(
+            mi,
+            DATEDIFF(mi, GETUTCDATE(), GETDATE()),
+            CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))) 
+            + ' ' +
+            LEFT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 4), 2) + ':' +
+            RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 4), 2) + ':' +
+            RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 6), 2)
+        ),
+        SYSDATETIME()
+    ) >= 60
 ) AS A
 `;
-        console.log('Ejecutando queryEncabezadosPago...');
+        console.log('Ejecutando queryEncabezadosPago con filtro de 60 minutos...');
         const payments = await runQuery(queryEncabezadosPago, database[index])
             .catch(err => {
                 logGenerator('PortalPaymentController', 'error', `Error queryEncabezadosPago: ${err.message}`);
@@ -99,7 +128,15 @@ SELECT A.* FROM (
                 return { recordset: [] };
             });
 
-        console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos.`);
+        console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos (con al menos 60 minutos de antigüedad).`);
+        
+        // Log de información sobre minutos transcurridos para cada pago
+        if (payments.recordset.length > 0) {
+            console.log('[INFO] Detalle de minutos transcurridos por pago:');
+            payments.recordset.forEach(payment => {
+                console.log(`  - Pago ${payment.external_id}: ${payment.DIFERENCIA_MINUTOS} minutos desde creación`);
+            });
+        }
 
         // 2) Filtrar registros sin PROVIDERID
         const beforeCount = payments.recordset.length;
