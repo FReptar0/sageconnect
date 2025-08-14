@@ -269,7 +269,7 @@ SELECT A.* FROM (
                 total_amount: hdr.total_amount
             };
 
-            console.log('  [INFO] Payload generado:', JSON.stringify(payload, null, 2));
+            //console.log('  [INFO] Payload generado:', JSON.stringify(payload, null, 2));
 
             // 4.4) Enviar al portal
             const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
