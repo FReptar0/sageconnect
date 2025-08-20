@@ -31,36 +31,36 @@ async function uploadPayments(index) {
 
         const queryEncabezadosPago = `
 SELECT A.* FROM (
-  SELECT
-    P.CNTBTCH    AS LotePago,
-    P.CNTENTR    AS AsientoPago,
-    RTRIM(BK.ADDR1)   AS bank_account_id,
-    B.IDBANK,
-    P.DATEBUS    AS FechaAsentamiento,
-    RTRIM(P.DOCNBR)     AS external_id,
-    P.TEXTRMIT   AS comments,
-    P.TXTRMITREF AS reference,
-    CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency,
-    P.DATERMIT   AS payment_date,
-    RTRIM(P.IDVEND)   AS provider_external_id,
-    P.AMTRMIT    AS total_amount,
-    'TRANSFER'   AS operation_type,
-    P.RATEEXCHHC AS TipoCambioPago,
+    SELECT
+        P.CNTBTCH    AS LotePago,
+        P.CNTENTR    AS AsientoPago,
+        RTRIM(BK.ADDR1)   AS bank_account_id,
+        B.IDBANK,
+        P.DATEBUS    AS FechaAsentamiento,
+        RTRIM(P.DOCNBR)     AS external_id,
+        P.TEXTRMIT   AS comments,
+        P.TXTRMITREF AS reference,
+        CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency,
+        P.DATERMIT   AS payment_date,
+        RTRIM(P.IDVEND)   AS provider_external_id,
+        P.AMTRMIT    AS total_amount,
+        'TRANSFER'   AS operation_type,
+        P.RATEEXCHHC AS TipoCambioPago,
     ISNULL(
-      (SELECT [VALUE]
-       FROM APVENO
-       WHERE OPTFIELD = 'RFC'
-         AND VENDORID = P.IDVEND
-      ),
-      ''
+    (SELECT [VALUE]
+        FROM APVENO
+        WHERE OPTFIELD = 'RFC'
+        AND VENDORID = P.IDVEND
+    ),
+    ''
     ) AS RFC,
     ISNULL(
-      (SELECT [VALUE]
-       FROM APVENO
-       WHERE OPTFIELD = 'PROVIDERID'
-         AND VENDORID = P.IDVEND
-      ),
-      ''
+        (SELECT [VALUE]
+        FROM APVENO
+            WHERE OPTFIELD = 'PROVIDERID'
+        AND VENDORID = P.IDVEND
+    ),
+    ''
     ) AS PROVIDERID,
     -- Calculamos la diferencia en minutos desde la creación del registro
     DATEDIFF(
