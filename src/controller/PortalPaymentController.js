@@ -29,11 +29,6 @@ async function uploadPayments(index) {
 
         console.log(`\n=== Iniciando uploadPayments para tenant index=${index} (db=${database[index]}) con fecha desde ${currentDate} ===`);
 
-        // TODO: Fecha setearla 20250618, agregar campo de full_paid a la tabla de control,
-        // TODO: Agregar filtro para cuando en un solo batch vengan facturas completamente pagadas y facturas parciales, se deberan mandar en dos consultas (preliminarmete)
-
-                // 1) Get today's payments from Sage, but exclude only those already in our control table
-        // Agregando filtro de 60 minutos desde la creación del pago
         const queryEncabezadosPago = `
 SELECT A.* FROM (
   SELECT
@@ -81,28 +76,28 @@ SELECT A.* FROM (
         ),
         SYSDATETIME()
     ) AS DIFERENCIA_MINUTOS
-  FROM APBTA B
-  JOIN BKACCT BK ON B.IDBANK    = BK.BANK
-  JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
-                  AND B.CNTBTCH   = P.CNTBTCH
-  WHERE B.PAYMTYPE   = 'PY'
-    AND B.BATCHSTAT  = 3
-    AND P.ERRENTRY   = 0
-    AND P.RMITTYPE   = 1
-    AND P.AUDTDATE   >= ${currentDate}
-    AND P.DOCNBR NOT IN (
-      SELECT NoPagoSage
-      FROM fesa.dbo.fesaPagosFocaltec
-      WHERE idCia       = P.AUDTORG
-        AND NoPagoSage  = P.DOCNBR
+    FROM APBTA B
+    JOIN BKACCT BK ON B.IDBANK    = BK.BANK
+    JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
+        AND B.CNTBTCH   = P.CNTBTCH
+    WHERE B.PAYMTYPE   = 'PY'
+        AND B.BATCHSTAT  = 3
+        AND P.ERRENTRY   = 0
+        AND P.RMITTYPE   = 1
+        AND P.AUDTDATE   >= ${currentDate}
+        AND P.DOCNBR NOT IN (
+    SELECT NoPagoSage
+        FROM fesa.dbo.fesaPagosFocaltec
+        WHERE idCia       = P.AUDTORG
+            AND NoPagoSage  = P.DOCNBR
     )
     AND P.DOCNBR NOT IN (
-      SELECT IDINVC
-      FROM APPYM
-      WHERE IDBANK    = B.IDBANK
-        AND CNTBTCH   = P.CNTBTCH
-        AND CNTITEM   = P.CNTENTR
-        AND SWCHKCLRD = 2
+        SELECT IDINVC
+            FROM APPYM
+        WHERE IDBANK    = B.IDBANK
+            AND CNTBTCH   = P.CNTBTCH
+            AND CNTITEM   = P.CNTENTR
+            AND SWCHKCLRD = 2
     )
     -- Filtro para solo procesar pagos con al menos 60 minutos de antigüedad
     AND DATEDIFF(
@@ -129,7 +124,7 @@ SELECT A.* FROM (
             });
 
         console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos (con al menos 60 minutos de antigüedad).`);
-        
+
         // Log de información sobre minutos transcurridos para cada pago
         if (payments.recordset.length > 0) {
             console.log('[INFO] Detalle de minutos transcurridos por pago:');
@@ -156,9 +151,9 @@ SELECT A.* FROM (
 
         // 3) Filtrar por control table (todos los NoPagoSage ya existentes)
         const queryPagosRegistrados = `
-      SELECT NoPagoSage
-      FROM fesa.dbo.fesaPagosFocaltec
-    `;
+        SELECT NoPagoSage
+        FROM fesa.dbo.fesaPagosFocaltec`;
+
         console.log('[INFO] Ejecutando queryPagosRegistrados...');
         const pagosRegistrados = await runQuery(queryPagosRegistrados)
             .catch(err => {
@@ -185,40 +180,42 @@ SELECT A.* FROM (
             // 4.1) Consultar facturas asociadas
             const queryFacturasPagadas = `
         SELECT
-          DP.CNTBTCH        AS LotePago,
-          DP.CNTRMIT        AS AsientoPago,
-          RTRIM(DP.IDINVC)  AS invoice_external_id,
-          H.AMTGROSDST      AS invoice_amount,
-          CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
-          H.EXCHRATEHC      AS invoice_exchange_rate,
-          DP.AMTPAYM        AS payment_amount,
-          ISNULL(
+            DP.CNTBTCH        AS LotePago,
+            DP.CNTRMIT        AS AsientoPago,
+            RTRIM(DP.IDINVC)  AS invoice_external_id,
+            H.AMTGROSDST      AS invoice_amount,
+            CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
+            H.EXCHRATEHC      AS invoice_exchange_rate,
+            DP.AMTPAYM        AS payment_amount,
+        ISNULL(
             (SELECT SWPAID
-             FROM APOBL
-             WHERE IDINVC = DP.IDINVC
-               AND IDVEND = DP.IDVEND),
+            FROM APOBL
+            WHERE IDINVC = DP.IDINVC
+                AND IDVEND = DP.IDVEND),
             0
-          )                   AS FULL_PAID,
-          ISNULL(
+            ) AS FULL_PAID,
+            ISNULL(
             (SELECT RTRIM([VALUE])
-             FROM APIBHO
-             WHERE CNTBTCH = H.CNTBTCH
-               AND CNTITEM = H.CNTITEM
-               AND OPTFIELD = 'FOLIOCFD'
+                FROM APIBHO
+                WHERE CNTBTCH = H.CNTBTCH
+                AND CNTITEM = H.CNTITEM
+                AND OPTFIELD = 'FOLIOCFD'
             ),
             ''
-          )                   AS UUID
+        ) AS UUID,
+            -- Revisar su uso en fase 3 
+            R.RATEEXCHHC as exchange_rate
         FROM APTCP DP
+        JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH
         JOIN APIBH H ON DP.IDVEND = H.IDVEND
-                   AND DP.IDINVC = H.IDINVC
-                   AND H.ERRENTRY = 0
+                AND DP.IDINVC = H.IDINVC
+                AND H.ERRENTRY = 0
         JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH
-                   AND C.BTCHSTTS = 3
+                AND C.BTCHSTTS = 3
         WHERE DP.BATCHTYPE = 'PY'
-          AND DP.CNTBTCH   = ${hdr.LotePago}
-          AND DP.CNTRMIT   = ${hdr.AsientoPago}
-          AND DP.DOCTYPE   = 1
-      `;
+            AND DP.CNTBTCH   = ${hdr.LotePago}
+            AND DP.CNTRMIT   = ${hdr.AsientoPago}
+            AND DP.DOCTYPE   = 1`;
             console.log(`  [INFO] Ejecutando queryFacturasPagadas para lote ${hdr.LotePago} / asiento ${hdr.AsientoPago}...`);
             const invoices = await runQuery(queryFacturasPagadas, database[index])
                 .catch(err => {
@@ -236,7 +233,7 @@ SELECT A.* FROM (
             const cfdis = invoices.recordset.map(inv => {
                 const sameCurrency = inv.invoice_currency === hdr.bk_currency;
                 return {
-                    amount: inv.invoice_amount,
+                    amount: inv.payment_amount,
                     currency: inv.invoice_currency,
                     exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
                     payment_amount: inv.payment_amount,
@@ -301,13 +298,13 @@ SELECT A.* FROM (
                 const statusTag = allFull ? 'PAID' : 'PARTIAL';
                 // Insertar también el idFocaltec (id del portal)
                 const insertSql = `
-          INSERT INTO fesa.dbo.fesaPagosFocaltec
+        INSERT INTO fesa.dbo.fesaPagosFocaltec
             (idCia, NoPagoSage, status, idFocaltec)
-          VALUES
+            VALUES
             ('${database[index]}',
-             '${hdr.external_id}',
-             '${statusTag}',
-             ${idPortal ? `'${idPortal}'` : 'NULL'}
+            '${hdr.external_id}',
+            '${statusTag}',
+            ${idPortal ? `'${idPortal}'` : 'NULL'}
             )
         `;
                 console.log(`  [INFO] INSERT control table con status='${statusTag}' y idFocaltec=${idPortal ?? 'NULL'}`);
