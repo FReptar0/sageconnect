@@ -179,7 +179,7 @@ SELECT A.* FROM (
 
             // 4.1) Consultar facturas asociadas
             const queryFacturasPagadas = `
-        SELECT
+        SELECT DISTINCT
             DP.CNTBTCH        AS LotePago,
             DP.CNTRMIT        AS AsientoPago,
             RTRIM(DP.IDINVC)  AS invoice_external_id,
@@ -206,7 +206,7 @@ SELECT A.* FROM (
             -- Revisar su uso en fase 3 
             R.RATEEXCHHC as exchange_rate
         FROM APTCP DP
-        JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH
+        JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
         JOIN APIBH H ON DP.IDVEND = H.IDVEND
                 AND DP.IDINVC = H.IDINVC
                 AND H.ERRENTRY = 0
