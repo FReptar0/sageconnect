@@ -232,13 +232,14 @@ SELECT A.* FROM (
             // 4.2) Construir cfdis con lógica de exchange_rate
             const cfdis = invoices.recordset.map(inv => {
                 const sameCurrency = inv.invoice_currency === hdr.bk_currency;
+                const UUID_Capitalized = inv.UUID ? inv.UUID.toUpperCase() : '';
                 return {
                     amount: inv.payment_amount,
                     currency: inv.invoice_currency,
                     exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
                     payment_amount: inv.payment_amount,
                     payment_currency: hdr.bk_currency,
-                    uuid: inv.UUID
+                    uuid: UUID_Capitalized
                 };
             });
 
