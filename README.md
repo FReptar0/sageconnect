@@ -90,7 +90,7 @@ The following environment variables must be configured for the program to run co
 | :---: | :---: | :---: |
 | WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 10 |
 | IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe |
-| ARG | This is the argument that must be provided for the executable to perform its task. | TERDAT |
+| ARG | The name of the SAGE 300 database to be used by the executable for its operations. | TERDAT |
 | NOMBRE | Company name for CFDI fiscal information. | TERP SA de CV |
 | RFC | Company RFC (tax identification number) for CFDI fiscal information. | TRP0000000XX0 |
 | REGIMEN | Tax regime code for CFDI fiscal information. | 601 |
