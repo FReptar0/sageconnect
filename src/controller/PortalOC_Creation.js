@@ -14,6 +14,7 @@ const {
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
+const { getCurrentDateString } = require('../utils/TimezoneHelper');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
@@ -28,7 +29,7 @@ const externalId = EXTERNAL_IDS.split(',');
 const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
-  const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+  const today = getCurrentDateString(); // 'YYYY-MM-DD'
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `

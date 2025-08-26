@@ -15,6 +15,7 @@ const {
 
 // utilería de conexión
 const { runQuery } = require('../utils/SQLServerConnection');
+const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -25,7 +26,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const today = getCurrentDateCompact();
 
     // 1) Obtener POs canceladas en Sage
     const sql = `

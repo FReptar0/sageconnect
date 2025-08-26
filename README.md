@@ -88,9 +88,22 @@ The following environment variables must be configured for the program to run co
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
-| WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 2 |
+| WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 10 |
 | IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe |
-| ARG | This is the argument that must be provided for the executable to perform its task. | CMXDAT |
+| ARG | The name of the SAGE 300 database to be used by the executable for its operations. | TERDAT |
+| NOMBRE | Company name for CFDI fiscal information. | TERP SA de CV |
+| RFC | Company RFC (tax identification number) for CFDI fiscal information. | TRP0000000XX0 |
+| REGIMEN | Tax regime code for CFDI fiscal information. | 601 |
+| TIMEZONE | IANA timezone identifier for all date/time operations in the system. Must be a valid timezone. | America/Mexico_City |
+
+> :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
+>
+> - `America/Mexico_City` (UTC-6/UTC-5)
+> - `America/New_York` (UTC-5/UTC-4)
+> - `Europe/London` (UTC+0/UTC+1)
+> - `Asia/Tokyo` (UTC+9)
+>
+> All date filtering, logging, and timestamp operations throughout the system will use this timezone. If an invalid timezone is provided, the system will fall back to local server time and display a warning.
 
 ### .env.credentials.database
 
