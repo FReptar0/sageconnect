@@ -7,7 +7,7 @@ const path = require('path');
 const os = require('os');
 const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
-const { getCurrentDateForLogging } = require('../utils/TimezoneHelper');
+const { getCurrentDate } = require('../utils/TimezoneHelper');
 const { getProviders } = require('../utils/GetProviders');
 
 // Cargar la variable de entorno que contiene la ruta donde se guardarán los archivos
@@ -36,7 +36,7 @@ function formatTimestamp(timestamp) {
  * @returns {string} Fecha formateada
  */
 function formatDateForFilename() {
-    const now = getCurrentDateForLogging();
+    const now = getCurrentDate();
     const pad = (n, width = 2) => n.toString().padStart(width, '0');
     const year = now.getFullYear().toString().slice(-2); // últimos dos dígitos del año
     const month = pad(now.getMonth() + 1);
