@@ -1,5 +1,6 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
@@ -22,10 +23,7 @@ const database = DATABASES.split(',');
 
 async function uploadPayments(index) {
     try {
-        const currentDate = new Date()
-            .toISOString()
-            .slice(0, 10)
-            .replace(/-/g, '');
+        const currentDate = getCurrentDateCompact();
 
         console.log(`\n=== Iniciando uploadPayments para tenant index=${index} (db=${database[index]}) con fecha desde ${currentDate} ===`);
 

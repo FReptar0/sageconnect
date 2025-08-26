@@ -1,5 +1,6 @@
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 const axios = require('axios');
+const { getOneMonthAgoString, getCurrentDateString } = require('./TimezoneHelper');
 const { runQuery } = require('./SQLServerConnection');
 const { logGenerator } = require('./LogGenerator');
 
@@ -22,9 +23,8 @@ databases.push(...databaseValues);
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
 
 async function getTypeP(index) {
-    let date = new Date();
-    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
-    let dateUntil = new Date().toISOString().slice(0, 10);
+    let dateFrom = getOneMonthAgoString();
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
@@ -125,9 +125,8 @@ async function getTypeP(index) {
 }
 
 async function getTypeI(index) {
-    let date = new Date();
-    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
-    let dateUntil = new Date().toISOString().slice(0, 10);
+    let dateFrom = getOneMonthAgoString();
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
@@ -204,9 +203,8 @@ async function getTypeI(index) {
 
 
 async function getTypeIToSend(index) {
-    let date = new Date();
-    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
-    let dateUntil = new Date().toISOString().slice(0, 10);
+    let dateFrom = getOneMonthAgoString();
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
@@ -313,9 +311,8 @@ async function getTypeIToSend(index) {
 }
 
 async function getTypeE(index) {
-    let date = new Date();
-    let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
-    let dateUntil = new Date().toISOString().slice(0, 10);
+    let dateFrom = getOneMonthAgoString();
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(

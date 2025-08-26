@@ -1,9 +1,10 @@
 const winston = require('winston');
+const { getCurrentDateForLogging } = require('./TimezoneHelper');
 const dotenv = require('dotenv');
 const path_env = dotenv.config({ path: '.env.path' });
 
 logGenerator = (fileName, logLevel, logMessage) => {
-    const date = new Date();
+    const date = getCurrentDateForLogging();
     fileName = `${date.toISOString().split('T')[0]}_${fileName}`;
 
     const logger = winston.createLogger({

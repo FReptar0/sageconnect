@@ -1,6 +1,7 @@
 const notifier = require('node-notifier');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 const axios = require('axios');
+const { getCurrentDateString } = require('./TimezoneHelper');
 const { logGenerator } = require('./LogGenerator');
 
 const url = process.env.URL;
@@ -31,7 +32,7 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/pr
  */
 async function getProviders(index) {
     // Se usa el mes actual como referencia para las fechas de aceptación
-    let today = new Date().toISOString().slice(0, 10);
+    let today = getCurrentDateString();
     console.log('[INFO] Today:', today);
     try {
         const response = await axios.get(

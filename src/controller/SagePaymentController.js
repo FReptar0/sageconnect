@@ -2,6 +2,7 @@ const { getTypeP } = require('../utils/GetTypesCFDI')
 const { runQuery } = require('../utils/SQLServerConnection');
 const { sendMail } = require('../utils/EmailSender');
 const { logGenerator } = require('../utils/LogGenerator');
+const { getCurrentDateCompact, getCurrentISOString } = require('../utils/TimezoneHelper');
 
 async function sendGroupedEmails(emails) {
     const maxRetries = 3;
@@ -25,7 +26,7 @@ async function sendGroupedEmails(emails) {
 
 async function checkPayments(index) {
     let emails = [];
-    let currentDate = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let currentDate = getCurrentDateCompact();
 
     console.log(`[INFO] Iniciando checkPayments para index=${index}`);
 
@@ -132,7 +133,7 @@ async function checkPayments(index) {
                         position: index,
                         idCia: idCiaResult.recordset[0].idCia,
                         database: idCiaResult.recordset[0].DataBaseName,
-                        timestamp: new Date().toISOString()
+                        timestamp: getCurrentISOString()
                     };
                     logGenerator('Payment', 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles: ${JSON.stringify(data)}`);
                     emails.push(data);
