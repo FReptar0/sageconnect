@@ -10,7 +10,7 @@ const { buildProvidersXML } = require('./controller/Providers_Downloader');
 const { cancellationPurchaseOrders } = require('./controller/PortalOC_Cancellation');
 const { closePurchaseOrders } = require('./controller/PortalOC_Close'); // Uncomment if you have a closePurchaseOrders function
 const { logGenerator } = require('./utils/LogGenerator');
-const { getCurrentDateForLogging } = require('./utils/TimezoneHelper');
+const { getCurrentDate } = require('./utils/TimezoneHelper');
 
 const dotenv = require('dotenv');
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
@@ -48,7 +48,7 @@ try {
 }
 
 forResponse = async () => {
-    const date = getCurrentDateForLogging();
+    const date = getCurrentDate();
     logGenerator('forResponse', 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
 
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
