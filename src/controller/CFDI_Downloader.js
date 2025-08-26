@@ -25,13 +25,14 @@ apiKeys.push(...apiKeyValues);
 apiSecrets.push(...apiSecretValues);
 
 /**
- * Función auxiliar para extraer OrdenCompra y AFE desde additional_info.
+ * Función auxiliar para extraer OrdenCompra, AFE y datos adicionales desde additional_info y additional_amount.
  * Se espera que additional_info sea un arreglo de objetos con la estructura:
  * { field: { external_id: 'Orden_de_compra' or 'AFE', ... }, value: { raw: 'valor' } }
  * Si existe 'OC', se usa ese valor y se ignora 'orden_de_compra'.
  * Si no existe ninguno, se deja en blanco.
+ * También extrae información de additional_amount para gastos adicionales.
  */
-function getAfeAndOrden(additional_info) {
+function getAfeAndOrden(additional_info, additional_amount = null) {
     let ordenCompra = '';
     // Buscar primero OC
     const ocObj = additional_info.find(item =>
@@ -56,7 +57,17 @@ function getAfeAndOrden(additional_info) {
         item.field.external_id.toLowerCase() === 'afe'
     );
     const afe = afeObj && afeObj.value ? afeObj.value.raw : '';
-    return { ordenCompra, afe };
+    
+    // Extraer información de gastos adicionales
+    let descriGastosAdi = '';
+    let mtoGastosAdi = '';
+    
+    if (additional_amount && additional_amount.name && additional_amount.amount) {
+        descriGastosAdi = additional_amount.name;
+        mtoGastosAdi = additional_amount.amount.toString();
+    }
+    
+    return { ordenCompra, afe, descriGastosAdi, mtoGastosAdi };
 }
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}`;
@@ -70,7 +81,8 @@ async function downloadCFDI(index) {
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
             rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
-            additional_info: type.metadata.additional_info
+            additional_info: type.metadata.additional_info,
+            additional_amount: type.metadata.additional_amount
         });
     });
 
@@ -80,7 +92,8 @@ async function downloadCFDI(index) {
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
             rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
-            additional_info: type.metadata.additional_info
+            additional_info: type.metadata.additional_info,
+            additional_amount: type.metadata.additional_amount
         });
     });
 
@@ -90,7 +103,8 @@ async function downloadCFDI(index) {
             cfdiId: type.id,
             providerId: type.metadata.provider_id,
             rfcReceptor: type.cfdi && type.cfdi.receptor ? type.cfdi.receptor.rfc : '',
-            additional_info: type.metadata.additional_info
+            additional_info: type.metadata.additional_info,
+            additional_amount: type.metadata.additional_amount
         });
     });
 
@@ -254,14 +268,18 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
                 'correo': firstContactValue ? firstContactValue.value.email : ''
             };
 
-            const { ordenCompra, afe } = dataCfdi.additional_info ? getAfeAndOrden(dataCfdi.additional_info) : { ordenCompra: '', afe: '' };
+            const { ordenCompra, afe, descriGastosAdi, mtoGastosAdi } = dataCfdi.additional_info ? 
+                getAfeAndOrden(dataCfdi.additional_info, dataCfdi.additional_amount) : 
+                { ordenCompra: '', afe: '', descriGastosAdi: '', mtoGastosAdi: '' };
 
             const addenda = {
                 'cfdi:AddendaEmisor': {
                     'cfdi:DoctoDatosAdi': {
                         '$': {
                             'OrdenCompra': ordenCompra,
-                            'AFE': afe
+                            'AFE': afe,
+                            'DescriGastosAdi': descriGastosAdi,
+                            'MtoGastosAdi': mtoGastosAdi
                         }
                     },
                     'cfdi:Proveedor': {
