@@ -80,7 +80,9 @@ function getCurrentDateCompact() {
 function getOneMonthAgoString() {
     const date = getCurrentDate();
     const oneMonthAgo = new Date(date.setMonth(date.getMonth() - 1));
-    return oneMonthAgo.toISOString().slice(0, 7);
+    const year = oneMonthAgo.getFullYear();
+    const month = String(oneMonthAgo.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
 }
 
 /**
@@ -88,18 +90,14 @@ function getOneMonthAgoString() {
  * @returns {string} Date string in YYYYMMDD format (month ago)
  */
 function getOneMonthAgoCompact() {
-    const today = getCurrentDate();
+    const year = oneMonthAgo.getFullYear();
+    const month = String(oneMonthAgo.getMonth() + 1).padStart(2, '0');
+    const day = String(oneMonthAgo.getDate()).padStart(2, '0');
+    return `${year}${month}${day}`;
     const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
     return oneMonthAgo.toISOString().slice(0, 10).replace(/-/g, '');
 }
 
-/**
- * Gets current date for logging purposes with timezone info
- * @returns {Date} Current date in configured timezone
- */
-function getCurrentDateForLogging() {
-    return getCurrentDate();
-}
 
 /**
  * Gets ISO string for timestamps with timezone adjustment
@@ -115,7 +113,6 @@ module.exports = {
     getCurrentDateCompact,
     getOneMonthAgoString,
     getOneMonthAgoCompact,
-    getCurrentDateForLogging,
     getCurrentISOString,
     TIMEZONE
 };
