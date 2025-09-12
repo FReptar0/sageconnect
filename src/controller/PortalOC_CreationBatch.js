@@ -14,7 +14,6 @@ const {
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
-const { getCurrentDateString } = require('../utils/TimezoneHelper');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
@@ -28,10 +27,10 @@ const externalId = EXTERNAL_IDS.split(',');
 
 const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
-async function createPurchaseOrders(index) {
-  const today = getCurrentDateString(); // 'YYYY-MM-DD'
-  // 1) Ejecuta tu consulta a DATABASE para los dos POs
-
+// Función específica para carga inicial con timeout extendido
+async function createInitialLoadPurchaseOrders(index) {
+  console.log(`[INFO] Iniciando carga inicial para base de datos: ${databases[index]}`);
+  
   const sql = `
 select 
   'ACCEPTED' as ACCEPTANCE_STATUS,
@@ -88,7 +87,7 @@ select
   ''                                           as [LINES_METADATA],
   ROW_NUMBER() OVER (PARTITION BY A.PONUMBER ORDER BY B.PORLREV) as [LINES_NUM],
   B.UNITCOST                                   as [LINES_PRICE],
-  B.SQORDERED                                  as [LINES_QUANTITY],
+  B.SQOUTSTAND                                 as [LINES_QUANTITY],
   ''                                           as [LINES_REQUISITION_LINE_ID],
   B.EXTENDED                                   as [LINES_SUBTOTAL],
   B.EXTENDED                                   as [LINES_TOTAL],
@@ -161,12 +160,9 @@ left outer join Autorizaciones_electronicas.dbo.Autoriza_OC X
 where
   X.Autorizada = 1
   and X.Empresa = '${databases[index]}'
-  and (
-    select max(Fecha)
-      from Autorizaciones_electronicas.dbo.Autoriza_OC_detalle
-     where Empresa = '${databases[index]}'
-       and PONumber = A.PONUMBER
-  ) = CAST(GETDATE() AS DATE)
+  and A.[DATE] between '20250101' and '20251231'
+  and B.SQOUTSTAND > 0 
+  and B.COMPLETION = 1
 order by A.PONUMBER, B.PORLREV;
 `;
 
@@ -174,15 +170,17 @@ order by A.PONUMBER, B.PORLREV;
   let recordset;
   try {
     ({ recordset } = await runQuery(sql, databases[index]));
-    console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
+    console.log(`[INFO] [CARGA INICIAL] Recuperadas ${recordset.length} filas de la base`);
   } catch (dbErr) {
-    console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
+    console.error('❌ [CARGA INICIAL] Error al ejecutar la consulta SQL:', dbErr);
     return;
   }
 
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
+
+  console.log(`[INFO] [CARGA INICIAL] Procesando ${ordersToSend.length} órdenes de compra...`);
 
   // 4) Validar y preparar órdenes para envío en batch
   const validOrders = [];
@@ -246,7 +244,7 @@ order by A.PONUMBER, B.PORLREV;
 
   // 4.5) Enviar órdenes válidas en batch si hay alguna
   if (validOrders.length > 0) {
-    console.log(`[INFO] Enviando batch de ${validOrders.length} órdenes de compra...`);
+    console.log(`[INFO] [CARGA INICIAL] Enviando batch de ${validOrders.length} órdenes de compra...`);
     console.log('[DEBUG] POs en batch:', validOrders.map(po => po.external_id).join(', '));
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
@@ -260,19 +258,19 @@ order by A.PONUMBER, B.PORLREV;
             'PDPTenantSecret': apiSecrets[index],
             'Content-Type': 'application/json'
           },
-          timeout: 60000 // Mayor timeout para batch
+          timeout: 300000 // 5 minutos de timeout para carga inicial
         }
       );
       
       console.log(
-        `[INFO] Batch de ${validOrders.length} órdenes enviado exitosamente\n` +
+        `[INFO] [CARGA INICIAL] Batch de ${validOrders.length} órdenes enviado exitosamente\n` +
         `   -> Status: ${resp.status} ${resp.statusText}`
       );
 
       // 4.6) Procesar respuesta del batch y registrar cada orden
       if (resp.data && resp.data.orders_status) {
         // Respuesta exitosa con detalles por orden
-        console.log(`[INFO] Procesando respuesta de ${resp.data.orders_status.length} órdenes...`);
+        console.log(`[INFO] [CARGA INICIAL] Procesando respuesta de ${resp.data.orders_status.length} órdenes...`);
         
         for (const orderStatus of resp.data.orders_status) {
           const po = validOrders.find(order => order.external_id === orderStatus.external_id);
@@ -349,7 +347,7 @@ order by A.PONUMBER, B.PORLREV;
       }
 
     } catch (err) {
-      console.error(`[ERROR] Error enviando batch de ${validOrders.length} órdenes:`);
+      console.error(`[ERROR] [CARGA INICIAL] Error enviando batch de ${validOrders.length} órdenes:`);
       let respAPI;
       if (err.response) {
         console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
@@ -391,10 +389,10 @@ order by A.PONUMBER, B.PORLREV;
       }
     }
   } else {
-    console.log('[INFO] No hay órdenes válidas para enviar.');
+    console.log('[INFO] [CARGA INICIAL] No hay órdenes válidas para enviar.');
   }
 }
 
 module.exports = {
-  createPurchaseOrders
+  createInitialLoadPurchaseOrders
 }
