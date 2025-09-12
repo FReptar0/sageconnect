@@ -237,15 +237,17 @@ order by A.PONUMBER, B.PORLREV;
     pathEnv.LOG_PATH + 'sageconnect/'
   );
 
-  // 5) Validar órdenes
-  console.log(`[INFO] Validando órdenes con Joi...`);
+  // 5) Validar órdenes y verificar control FESA
+  console.log(`[INFO] Validando órdenes con Joi y verificando control FESA...`);
   const validationResults = {
     valid: [],
     invalid: [],
+    alreadyProcessed: [],
     summary: {
       total: ordersToSend.length,
       valid: 0,
       invalid: 0,
+      alreadyProcessed: 0,
       errors: {}
     }
   };
@@ -255,10 +257,40 @@ order by A.PONUMBER, B.PORLREV;
     
     console.log(`[INFO] [${i + 1}/${ordersToSend.length}] Validando PO: ${po.external_id}`);
     
-    // Limpiar placeholders como en el código original
+    // 5.1) Verificar si ya existe en fesaOCFocaltec
+    const checkSql = `
+      SELECT idFocaltec, status, responseAPI, lastUpdate
+      FROM dbo.fesaOCFocaltec
+      WHERE ocSage    = '${po.external_id}'
+        AND idDatabase= '${databases[databaseIndex]}'
+        AND idFocaltec IS NOT NULL
+        AND status = 'POSTED'
+    `;
+    
+    try {
+      const { recordset: existing } = await runQuery(checkSql, 'FESA');
+      if (existing.length > 0) {
+        console.log(`[WARN] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+        logGenerator(logFileName, 'warn', `PO ${po.external_id} ya procesada (POSTED), se omite. Base: ${databases[databaseIndex]}`);
+        
+        validationResults.alreadyProcessed.push({
+          po: po,
+          controlInfo: existing[0]
+        });
+        validationResults.summary.alreadyProcessed++;
+        continue;
+      }
+    } catch (controlErr) {
+      console.error(`[ERROR] Error verificando control FESA para PO ${po.external_id}:`, controlErr);
+      logGenerator(logFileName, 'error', `Error verificando control FESA para PO ${po.external_id}: ${controlErr.message}`);
+      // Continuar con la validación aunque falle la verificación de control
+    }
+    
+    // 5.2) Limpiar placeholders como en el código original
     if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
     if (po.requisition_number === 0) delete po.requisition_number;
 
+    // 5.3) Validar con Joi
     try {
       validateExternPurchaseOrder(po);
       console.log(`[OK] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación`);
@@ -304,6 +336,7 @@ order by A.PONUMBER, B.PORLREV;
   console.log(`[INFO] Órdenes parseadas: ${ordersToSend.length}`);
   console.log(`[INFO] Órdenes válidas: ${validationResults.summary.valid}`);
   console.log(`[INFO] Órdenes inválidas: ${validationResults.summary.invalid}`);
+  console.log(`[INFO] Órdenes ya procesadas: ${validationResults.summary.alreadyProcessed}`);
   console.log(`[INFO] ========================================`);
 
   if (validationResults.summary.invalid > 0) {
@@ -326,7 +359,18 @@ order by A.PONUMBER, B.PORLREV;
     console.log(`[INFO] ========================================`);
   }
 
-  logGenerator(logFileName, 'info', `Prueba completada. Válidas: ${validationResults.summary.valid}, Inválidas: ${validationResults.summary.invalid}`);
+  // Mostrar algunas órdenes ya procesadas como ejemplo
+  if (validationResults.alreadyProcessed.length > 0) {
+    console.log(`[INFO] EJEMPLO DE ÓRDENES YA PROCESADAS (primeras 3):`);
+    validationResults.alreadyProcessed.slice(0, 3).forEach((item, index) => {
+      const order = item.po;
+      const control = item.controlInfo;
+      console.log(`[INFO] ${index + 1}. PO: ${order.external_id} - ID Focaltec: ${control.idFocaltec} - Última actualización: ${control.lastUpdate}`);
+    });
+    console.log(`[INFO] ========================================`);
+  }
+
+  logGenerator(logFileName, 'info', `Prueba completada. Válidas: ${validationResults.summary.valid}, Inválidas: ${validationResults.summary.invalid}, Ya procesadas: ${validationResults.summary.alreadyProcessed}`);
   
   console.log(`[SUCCESS] Prueba completada exitosamente`);
   console.log(`[INFO] Archivos JSON guardados en: ${pathEnv.LOG_PATH}sageconnect/`);
