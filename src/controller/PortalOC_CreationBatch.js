@@ -260,7 +260,7 @@ order by A.PONUMBER, B.PORLREV;
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
-      const resp = await axios.post(
+      const resp = await axios.put(
         endpoint,
         validOrders, // Enviar array de órdenes
         {
