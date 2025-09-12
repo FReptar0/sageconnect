@@ -17,6 +17,7 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
+const { logGenerator } = require('../utils/LogGenerator');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -29,7 +30,10 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 // Función específica para carga inicial con timeout extendido
 async function createInitialLoadPurchaseOrders(index) {
+  const logFileName = 'PortalOC_CargaInicial';
+  
   console.log(`[INFO] Iniciando carga inicial para base de datos: ${databases[index]}`);
+  logGenerator(logFileName, 'info', `Iniciando carga inicial para base de datos: ${databases[index]}`);
   
   const sql = `
 select 
@@ -171,8 +175,10 @@ order by A.PONUMBER, B.PORLREV;
   try {
     ({ recordset } = await runQuery(sql, databases[index]));
     console.log(`[INFO] [CARGA INICIAL] Recuperadas ${recordset.length} filas de la base`);
+    logGenerator(logFileName, 'info', `Recuperadas ${recordset.length} filas de la base ${databases[index]}`);
   } catch (dbErr) {
-    console.error('❌ [CARGA INICIAL] Error al ejecutar la consulta SQL:', dbErr);
+    console.error('[ERROR] [CARGA INICIAL] Error al ejecutar la consulta SQL:', dbErr);
+    logGenerator(logFileName, 'error', `Error al ejecutar la consulta SQL para ${databases[index]}: ${dbErr.message}`);
     return;
   }
 
@@ -181,6 +187,7 @@ order by A.PONUMBER, B.PORLREV;
   const ordersToSend = parseExternPurchaseOrders(grouped);
 
   console.log(`[INFO] [CARGA INICIAL] Procesando ${ordersToSend.length} órdenes de compra...`);
+  logGenerator(logFileName, 'info', `Procesando ${ordersToSend.length} órdenes de compra para ${databases[index]}`);
 
   // 4) Validar y preparar órdenes para envío en batch
   const validOrders = [];
@@ -201,6 +208,7 @@ order by A.PONUMBER, B.PORLREV;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
       console.log(`[WARN] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      logGenerator(logFileName, 'warn', `PO ${po.external_id} ya procesada (POSTED), se omite. Base: ${databases[index]}`);
       continue;
     }
 
@@ -216,6 +224,7 @@ order by A.PONUMBER, B.PORLREV;
     } catch (valErr) {
       console.error(`[ERROR] Joi validation failed for PO ${po.external_id}:`);
       valErr.details.forEach(d => console.error(`   -> ${d.message}`));
+      logGenerator(logFileName, 'error', `Joi validation failed for PO ${po.external_id}: ${valErr.details.map(d => d.message).join('; ')} - Base: ${databases[index]}`);
       
       invalidOrders.push({
         po: po,
@@ -240,12 +249,14 @@ order by A.PONUMBER, B.PORLREV;
         )
     `;
     await runQuery(sqlErr, 'FESA');
+    logGenerator(logFileName, 'error', `Orden inválida registrada: ${invalid.po.external_id} - Error: ${invalid.error} - Base: ${databases[index]}`);
   }
 
   // 4.5) Enviar órdenes válidas en batch si hay alguna
   if (validOrders.length > 0) {
     console.log(`[INFO] [CARGA INICIAL] Enviando batch de ${validOrders.length} órdenes de compra...`);
     console.log('[DEBUG] POs en batch:', validOrders.map(po => po.external_id).join(', '));
+    logGenerator(logFileName, 'info', `Enviando batch de ${validOrders.length} órdenes de compra para ${databases[index]}. POs: ${validOrders.map(po => po.external_id).join(', ')}`);
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
@@ -266,6 +277,7 @@ order by A.PONUMBER, B.PORLREV;
         `[INFO] [CARGA INICIAL] Batch de ${validOrders.length} órdenes enviado exitosamente\n` +
         `   -> Status: ${resp.status} ${resp.statusText}`
       );
+      logGenerator(logFileName, 'info', `Batch de ${validOrders.length} órdenes enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
 
       // 4.6) Procesar respuesta del batch y registrar cada orden
       if (resp.data && resp.data.orders_status) {
@@ -286,6 +298,7 @@ order by A.PONUMBER, B.PORLREV;
             ).join('; ');
             
             console.error(`[ERROR] PO ${po.external_id} falló: ${errors}`);
+            logGenerator(logFileName, 'error', `PO ${po.external_id} falló en batch: ${errors} - Base: ${databases[index]}`);
             
             const sqlErr = `
               INSERT INTO dbo.fesaOCFocaltec
@@ -306,6 +319,7 @@ order by A.PONUMBER, B.PORLREV;
             const idFocaltec = orderStatus.internal_id || orderStatus.id || resp.data.id || `BATCH_${orderStatus.external_id}`;
             
             console.log(`[OK] PO ${po.external_id} procesada exitosamente (ID: ${idFocaltec})`);
+            logGenerator(logFileName, 'info', `PO ${po.external_id} procesada exitosamente con ID: ${idFocaltec} - Base: ${databases[index]}`);
             
             const sqlOk = `
               INSERT INTO dbo.fesaOCFocaltec
@@ -348,6 +362,7 @@ order by A.PONUMBER, B.PORLREV;
 
     } catch (err) {
       console.error(`[ERROR] [CARGA INICIAL] Error enviando batch de ${validOrders.length} órdenes:`);
+      logGenerator(logFileName, 'error', `Error enviando batch de ${validOrders.length} órdenes para ${databases[index]}: ${err.message}`);
       let respAPI;
       if (err.response) {
         console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
@@ -390,9 +405,47 @@ order by A.PONUMBER, B.PORLREV;
     }
   } else {
     console.log('[INFO] [CARGA INICIAL] No hay órdenes válidas para enviar.');
+    logGenerator(logFileName, 'info', `No hay órdenes válidas para enviar en ${databases[index]}`);
   }
 }
 
+// Función principal para ejecutar desde terminal
+async function main() {
+  const logFileName = 'PortalOC_CargaInicial';
+  
+  console.log('[INFO] [CARGA INICIAL] Iniciando procesamiento de órdenes de compra...');
+  logGenerator(logFileName, 'info', 'Iniciando procesamiento completo de carga inicial para todas las bases de datos');
+  
+  try {
+    // Procesar todas las bases de datos configuradas
+    for (let i = 0; i < databases.length; i++) {
+      console.log(`\n[INFO] [CARGA INICIAL] Procesando base de datos ${i + 1}/${databases.length}: ${databases[i]}`);
+      logGenerator(logFileName, 'info', `Iniciando procesamiento de base de datos ${i + 1}/${databases.length}: ${databases[i]}`);
+      
+      await createInitialLoadPurchaseOrders(i);
+      
+      console.log(`[SUCCESS] [CARGA INICIAL] Finalizado procesamiento para ${databases[i]}`);
+      logGenerator(logFileName, 'info', `Finalizado procesamiento para ${databases[i]}`);
+    }
+    
+    console.log('\n[SUCCESS] [CARGA INICIAL] Procesamiento completo de todas las bases de datos.');
+    logGenerator(logFileName, 'info', 'Procesamiento completo de todas las bases de datos finalizado exitosamente');
+  } catch (error) {
+    console.error('[ERROR] [CARGA INICIAL] Error durante el procesamiento:', error);
+    logGenerator(logFileName, 'error', `Error fatal durante el procesamiento: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+// Ejecutar solo si el archivo se ejecuta directamente desde terminal
+if (require.main === module) {
+  main().catch(error => {
+    console.error('[ERROR] [CARGA INICIAL] Error fatal:', error);
+    process.exit(1);
+  });
+}
+
 module.exports = {
-  createInitialLoadPurchaseOrders
+  createInitialLoadPurchaseOrders,
+  main
 }
