@@ -26,7 +26,7 @@ const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
 const externalId = EXTERNAL_IDS.split(',');
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${URL}/api/1.0/batch/tenants/${tenantIds[index]}`;
 
 // Función específica para carga inicial con timeout extendido
 async function createInitialLoadPurchaseOrders(index) {
