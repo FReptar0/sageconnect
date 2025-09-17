@@ -167,6 +167,13 @@ where
   and A.[DATE] between '20250101' and '20251231'
   and B.SQOUTSTAND > 0 
   and B.COMPLETION = 1
+  -- Excluir órdenes ya registradas en FESA (POSTED, ERROR, EN_PROCESO)
+  and A.PONUMBER NOT IN (
+    SELECT ocSage 
+    FROM dbo.fesaOCFocaltec 
+    WHERE idDatabase = '${databases[index]}'
+      AND status IN ('POSTED', 'ERROR', 'EN_PROCESO')
+  )
 order by A.PONUMBER, B.PORLREV;
 `;
 
@@ -262,7 +269,7 @@ order by A.PONUMBER, B.PORLREV;
     try {
       const resp = await axios.put(
         endpoint,
-        validOrders, // Enviar array de órdenes
+        { purchase_orders: validOrders }, // Enviar como objeto con propiedad purchase_orders
         {
           headers: {
             'PDPTenantKey': apiKeys[index],
@@ -279,10 +286,39 @@ order by A.PONUMBER, B.PORLREV;
       );
       logGenerator(logFileName, 'info', `Batch de ${validOrders.length} órdenes enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
 
-      // 4.6) Procesar respuesta del batch y registrar cada orden
-      if (resp.data && resp.data.orders_status) {
-        // Respuesta exitosa con detalles por orden
-        console.log(`[INFO] [CARGA INICIAL] Procesando respuesta de ${resp.data.orders_status.length} órdenes...`);
+      // 4.6) Procesar respuesta del batch
+      if (resp.data && resp.data.type === 'ASYNC') {
+        // Respuesta asíncrona - registrar órdenes como EN_PROCESO
+        console.log(`[INFO] [CARGA INICIAL] Batch procesado de forma asíncrona (ID: ${resp.data.id})`);
+        console.log(`[WARN] [CARGA INICIAL] Las órdenes se están procesando de forma asíncrona. Se marcarán como EN_PROCESO.`);
+        console.log(`[INFO] [CARGA INICIAL] ID del batch asíncrono: ${resp.data.id}`);
+        
+        logGenerator(logFileName, 'warn', `Batch asíncrono iniciado para ${databases[index]}. ID: ${resp.data.id}. ${validOrders.length} órdenes en proceso.`);
+        
+        // Registrar todas las órdenes como EN_PROCESO con el ID del batch asíncrono
+        for (const po of validOrders) {
+          const sqlPending = `
+            INSERT INTO dbo.fesaOCFocaltec
+              (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+            VALUES
+              ('${resp.data.id}',
+               '${po.external_id.replace(/'/g, "''")}',
+               'EN_PROCESO',
+               GETDATE(),
+               GETDATE(),
+               'ASYNC_BATCH_PROCESSING',
+               '${databases[index]}'
+              )
+          `;
+          await runQuery(sqlPending, 'FESA');
+        }
+        
+        console.log(`[WARN] [CARGA INICIAL] ${validOrders.length} órdenes marcadas como EN_PROCESO.`);
+        console.log(`[INFO] [CARGA INICIAL] IMPORTANTE: Debe implementar consulta posterior al batch ID: ${resp.data.id}`);
+        
+      } else if (resp.data && resp.data.orders_status && resp.data.orders_status.length > 0) {
+        // Respuesta síncrona con detalles por orden
+        console.log(`[INFO] [CARGA INICIAL] Procesando respuesta síncrona de ${resp.data.orders_status.length} órdenes...`);
         
         for (const orderStatus of resp.data.orders_status) {
           const po = validOrders.find(order => order.external_id === orderStatus.external_id);
@@ -305,18 +341,18 @@ order by A.PONUMBER, B.PORLREV;
                 (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
               VALUES
                 (NULL,
-                 '${po.external_id}',
+                 '${po.external_id.replace(/'/g, "''")}',
                  'ERROR',
                  GETDATE(),
                  GETDATE(),
-                 '${errors}',
+                 '${errors.replace(/'/g, "''")}',
                  '${databases[index]}'
                 )
             `;
             await runQuery(sqlErr, 'FESA');
           } else {
             // Orden exitosa
-            const idFocaltec = orderStatus.internal_id || orderStatus.id || resp.data.id || `BATCH_${orderStatus.external_id}`;
+            const idFocaltec = orderStatus.internal_id || orderStatus.id || `SYNC_${orderStatus.external_id}`;
             
             console.log(`[OK] PO ${po.external_id} procesada exitosamente (ID: ${idFocaltec})`);
             logGenerator(logFileName, 'info', `PO ${po.external_id} procesada exitosamente con ID: ${idFocaltec} - Base: ${databases[index]}`);
@@ -326,11 +362,11 @@ order by A.PONUMBER, B.PORLREV;
                 (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
               VALUES
                 ('${idFocaltec}',
-                 '${po.external_id}',
+                 '${po.external_id.replace(/'/g, "''")}',
                  'POSTED',
                  GETDATE(),
                  GETDATE(),
-                 'BATCH_SUCCESS',
+                 'SYNC_SUCCESS',
                  '${databases[index]}'
                 )
             `;
@@ -338,26 +374,10 @@ order by A.PONUMBER, B.PORLREV;
           }
         }
       } else {
-        // Respuesta sin detalles individuales - registrar todas como exitosas
-        for (let i = 0; i < validOrders.length; i++) {
-          const po = validOrders[i];
-          const idFocaltec = resp.data?.id || `BATCH_${i}`;
-          
-          const sqlOk = `
-            INSERT INTO dbo.fesaOCFocaltec
-              (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-            VALUES
-              ('${idFocaltec}',
-               '${po.external_id}',
-               'POSTED',
-               GETDATE(),
-               GETDATE(),
-               'BATCH_SUCCESS',
-               '${databases[index]}'
-              )
-          `;
-          await runQuery(sqlOk, 'FESA');
-        }
+        // Respuesta sin información clara - no registrar nada para evitar duplicados
+        console.warn(`[WARN] [CARGA INICIAL] Respuesta de API sin información clara sobre el estado de las órdenes`);
+        console.warn(`[WARN] [CARGA INICIAL] No se registrarán las órdenes para evitar duplicados`);
+        logGenerator(logFileName, 'warn', `Respuesta ambigua de API para ${databases[index]}. No se registraron órdenes para evitar duplicados.`);
       }
 
     } catch (err) {
