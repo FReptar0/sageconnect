@@ -26,7 +26,7 @@ const apiSecrets = API_SECRET.split(',');
 const databases = DATABASES.split(',');
 const externalId = EXTERNAL_IDS.split(',');
 
-const urlBase = (index) => `${URL}/api/1.0/batch/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
@@ -184,13 +184,15 @@ order by A.PONUMBER, B.PORLREV;
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
 
-  // 4) Validar y preparar órdenes para envío en batch
-  const validOrders = [];
-  const invalidOrders = [];
-
+  // 4) Procesar cada PO
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
-    
+    // Imprimir el PO que realmente se enviará al API (después de limpiar placeholders y validación)
+    let poToSend = { ...po };
+    if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
+    if (poToSend.requisition_number === 0) delete poToSend.requisition_number;
+    console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
+
     // 4.1) Comprobar si ya existe en fesaOCFocaltec
     const checkSql = `
       SELECT idFocaltec
@@ -207,6 +209,7 @@ order by A.PONUMBER, B.PORLREV;
     }
 
     // 4.2) Limpiar placeholders
+    //delete po.company_external_id;
     if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
     if (po.requisition_number === 0) delete po.requisition_number;
 
@@ -214,186 +217,102 @@ order by A.PONUMBER, B.PORLREV;
     try {
       validateExternPurchaseOrder(po);
       console.log(`[OK] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación Joi`);
-      validOrders.push(po);
     } catch (valErr) {
       console.error(`[ERROR] Joi validation failed for PO ${po.external_id}:`);
       valErr.details.forEach(d => console.error(`   -> ${d.message}`));
-      
-      invalidOrders.push({
-        po: po,
-        error: valErr.details.map(d => d.message).join('; ')
-      });
+
+      // Insert ERROR en fesaOCFocaltec
+      const respAPI = valErr.details.map(d => d.message).join('; ');
+      const sqlErr = `
+        INSERT INTO dbo.fesaOCFocaltec
+          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+        VALUES
+          ('',
+           '${po.external_id}',
+           'ERROR',
+           GETDATE(),
+           GETDATE(),
+           '${respAPI}',
+           '${databases[index]}'
+          )
+      `;
+      await runQuery(sqlErr, 'FESA');
+      continue;
     }
-  }
 
-  // 4.4) Registrar órdenes inválidas en base de datos
-  for (const invalid of invalidOrders) {
-    const sqlErr = `
-      INSERT INTO dbo.fesaOCFocaltec
-        (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-      VALUES
-        ('',
-         '${invalid.po.external_id}',
-         'ERROR',
-         GETDATE(),
-         GETDATE(),
-         '${invalid.error}',
-         '${databases[index]}'
-        )
-    `;
-    await runQuery(sqlErr, 'FESA');
-  }
-
-  // 4.5) Enviar órdenes válidas en batch si hay alguna
-  if (validOrders.length > 0) {
-    console.log(`[INFO] Enviando batch de ${validOrders.length} órdenes de compra...`);
-    console.log('[DEBUG] POs en batch:', validOrders.map(po => po.external_id).join(', '));
-
+    // 4.4) Enviar al portal
     const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
-      const resp = await axios.put(
+      const resp = await axios.post(
         endpoint,
-        validOrders, // Enviar array de órdenes
+        po,
         {
           headers: {
             'PDPTenantKey': apiKeys[index],
             'PDPTenantSecret': apiSecrets[index],
             'Content-Type': 'application/json'
           },
-          timeout: 60000 // Mayor timeout para batch
+          timeout: 30000
         }
       );
-      
       console.log(
-        `[INFO] Batch de ${validOrders.length} órdenes enviado exitosamente\n` +
+        `[INFO] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
         `   -> Status: ${resp.status} ${resp.statusText}`
       );
 
-      // 4.6) Procesar respuesta del batch y registrar cada orden
-      if (resp.data && resp.data.orders_status) {
-        // Respuesta exitosa con detalles por orden
-        console.log(`[INFO] Procesando respuesta de ${resp.data.orders_status.length} órdenes...`);
-        
-        for (const orderStatus of resp.data.orders_status) {
-          const po = validOrders.find(order => order.external_id === orderStatus.external_id);
-          if (!po) {
-            console.warn(`[WARN] No se encontró orden local para external_id: ${orderStatus.external_id}`);
-            continue;
-          }
-
-          if (orderStatus.status === 'ERROR') {
-            // Orden con errores
-            const errors = orderStatus.errors.map(err => 
-              `${err.error_code}: ${err.error_message}`
-            ).join('; ');
-            
-            console.error(`[ERROR] PO ${po.external_id} falló: ${errors}`);
-            
-            const sqlErr = `
-              INSERT INTO dbo.fesaOCFocaltec
-                (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-              VALUES
-                (NULL,
-                 '${po.external_id}',
-                 'ERROR',
-                 GETDATE(),
-                 GETDATE(),
-                 '${errors}',
-                 '${databases[index]}'
-                )
-            `;
-            await runQuery(sqlErr, 'FESA');
-          } else {
-            // Orden exitosa
-            const idFocaltec = orderStatus.internal_id || orderStatus.id || resp.data.id || `BATCH_${orderStatus.external_id}`;
-            
-            console.log(`[OK] PO ${po.external_id} procesada exitosamente (ID: ${idFocaltec})`);
-            
-            const sqlOk = `
-              INSERT INTO dbo.fesaOCFocaltec
-                (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-              VALUES
-                ('${idFocaltec}',
-                 '${po.external_id}',
-                 'POSTED',
-                 GETDATE(),
-                 GETDATE(),
-                 'BATCH_SUCCESS',
-                 '${databases[index]}'
-                )
-            `;
-            await runQuery(sqlOk, 'FESA');
-          }
-        }
-      } else {
-        // Respuesta sin detalles individuales - registrar todas como exitosas
-        for (let i = 0; i < validOrders.length; i++) {
-          const po = validOrders[i];
-          const idFocaltec = resp.data?.id || `BATCH_${i}`;
-          
-          const sqlOk = `
-            INSERT INTO dbo.fesaOCFocaltec
-              (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-            VALUES
-              ('${idFocaltec}',
-               '${po.external_id}',
-               'POSTED',
-               GETDATE(),
-               GETDATE(),
-               'BATCH_SUCCESS',
-               '${databases[index]}'
-              )
-          `;
-          await runQuery(sqlOk, 'FESA');
-        }
-      }
+      // 4.5) Insert POSTED en fesaOCFocaltec
+      const idFocaltec = resp.data.id;
+      const sqlOk = `
+        INSERT INTO dbo.fesaOCFocaltec
+          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+        VALUES
+          ('${idFocaltec}',
+           '${po.external_id}',
+           'POSTED',
+           GETDATE(),
+           GETDATE(),
+           NULL,
+           '${databases[index]}'
+          )
+      `;
+      await runQuery(sqlOk, 'FESA');
 
     } catch (err) {
-      console.error(`[ERROR] Error enviando batch de ${validOrders.length} órdenes:`);
+      console.error(`[ERROR] [${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
       let respAPI;
       if (err.response) {
         console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
         console.error(`   -> Body:`, err.response.data);
-        
-        // Manejar diferentes tipos de errores del API
-        if (err.response.data && err.response.data.code && err.response.data.description) {
-          // Error tipo: {"code": 9005, "description": "...", "other": "Batch API"}
-          respAPI = `CODE_${err.response.data.code}: ${err.response.data.description}`;
-        } else if (err.response.data && typeof err.response.data === 'string') {
-          respAPI = `HTTP_${err.response.status}: ${err.response.data}`;
-        } else {
-          respAPI = `HTTP_${err.response.status}: ${err.response.statusText}`;
-        }
-      } else if (err.code === 'ECONNABORTED') {
-        console.error('   -> Timeout del servidor.');
-        respAPI = 'TIMEOUT: La petición excedió el tiempo límite';
+        const { code, description } = err.response.data;
+        respAPI = `${code}: ${description}`;
       } else {
-        console.error('   -> Error de conexión o red.');
-        respAPI = `NETWORK_ERROR: ${err.message}`;
+        console.error('   -> No hubo respuesta del servidor o timeout.');
+        respAPI = err.message;
       }
 
-      // 4.7) Registrar todas las órdenes como ERROR si falla el batch
-      for (const po of validOrders) {
-        const sqlErr = `
-          INSERT INTO dbo.fesaOCFocaltec
-            (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-          VALUES
-            (NULL,
-             '${po.external_id}',
-             'ERROR',
-             GETDATE(),
-             GETDATE(),
-             '${respAPI}',
-             '${databases[index]}'
-            )
-        `;
-        await runQuery(sqlErr, 'FESA');
-      }
+      // 4.6) Insert ERROR en fesaOCFocaltec
+      const sqlErr = `
+        INSERT INTO dbo.fesaOCFocaltec
+          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+        VALUES
+          (NULL,
+           '${po.external_id}',
+           'ERROR',
+           GETDATE(),
+           GETDATE(),
+           '${respAPI}',
+           '${databases[index]}'
+          )
+      `;
+      await runQuery(sqlErr, 'FESA');
     }
-  } else {
-    console.log('[INFO] No hay órdenes válidas para enviar.');
   }
 }
+
+// createPurchaseOrders(0).catch(err => {
+//   console.error('❌ Error en createPurchaseOrders:', err);
+//   // Aquí podrías agregar un log si tienes una función de logging
+// });
 
 module.exports = {
   createPurchaseOrders
