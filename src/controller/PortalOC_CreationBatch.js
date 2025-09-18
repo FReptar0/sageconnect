@@ -250,15 +250,18 @@ order by A.PONUMBER, B.PORLREV;
 
   // 4.5) Enviar órdenes válidas en batch si hay alguna
   if (validOrders.length > 0) {
-    console.log(`[INFO] [CARGA INICIAL] Enviando batch de ${validOrders.length} órdenes de compra...`);
-    console.log('[DEBUG] POs en batch:', validOrders.map(po => po.external_id).join(', '));
-    logGenerator(logFileName, 'info', `Enviando batch de ${validOrders.length} órdenes de compra para ${databases[index]}. POs: ${validOrders.map(po => po.external_id).join(', ')}`);
+    // *** LIMITACIÓN PARA PRUEBA: Solo tomar las primeras 10 órdenes ***
+    const testOrders = validOrders.slice(0, 10);
+    console.log(`[INFO] [CARGA INICIAL] MODO PRUEBA: Limitando a ${testOrders.length} órdenes de ${validOrders.length} totales`);
+    console.log(`[INFO] [CARGA INICIAL] Enviando batch de ${testOrders.length} órdenes de compra...`);
+    console.log('[DEBUG] POs en batch:', testOrders.map(po => po.external_id).join(', '));
+    logGenerator(logFileName, 'info', `MODO PRUEBA: Enviando batch de ${testOrders.length} órdenes de ${validOrders.length} totales para ${databases[index]}. POs: ${testOrders.map(po => po.external_id).join(', ')}`);
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
       const resp = await axios.put(
         endpoint,
-        { purchase_orders: validOrders }, // Enviar como objeto con propiedad purchase_orders
+        { purchase_orders: testOrders }, // Enviar como objeto con propiedad purchase_orders
         {
           headers: {
             'PDPTenantKey': apiKeys[index],
@@ -270,10 +273,10 @@ order by A.PONUMBER, B.PORLREV;
       );
       
       console.log(
-        `[INFO] [CARGA INICIAL] Batch de ${validOrders.length} órdenes enviado exitosamente\n` +
+        `[INFO] [CARGA INICIAL] Batch de ${testOrders.length} órdenes enviado exitosamente\n` +
         `   -> Status: ${resp.status} ${resp.statusText}`
       );
-      logGenerator(logFileName, 'info', `Batch de ${validOrders.length} órdenes enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
+      logGenerator(logFileName, 'info', `Batch de ${testOrders.length} órdenes enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
 
       // 4.6) Procesar respuesta del batch y registrar cada orden
       if (resp.data && resp.data.orders_status) {
