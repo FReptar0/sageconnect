@@ -202,33 +202,37 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 
 ### .env.path
 
-These are the paths where the CFDI's will be saved
+These are the paths where the CFDI's will be saved and logs generated
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
+| LOG_PATH | It is the base path where log files will be generated. The system will create a 'sageconnect' subdirectory inside this path. | C:\Logs\ |
+
+> :bangbang: **LOG_PATH Configuration**: The LOG_PATH should end with a trailing slash and the system will automatically create a 'sageconnect' subdirectory. For example, if LOG_PATH is `C:\Logs\`, log files will be saved to `C:\Logs\sageconnect\`. Make sure the specified path exists and has write permissions.
 
 ---
 
 ## Preserving Local Environment Files
 
-This project tracks several `.env` files in the repo:
-
-- `.env`
-- `.env.credentials.database`
-- `.env.credentials.focaltec`
-- `.env.credentials.mailing`
-- `.env.path`
-
-To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
-
-```bash
-git update-index --skip-worktree .env
-git update-index --skip-worktree .env.credentials.database
-git update-index --skip-worktree .env.credentials.focaltec
-git update-index --skip-worktree .env.credentials.mailing
-git update-index --skip-worktree .env.path
-```
+> [!IMPORTANT]  
+> This project tracks several `.env` files in the repo:
+>
+> - `.env`
+> - `.env.credentials.database`
+> - `.env.credentials.focaltec`
+> - `.env.credentials.mailing`
+> - `.env.path`
+>
+> To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
+>
+> ```bash
+> git update-index --skip-worktree .env
+> git update-index --skip-worktree .env.credentials.database
+> git update-index --skip-worktree .env.credentials.focaltec
+> git update-index --skip-worktree .env.credentials.mailing
+> git update-index --skip-worktree .env.path
+> ```
 
 ---
 
