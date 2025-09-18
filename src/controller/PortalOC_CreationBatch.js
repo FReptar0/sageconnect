@@ -250,20 +250,17 @@ order by A.PONUMBER, B.PORLREV;
 
   // 4.5) Enviar órdenes válidas en lotes de 50 si hay alguna
   if (validOrders.length > 0) {
-    // *** LIMITACIÓN PARA PRUEBA: Solo tomar las primeras 10 órdenes ***
-    const testOrders = validOrders.slice(0, 10);
-    console.log(`[INFO] [CARGA INICIAL] MODO PRUEBA: Limitando a ${testOrders.length} órdenes de ${validOrders.length} totales`);
-    
     // Dividir en lotes de 50
     const BATCH_SIZE = 50;
     const DELAY_BETWEEN_BATCHES = 5000; // 5 segundos
-    const ordersToProcess = testOrders;
+    const ordersToProcess = validOrders; // Usar todas las órdenes válidas, no solo 10
     const totalBatches = Math.ceil(ordersToProcess.length / BATCH_SIZE);
     
     console.log(`[INFO] [CARGA INICIAL] Dividiendo ${ordersToProcess.length} órdenes en ${totalBatches} lote(s) de máximo ${BATCH_SIZE} órdenes`);
     logGenerator(logFileName, 'info', `Dividiendo ${ordersToProcess.length} órdenes en ${totalBatches} lote(s) para ${databases[index]}`);
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
+    const duplicatedOrders = []; // Array para guardar órdenes duplicadas
     
     for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
       const startIndex = batchIndex * BATCH_SIZE;
@@ -378,44 +375,172 @@ order by A.PONUMBER, B.PORLREV;
       } catch (err) {
         console.error(`[ERROR] [CARGA INICIAL] Error enviando lote ${batchIndex + 1}/${totalBatches} con ${currentBatch.length} órdenes:`);
         logGenerator(logFileName, 'error', `Error enviando lote ${batchIndex + 1}/${totalBatches} para ${databases[index]}: ${err.message}`);
-        let respAPI;
-        if (err.response) {
+        
+        // Verificar si es error de orden duplicada (código 2602)
+        if (err.response && err.response.status === 409 && 
+            err.response.data && err.response.data.code === 2602) {
+          
+          console.log(`[WARN] [CARGA INICIAL] Detectado error de orden duplicada en lote ${batchIndex + 1}`);
           console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
           console.error(`   -> Body:`, err.response.data);
           
-          // Manejar diferentes tipos de errores del API
-          if (err.response.data && err.response.data.code && err.response.data.description) {
-            // Error tipo: {"code": 9005, "description": "...", "other": "Batch API"}
-            respAPI = `CODE_${err.response.data.code}: ${err.response.data.description}`;
-          } else if (err.response.data && typeof err.response.data === 'string') {
-            respAPI = `HTTP_${err.response.status}: ${err.response.data}`;
-          } else {
-            respAPI = `HTTP_${err.response.status}: ${err.response.statusText}`;
-          }
-        } else if (err.code === 'ECONNABORTED') {
-          console.error('   -> Timeout del servidor.');
-          respAPI = 'TIMEOUT: La petición excedió el tiempo límite';
-        } else {
-          console.error('   -> Error de conexión o red.');
-          respAPI = `NETWORK_ERROR: ${err.message}`;
-        }
+          // Extraer external_id duplicado del mensaje de error
+          const errorMessage = err.response.data.description;
+          const duplicateMatch = errorMessage.match(/external_id\s+(\w+)\s+is duplicated/);
+          
+          if (duplicateMatch) {
+            const duplicatedExternalId = duplicateMatch[1];
+            console.log(`[INFO] [CARGA INICIAL] Identificada orden duplicada: ${duplicatedExternalId}`);
+            
+            // Agregar orden duplicada al array de duplicados
+            const duplicatedOrder = currentBatch.find(po => po.external_id === duplicatedExternalId);
+            if (duplicatedOrder) {
+              duplicatedOrders.push({
+                external_id: duplicatedExternalId,
+                database: databases[index],
+                batch_number: batchIndex + 1,
+                error_details: err.response.data
+              });
+              
+              console.log(`[INFO] [CARGA INICIAL] Guardada orden duplicada para reporte: ${duplicatedExternalId}`);
+              logGenerator(logFileName, 'warn', `Orden duplicada detectada: ${duplicatedExternalId} - Base: ${databases[index]} - Lote: ${batchIndex + 1}`);
+              
+              // Filtrar la orden duplicada del lote actual
+              const filteredBatch = currentBatch.filter(po => po.external_id !== duplicatedExternalId);
+              
+              if (filteredBatch.length > 0) {
+                console.log(`[INFO] [CARGA INICIAL] Reintentando lote ${batchIndex + 1} sin la orden duplicada (${filteredBatch.length} órdenes)`);
+                logGenerator(logFileName, 'info', `Reintentando lote ${batchIndex + 1} sin orden duplicada ${duplicatedExternalId}. Órdenes restantes: ${filteredBatch.length}`);
+                
+                try {
+                  const retryResp = await axios.put(
+                    endpoint,
+                    { purchase_orders: filteredBatch },
+                    {
+                      headers: {
+                        'PDPTenantKey': apiKeys[index],
+                        'PDPTenantSecret': apiSecrets[index],
+                        'Content-Type': 'application/json'
+                      },
+                      timeout: 300000
+                    }
+                  );
+                  
+                  console.log(`[SUCCESS] [CARGA INICIAL] Reintento exitoso para lote ${batchIndex + 1} (${filteredBatch.length} órdenes)`);
+                  logGenerator(logFileName, 'info', `Reintento exitoso para lote ${batchIndex + 1}. Status: ${retryResp.status} ${retryResp.statusText}`);
+                  
+                  // Procesar respuesta del reintento (mismo código que arriba)
+                  if (retryResp.data && retryResp.data.orders_status) {
+                    for (const orderStatus of retryResp.data.orders_status) {
+                      const po = filteredBatch.find(order => order.external_id === orderStatus.external_id);
+                      if (!po) continue;
 
-        // 4.7) Registrar todas las órdenes del lote como ERROR si falla
-        for (const po of currentBatch) {
-          const sqlErr = `
-            INSERT INTO dbo.fesaOCFocaltec
-              (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-            VALUES
-              (NULL,
-               '${po.external_id.replace(/'/g, "''")}',
-               'ERROR',
-               GETDATE(),
-               GETDATE(),
-               '${respAPI.replace(/'/g, "''")}',
-               '${databases[index]}'
-              )
-          `;
-          await runQuery(sqlErr, 'FESA');
+                      if (orderStatus.status === 'ERROR') {
+                        const errors = orderStatus.errors.map(err => `${err.error_code}: ${err.error_message}`).join('; ');
+                        console.error(`[ERROR] PO ${po.external_id} falló en reintento: ${errors}`);
+                        
+                        const sqlErr = `
+                          INSERT INTO dbo.fesaOCFocaltec
+                            (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                          VALUES
+                            (NULL, '${po.external_id.replace(/'/g, "''")}', 'ERROR', GETDATE(), GETDATE(), 
+                             '${errors.replace(/'/g, "''")}', '${databases[index]}')
+                        `;
+                        await runQuery(sqlErr, 'FESA');
+                      } else {
+                        const idFocaltec = orderStatus.internal_id || orderStatus.id || retryResp.data.id || `RETRY_${orderStatus.external_id}`;
+                        console.log(`[OK] PO ${po.external_id} procesada exitosamente en reintento (ID: ${idFocaltec})`);
+                        
+                        const sqlOk = `
+                          INSERT INTO dbo.fesaOCFocaltec
+                            (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                          VALUES
+                            ('${idFocaltec}', '${po.external_id.replace(/'/g, "''")}', 'POSTED', GETDATE(), GETDATE(), 
+                             'RETRY_SUCCESS', '${databases[index]}')
+                        `;
+                        await runQuery(sqlOk, 'FESA');
+                      }
+                    }
+                  } else {
+                    // Sin detalles individuales en reintento
+                    for (let i = 0; i < filteredBatch.length; i++) {
+                      const po = filteredBatch[i];
+                      const idFocaltec = retryResp.data?.id || `RETRY_${batchIndex + 1}_${i}`;
+                      
+                      const sqlOk = `
+                        INSERT INTO dbo.fesaOCFocaltec
+                          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                        VALUES
+                          ('${idFocaltec}', '${po.external_id.replace(/'/g, "''")}', 'POSTED', GETDATE(), GETDATE(), 
+                           'RETRY_SUCCESS', '${databases[index]}')
+                      `;
+                      await runQuery(sqlOk, 'FESA');
+                    }
+                  }
+                  
+                } catch (retryErr) {
+                  console.error(`[ERROR] [CARGA INICIAL] Error en reintento del lote ${batchIndex + 1}:`, retryErr.message);
+                  logGenerator(logFileName, 'error', `Error en reintento del lote ${batchIndex + 1}: ${retryErr.message}`);
+                  
+                  // Registrar órdenes del reintento como ERROR
+                  for (const po of filteredBatch) {
+                    const sqlErr = `
+                      INSERT INTO dbo.fesaOCFocaltec
+                        (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                      VALUES
+                        (NULL, '${po.external_id.replace(/'/g, "''")}', 'ERROR', GETDATE(), GETDATE(), 
+                         'RETRY_FAILED: ${retryErr.message.replace(/'/g, "''")}', '${databases[index]}')
+                    `;
+                    await runQuery(sqlErr, 'FESA');
+                  }
+                }
+              }
+              
+              // Registrar la orden duplicada como ya existente
+              const sqlDup = `
+                INSERT INTO dbo.fesaOCFocaltec
+                  (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                VALUES
+                  ('DUPLICATE', '${duplicatedExternalId}', 'DUPLICATE', GETDATE(), GETDATE(), 
+                   'DUPLICATE_EXTERNAL_ID', '${databases[index]}')
+              `;
+              await runQuery(sqlDup, 'FESA');
+            }
+          }
+          
+        } else {
+          // Error diferente a duplicado - manejo normal
+          let respAPI;
+          if (err.response) {
+            console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
+            console.error(`   -> Body:`, err.response.data);
+            
+            if (err.response.data && err.response.data.code && err.response.data.description) {
+              respAPI = `CODE_${err.response.data.code}: ${err.response.data.description}`;
+            } else if (err.response.data && typeof err.response.data === 'string') {
+              respAPI = `HTTP_${err.response.status}: ${err.response.data}`;
+            } else {
+              respAPI = `HTTP_${err.response.status}: ${err.response.statusText}`;
+            }
+          } else if (err.code === 'ECONNABORTED') {
+            console.error('   -> Timeout del servidor.');
+            respAPI = 'TIMEOUT: La petición excedió el tiempo límite';
+          } else {
+            console.error('   -> Error de conexión o red.');
+            respAPI = `NETWORK_ERROR: ${err.message}`;
+          }
+
+          // Registrar todas las órdenes del lote como ERROR
+          for (const po of currentBatch) {
+            const sqlErr = `
+              INSERT INTO dbo.fesaOCFocaltec
+                (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+              VALUES
+                (NULL, '${po.external_id.replace(/'/g, "''")}', 'ERROR', GETDATE(), GETDATE(), 
+                 '${respAPI.replace(/'/g, "''")}', '${databases[index]}')
+            `;
+            await runQuery(sqlErr, 'FESA');
+          }
         }
       }
       
@@ -428,6 +553,47 @@ order by A.PONUMBER, B.PORLREV;
     
     console.log(`[SUCCESS] [CARGA INICIAL] Todos los lotes procesados para ${databases[index]}`);
     logGenerator(logFileName, 'info', `Todos los ${totalBatches} lotes procesados exitosamente para ${databases[index]}`);
+    
+    // Generar archivo JSON con órdenes duplicadas si las hay
+    if (duplicatedOrders.length > 0) {
+      const fs = require('fs');
+      const path = require('path');
+      
+      const duplicatesReport = {
+        generated_at: new Date().toISOString(),
+        database: databases[index],
+        total_duplicates: duplicatedOrders.length,
+        duplicated_orders: duplicatedOrders
+      };
+      
+      // Crear carpeta reports si no existe
+      const reportsDir = path.join(process.cwd(), 'reports');
+      if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir, { recursive: true });
+      }
+      
+      const filename = `duplicated_orders_${databases[index]}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      const filepath = path.join(reportsDir, filename);
+      
+      try {
+        fs.writeFileSync(filepath, JSON.stringify(duplicatesReport, null, 2));
+        console.log(`[INFO] [CARGA INICIAL] Reporte de órdenes duplicadas generado: reports/${filename}`);
+        console.log(`[INFO] [CARGA INICIAL] Total de órdenes duplicadas: ${duplicatedOrders.length}`);
+        logGenerator(logFileName, 'info', `Reporte de órdenes duplicadas generado: reports/${filename}. Total: ${duplicatedOrders.length}`);
+        
+        // Mostrar resumen en consola
+        console.log('[INFO] [CARGA INICIAL] Órdenes duplicadas encontradas:');
+        duplicatedOrders.forEach(order => {
+          console.log(`   -> ${order.external_id} (Lote: ${order.batch_number})`);
+        });
+      } catch (fileErr) {
+        console.error(`[ERROR] [CARGA INICIAL] Error generando reporte de duplicados: ${fileErr.message}`);
+        logGenerator(logFileName, 'error', `Error generando reporte de duplicados: ${fileErr.message}`);
+      }
+    } else {
+      console.log('[INFO] [CARGA INICIAL] No se encontraron órdenes duplicadas');
+      logGenerator(logFileName, 'info', 'No se encontraron órdenes duplicadas');
+    }
   } else {
     console.log('[INFO] [CARGA INICIAL] No hay órdenes válidas para enviar.');
     logGenerator(logFileName, 'info', `No hay órdenes válidas para enviar en ${databases[index]}`);
