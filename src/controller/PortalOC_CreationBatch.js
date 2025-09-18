@@ -248,84 +248,122 @@ order by A.PONUMBER, B.PORLREV;
     logGenerator(logFileName, 'error', `Orden inválida registrada: ${invalid.po.external_id} - Error: ${invalid.error} - Base: ${databases[index]}`);
   }
 
-  // 4.5) Enviar órdenes válidas en batch si hay alguna
+  // 4.5) Enviar órdenes válidas en lotes de 50 si hay alguna
   if (validOrders.length > 0) {
     // *** LIMITACIÓN PARA PRUEBA: Solo tomar las primeras 10 órdenes ***
     const testOrders = validOrders.slice(0, 10);
     console.log(`[INFO] [CARGA INICIAL] MODO PRUEBA: Limitando a ${testOrders.length} órdenes de ${validOrders.length} totales`);
-    console.log(`[INFO] [CARGA INICIAL] Enviando batch de ${testOrders.length} órdenes de compra...`);
-    console.log('[DEBUG] POs en batch:', testOrders.map(po => po.external_id).join(', '));
-    logGenerator(logFileName, 'info', `MODO PRUEBA: Enviando batch de ${testOrders.length} órdenes de ${validOrders.length} totales para ${databases[index]}. POs: ${testOrders.map(po => po.external_id).join(', ')}`);
+    
+    // Dividir en lotes de 50
+    const BATCH_SIZE = 50;
+    const DELAY_BETWEEN_BATCHES = 5000; // 5 segundos
+    const ordersToProcess = testOrders;
+    const totalBatches = Math.ceil(ordersToProcess.length / BATCH_SIZE);
+    
+    console.log(`[INFO] [CARGA INICIAL] Dividiendo ${ordersToProcess.length} órdenes en ${totalBatches} lote(s) de máximo ${BATCH_SIZE} órdenes`);
+    logGenerator(logFileName, 'info', `Dividiendo ${ordersToProcess.length} órdenes en ${totalBatches} lote(s) para ${databases[index]}`);
 
     const endpoint = `${urlBase(index)}/purchase-orders`;
-    try {
-      const resp = await axios.put(
-        endpoint,
-        { purchase_orders: testOrders }, // Enviar como objeto con propiedad purchase_orders
-        {
-          headers: {
-            'PDPTenantKey': apiKeys[index],
-            'PDPTenantSecret': apiSecrets[index],
-            'Content-Type': 'application/json'
-          },
-          timeout: 300000 // 5 minutos de timeout para carga inicial
-        }
-      );
+    
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const startIndex = batchIndex * BATCH_SIZE;
+      const endIndex = Math.min(startIndex + BATCH_SIZE, ordersToProcess.length);
+      const currentBatch = ordersToProcess.slice(startIndex, endIndex);
       
-      console.log(
-        `[INFO] [CARGA INICIAL] Batch de ${testOrders.length} órdenes enviado exitosamente\n` +
-        `   -> Status: ${resp.status} ${resp.statusText}`
-      );
-      logGenerator(logFileName, 'info', `Batch de ${testOrders.length} órdenes enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
+      console.log(`[INFO] [CARGA INICIAL] Enviando lote ${batchIndex + 1}/${totalBatches} con ${currentBatch.length} órdenes...`);
+      console.log('[DEBUG] POs en lote:', currentBatch.map(po => po.external_id).join(', '));
+      logGenerator(logFileName, 'info', `Enviando lote ${batchIndex + 1}/${totalBatches} con ${currentBatch.length} órdenes. POs: ${currentBatch.map(po => po.external_id).join(', ')}`);
 
-      // 4.6) Procesar respuesta del batch y registrar cada orden
-      if (resp.data && resp.data.orders_status) {
-        // Respuesta exitosa con detalles por orden
-        console.log(`[INFO] [CARGA INICIAL] Procesando respuesta de ${resp.data.orders_status.length} órdenes...`);
-        
-        for (const orderStatus of resp.data.orders_status) {
-          const po = validOrders.find(order => order.external_id === orderStatus.external_id);
-          if (!po) {
-            console.warn(`[WARN] No se encontró orden local para external_id: ${orderStatus.external_id}`);
-            continue;
+      try {
+        const resp = await axios.put(
+          endpoint,
+          { purchase_orders: currentBatch }, // Enviar como objeto con propiedad purchase_orders
+          {
+            headers: {
+              'PDPTenantKey': apiKeys[index],
+              'PDPTenantSecret': apiSecrets[index],
+              'Content-Type': 'application/json'
+            },
+            timeout: 300000 // 5 minutos de timeout para carga inicial
           }
+        );
+        
+        console.log(
+          `[SUCCESS] [CARGA INICIAL] Lote ${batchIndex + 1}/${totalBatches} enviado exitosamente (${currentBatch.length} órdenes)\n` +
+          `   -> Status: ${resp.status} ${resp.statusText}`
+        );
+        logGenerator(logFileName, 'info', `Lote ${batchIndex + 1}/${totalBatches} enviado exitosamente para ${databases[index]}. Status: ${resp.status} ${resp.statusText}`);
 
-          if (orderStatus.status === 'ERROR') {
-            // Orden con errores
-            const errors = orderStatus.errors.map(err => 
-              `${err.error_code}: ${err.error_message}`
-            ).join('; ');
-            
-            console.error(`[ERROR] PO ${po.external_id} falló: ${errors}`);
-            logGenerator(logFileName, 'error', `PO ${po.external_id} falló en batch: ${errors} - Base: ${databases[index]}`);
-            
-            const sqlErr = `
-              INSERT INTO dbo.fesaOCFocaltec
-                (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-              VALUES
-                (NULL,
-                 '${po.external_id}',
-                 'ERROR',
-                 GETDATE(),
-                 GETDATE(),
-                 '${errors}',
-                 '${databases[index]}'
-                )
-            `;
-            await runQuery(sqlErr, 'FESA');
-          } else {
-            // Orden exitosa
-            const idFocaltec = orderStatus.internal_id || orderStatus.id || resp.data.id || `BATCH_${orderStatus.external_id}`;
-            
-            console.log(`[OK] PO ${po.external_id} procesada exitosamente (ID: ${idFocaltec})`);
-            logGenerator(logFileName, 'info', `PO ${po.external_id} procesada exitosamente con ID: ${idFocaltec} - Base: ${databases[index]}`);
+        // 4.6) Procesar respuesta del lote y registrar cada orden
+        if (resp.data && resp.data.orders_status) {
+          // Respuesta exitosa con detalles por orden
+          console.log(`[INFO] [CARGA INICIAL] Procesando respuesta de ${resp.data.orders_status.length} órdenes del lote ${batchIndex + 1}...`);
+          
+          for (const orderStatus of resp.data.orders_status) {
+            const po = currentBatch.find(order => order.external_id === orderStatus.external_id);
+            if (!po) {
+              console.warn(`[WARN] No se encontró orden local para external_id: ${orderStatus.external_id}`);
+              continue;
+            }
+
+            if (orderStatus.status === 'ERROR') {
+              // Orden con errores
+              const errors = orderStatus.errors.map(err => 
+                `${err.error_code}: ${err.error_message}`
+              ).join('; ');
+              
+              console.error(`[ERROR] PO ${po.external_id} falló: ${errors}`);
+              logGenerator(logFileName, 'error', `PO ${po.external_id} falló en lote ${batchIndex + 1}: ${errors} - Base: ${databases[index]}`);
+              
+              const sqlErr = `
+                INSERT INTO dbo.fesaOCFocaltec
+                  (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                VALUES
+                  (NULL,
+                   '${po.external_id.replace(/'/g, "''")}',
+                   'ERROR',
+                   GETDATE(),
+                   GETDATE(),
+                   '${errors.replace(/'/g, "''")}',
+                   '${databases[index]}'
+                  )
+              `;
+              await runQuery(sqlErr, 'FESA');
+            } else {
+              // Orden exitosa
+              const idFocaltec = orderStatus.internal_id || orderStatus.id || resp.data.id || `BATCH_${orderStatus.external_id}`;
+              
+              console.log(`[OK] PO ${po.external_id} procesada exitosamente (ID: ${idFocaltec})`);
+              logGenerator(logFileName, 'info', `PO ${po.external_id} procesada exitosamente con ID: ${idFocaltec} - Base: ${databases[index]}`);
+              
+              const sqlOk = `
+                INSERT INTO dbo.fesaOCFocaltec
+                  (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+                VALUES
+                  ('${idFocaltec}',
+                   '${po.external_id.replace(/'/g, "''")}',
+                   'POSTED',
+                   GETDATE(),
+                   GETDATE(),
+                   'BATCH_SUCCESS',
+                   '${databases[index]}'
+                  )
+              `;
+              await runQuery(sqlOk, 'FESA');
+            }
+          }
+        } else {
+          // Respuesta sin detalles individuales - registrar todas como exitosas
+          for (let i = 0; i < currentBatch.length; i++) {
+            const po = currentBatch[i];
+            const idFocaltec = resp.data?.id || `BATCH_${batchIndex + 1}_${i}`;
             
             const sqlOk = `
               INSERT INTO dbo.fesaOCFocaltec
                 (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
               VALUES
                 ('${idFocaltec}',
-                 '${po.external_id}',
+                 '${po.external_id.replace(/'/g, "''")}',
                  'POSTED',
                  GETDATE(),
                  GETDATE(),
@@ -336,72 +374,60 @@ order by A.PONUMBER, B.PORLREV;
             await runQuery(sqlOk, 'FESA');
           }
         }
-      } else {
-        // Respuesta sin detalles individuales - registrar todas como exitosas
-        for (let i = 0; i < validOrders.length; i++) {
-          const po = validOrders[i];
-          const idFocaltec = resp.data?.id || `BATCH_${i}`;
+
+      } catch (err) {
+        console.error(`[ERROR] [CARGA INICIAL] Error enviando lote ${batchIndex + 1}/${totalBatches} con ${currentBatch.length} órdenes:`);
+        logGenerator(logFileName, 'error', `Error enviando lote ${batchIndex + 1}/${totalBatches} para ${databases[index]}: ${err.message}`);
+        let respAPI;
+        if (err.response) {
+          console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
+          console.error(`   -> Body:`, err.response.data);
           
-          const sqlOk = `
+          // Manejar diferentes tipos de errores del API
+          if (err.response.data && err.response.data.code && err.response.data.description) {
+            // Error tipo: {"code": 9005, "description": "...", "other": "Batch API"}
+            respAPI = `CODE_${err.response.data.code}: ${err.response.data.description}`;
+          } else if (err.response.data && typeof err.response.data === 'string') {
+            respAPI = `HTTP_${err.response.status}: ${err.response.data}`;
+          } else {
+            respAPI = `HTTP_${err.response.status}: ${err.response.statusText}`;
+          }
+        } else if (err.code === 'ECONNABORTED') {
+          console.error('   -> Timeout del servidor.');
+          respAPI = 'TIMEOUT: La petición excedió el tiempo límite';
+        } else {
+          console.error('   -> Error de conexión o red.');
+          respAPI = `NETWORK_ERROR: ${err.message}`;
+        }
+
+        // 4.7) Registrar todas las órdenes del lote como ERROR si falla
+        for (const po of currentBatch) {
+          const sqlErr = `
             INSERT INTO dbo.fesaOCFocaltec
               (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
             VALUES
-              ('${idFocaltec}',
-               '${po.external_id}',
-               'POSTED',
+              (NULL,
+               '${po.external_id.replace(/'/g, "''")}',
+               'ERROR',
                GETDATE(),
                GETDATE(),
-               'BATCH_SUCCESS',
+               '${respAPI.replace(/'/g, "''")}',
                '${databases[index]}'
               )
           `;
-          await runQuery(sqlOk, 'FESA');
+          await runQuery(sqlErr, 'FESA');
         }
       }
-
-    } catch (err) {
-      console.error(`[ERROR] [CARGA INICIAL] Error enviando batch de ${validOrders.length} órdenes:`);
-      logGenerator(logFileName, 'error', `Error enviando batch de ${validOrders.length} órdenes para ${databases[index]}: ${err.message}`);
-      let respAPI;
-      if (err.response) {
-        console.error(`   -> Status: ${err.response.status} ${err.response.statusText}`);
-        console.error(`   -> Body:`, err.response.data);
-        
-        // Manejar diferentes tipos de errores del API
-        if (err.response.data && err.response.data.code && err.response.data.description) {
-          // Error tipo: {"code": 9005, "description": "...", "other": "Batch API"}
-          respAPI = `CODE_${err.response.data.code}: ${err.response.data.description}`;
-        } else if (err.response.data && typeof err.response.data === 'string') {
-          respAPI = `HTTP_${err.response.status}: ${err.response.data}`;
-        } else {
-          respAPI = `HTTP_${err.response.status}: ${err.response.statusText}`;
-        }
-      } else if (err.code === 'ECONNABORTED') {
-        console.error('   -> Timeout del servidor.');
-        respAPI = 'TIMEOUT: La petición excedió el tiempo límite';
-      } else {
-        console.error('   -> Error de conexión o red.');
-        respAPI = `NETWORK_ERROR: ${err.message}`;
-      }
-
-      // 4.7) Registrar todas las órdenes como ERROR si falla el batch
-      for (const po of validOrders) {
-        const sqlErr = `
-          INSERT INTO dbo.fesaOCFocaltec
-            (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
-          VALUES
-            (NULL,
-             '${po.external_id}',
-             'ERROR',
-             GETDATE(),
-             GETDATE(),
-             '${respAPI}',
-             '${databases[index]}'
-            )
-        `;
-        await runQuery(sqlErr, 'FESA');
+      
+      // Esperar 5 segundos entre lotes (excepto en el último)
+      if (batchIndex < totalBatches - 1) {
+        console.log(`[INFO] [CARGA INICIAL] Esperando 5 segundos antes del siguiente lote...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
       }
     }
+    
+    console.log(`[SUCCESS] [CARGA INICIAL] Todos los lotes procesados para ${databases[index]}`);
+    logGenerator(logFileName, 'info', `Todos los ${totalBatches} lotes procesados exitosamente para ${databases[index]}`);
   } else {
     console.log('[INFO] [CARGA INICIAL] No hay órdenes válidas para enviar.');
     logGenerator(logFileName, 'info', `No hay órdenes válidas para enviar en ${databases[index]}`);
