@@ -59,7 +59,7 @@ const lineItemSchema = Joi.object({
     external_id: Joi.string().required(),
     num: Joi.number().integer().allow(null),
 
-    quantity: Joi.number().min(1).required(),
+    quantity: Joi.number().greater(0).required(),
     unit_of_measure: Joi.string().allow('', null),
     price: Joi.number().precision(2).min(0).required(),
     subtotal: Joi.number().precision(2).min(0).required(),
