@@ -99,7 +99,7 @@ function parseExternPurchaseOrder(po) {
 
         cfdi_payment_form: po.cfdi_payment_form,
         cfdi_payment_method: po.cfdi_payment_method,
-        cfdi_use: po.cfdi_use?.toUpperCase() || null,
+        cfdi_use: po.cfdi_use,
 
         comments: po.comments,
         currency: po.currency,
