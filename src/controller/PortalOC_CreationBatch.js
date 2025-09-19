@@ -57,7 +57,7 @@ select
     ), 2
   )                                            as [CFDI_PAYMENT_FORM],
   ''                                           as [CFDI_PAYMENT_METHOD],
-  RTRIM(C2.[VALUE])                            as [CFDI_USE],
+  UPPER(RTRIM(C2.[VALUE]))                     as [CFDI_USE],
   RTRIM(A.DESCRIPTIO) + ' ' + RTRIM(A.COMMENT) as [COMMENTS],
   '${externalId[index]}'                                 as [COMPANY_EXTERNAL_ID],
   CASE WHEN RTRIM(A.CURRENCY)='MXP' THEN 'MXN' ELSE RTRIM(A.CURRENCY) END as [CURRENCY],
