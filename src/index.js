@@ -29,14 +29,14 @@ app.use(function (req, res) {
 });
 
 const server = app.listen(3030, () => {
-    const logFileName = 'ServerStart';
+    const logFileName = 'ServerStatus';
     const msg = 'El servidor se inició correctamente en el puerto 3030';
     console.log(msg);
     logGenerator(logFileName, 'info', msg);
 });
 
 try {
-    const logFileName = 'ServerStart';
+    const logFileName = 'ServerStatus';
     notifier.notify({
         title: 'Bienvenido!',
         message: 'El servidor se inició correctamente en el puerto 3030',
@@ -45,7 +45,7 @@ try {
     });
     logGenerator(logFileName, 'info', '[INFO] Notificación enviada correctamente.');
 } catch (error) {
-    const logFileName = 'ServerStart';
+    const logFileName = 'ServerStatus';
     console.error('[ERROR] Fallo al enviar la notificación:', error);
     logGenerator(logFileName, 'error', `[ERROR] Fallo al enviar la notificación: ${error.message}`);
 }
@@ -96,21 +96,26 @@ forResponse = async () => {
 }
 
 forResponse().then(() => {
+    const logFileName = 'ChildProcess';
     // The spawn function is used to execute the import process
     console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${env.parsed.IMPORT_CFDIS_ROUTE}`);
     console.log(`[INFO] ARG: ${env.parsed.ARG}`);
+    logGenerator(logFileName, 'info', `[INFO] Iniciando proceso de importación - ROUTE: ${env.parsed.IMPORT_CFDIS_ROUTE}, ARG: ${env.parsed.ARG}`);
 
     if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" || typeof env.parsed.ARG !== "undefined") {
         const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
+        logGenerator(logFileName, 'info', `[INFO] Child process iniciado con PID: ${childProcess.pid}`);
 
         // Stdout is used to capture the data messages
         childProcess.stdout.on('data', (data) => {
             console.log(`[INFO] Proceso de importación STDOUT: ${data}`);
+            logGenerator(logFileName, 'info', `[STDOUT] ${data.toString().trim()}`);
         });
 
         // Stderr is used to capture the error messages
         childProcess.stderr.on('data', (data) => {
             console.error(`[ERROR] Proceso de importación STDERR: ${data}`);
+            logGenerator(logFileName, 'error', `[STDERR] ${data.toString().trim()}`);
             const dataMail = {
                 h1: 'Error en el proceso de importación',
                 p: 'El proceso de importación de CFDIs ha fallado',
@@ -122,6 +127,7 @@ forResponse().then(() => {
 
             sendMail(dataMail).catch((error) => {
                 console.error('[ERROR] Fallo al enviar correo de error de importación:', error);
+                logGenerator(logFileName, 'error', `[ERROR] Fallo al enviar correo de error de importación: ${error.message}`);
             });
         });
 
@@ -129,12 +135,15 @@ forResponse().then(() => {
         childProcess.on('close', (code) => {
             if (code === 0) {
                 console.log(`[OK] Proceso de importación finalizado correctamente con código ${code}`);
+                logGenerator(logFileName, 'info', `[CLOSE] Proceso de importación finalizado correctamente con código ${code}`);
             } else {
                 console.error(`[ERROR] Proceso de importación finalizó con código ${code}`);
+                logGenerator(logFileName, 'error', `[CLOSE] Proceso de importación finalizó con código de error ${code}`);
             }
         });
     } else {
         console.warn('[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG. El proceso de importación de CFDIs no se ejecutará.');
+        logGenerator(logFileName, 'warn', '[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG. El proceso de importación de CFDIs no se ejecutará.');
 
         const data = {
             h1: 'Error en el proceso de importación',
@@ -147,13 +156,18 @@ forResponse().then(() => {
 
         sendMail(data).catch((error) => {
             console.error('[ERROR] Fallo al enviar correo de error de importación:', error);
+            logGenerator(logFileName, 'error', `[ERROR] Fallo al enviar correo de error de importación: ${error.message}`);
         });
     }
 
 }).catch((error) => {
+    const logFileName = 'MainProcess';
     console.log(error);
+    logGenerator(logFileName, 'error', `[ERROR] Error en proceso principal: ${error.message}`);
 }).finally(() => {
+    const logFileName = 'ServerStatus';
     server.close(() => {
         console.log('[INFO] Server is closed');
+        logGenerator(logFileName, 'info', '[INFO] Servidor cerrado correctamente');
     });
 });
