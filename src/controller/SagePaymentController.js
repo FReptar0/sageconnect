@@ -27,7 +27,7 @@ async function sendGroupedEmails(emails, logFileName = 'Payment') {
 async function checkPayments(index) {
     let emails = [];
     let currentDate = getCurrentDateCompact();
-    const logFileName = 'Payment';
+    const logFileName = 'SagePaymentController';
 
     console.log(`[INFO] Iniciando checkPayments para index=${index}`);
 

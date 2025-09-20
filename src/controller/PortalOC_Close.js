@@ -29,7 +29,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const oneMonthAgo = getOneMonthAgoCompact();
-    const logFileName = 'Close';
+    const logFileName = 'PortalOC_Close';
 
     // 1) Obtener POs canceladas en Sage
     const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER

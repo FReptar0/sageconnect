@@ -28,7 +28,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const today = getCurrentDateCompact();
-    const logFileName = 'Cancellation';
+    const logFileName = 'PortalOC_Cancellation';
 
     // 1) Obtener POs canceladas en Sage
     const sql = `

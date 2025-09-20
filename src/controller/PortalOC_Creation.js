@@ -31,7 +31,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
-  const logFileName = 'Creation';
+  const logFileName = 'PortalOC_Creation';
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
