@@ -2,7 +2,6 @@
 
 const { runQuery } = require('../src/utils/SQLServerConnection');
 const { logGenerator } = require('../src/utils/LogGenerator');
-const { getCurrentDateFormatted } = require('../src/utils/TimezoneHelper');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -38,7 +37,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function main() {
     const [, , ocSage, status, idDatabase] = process.argv;
-    const logFileName = `${getCurrentDateFormatted()}-StatusUpdate`;
+    const logFileName = 'StatusUpdate';
 
     if (!ocSage || !status || !idDatabase) {
         console.error('[ERROR] Uso: node updatePOStatus.js <ocSage> <status> <idDatabase>');

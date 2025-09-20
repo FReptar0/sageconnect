@@ -15,7 +15,7 @@ const {
 
 // utilería de conexión
 const { runQuery } = require('../utils/SQLServerConnection');
-const { getOneMonthAgoCompact, getCurrentDateFormatted } = require('../utils/TimezoneHelper');
+const { getOneMonthAgoCompact } = require('../utils/TimezoneHelper');
 const { logGenerator } = require('../utils/LogGenerator');
 
 // preparamos arrays de tenants/keys/etc.
@@ -29,7 +29,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const oneMonthAgo = getOneMonthAgoCompact();
-    const logFileName = `${getCurrentDateFormatted()}-Close`;
+    const logFileName = 'Close';
 
     // 1) Obtener POs canceladas en Sage
     const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER

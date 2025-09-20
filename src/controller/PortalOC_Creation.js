@@ -14,7 +14,7 @@ const {
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
-const { getCurrentDateString, getCurrentDateFormatted } = require('../utils/TimezoneHelper');
+const { getCurrentDateString } = require('../utils/TimezoneHelper');
 const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
@@ -31,7 +31,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
-  const logFileName = `${getCurrentDateFormatted()}-Creation`;
+  const logFileName = 'Creation';
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
