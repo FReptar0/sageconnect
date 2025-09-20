@@ -24,6 +24,7 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cf
 
 async function getTypeP(index) {
     const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo P (PAYMENT_CFDI) para index=${index}`);
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -127,6 +128,7 @@ async function getTypeP(index) {
 
 async function getTypeI(index) {
     const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo I (INVOICE) PENDING_TO_PAY para index=${index}`);
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -206,6 +208,7 @@ async function getTypeI(index) {
 
 async function getTypeIToSend(index) {
     const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo I (INVOICE) TO_SEND para index=${index}`);
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -315,6 +318,7 @@ async function getTypeIToSend(index) {
 
 async function getTypeE(index) {
     const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo E (CREDIT_NOTE) para index=${index}`);
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
