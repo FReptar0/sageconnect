@@ -10,6 +10,7 @@ const database = DATABASES.split(',');
 const index = 0;
 
 async function testGeneratePaymentJson() {
+    const logFileName = 'TestUploadPayments';
     // 1) Recuperar cabeceras de pago de Sage
     const currentDate = 20250618 //new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const queryEncabezadosPago = `
@@ -75,7 +76,7 @@ SELECT A.* FROM (
     const before = hdrs.length;
     hdrs = hdrs.filter(r => {
         if (!r.PROVIDERID?.trim()) {
-            logGenerator('TestUploadPayments', 'warn',
+            logGenerator(logFileName, 'warn',
                 `Omitiendo lote ${r.LotePago}/${r.AsientoPago}: provider_external_id="${r.provider_external_id}" sin PROVIDERID`);
             return false;
         }

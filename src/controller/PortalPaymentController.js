@@ -22,6 +22,7 @@ const apiSecrets = API_SECRET.split(',');
 const database = DATABASES.split(',');
 
 async function uploadPayments(index) {
+    const logFileName = 'PortalPaymentController';
     try {
         const currentDate = getCurrentDateCompact();
 
@@ -116,7 +117,7 @@ SELECT A.* FROM (
         console.log('Ejecutando queryEncabezadosPago con filtro de 60 minutos...');
         const payments = await runQuery(queryEncabezadosPago, database[index])
             .catch(err => {
-                logGenerator('PortalPaymentController', 'error', `Error queryEncabezadosPago: ${err.message}`);
+                logGenerator(logFileName, 'error', `Error queryEncabezadosPago: ${err.message}`);
                 console.error('❌ Falló queryEncabezadosPago:', err.message);
                 return { recordset: [] };
             });
@@ -155,7 +156,7 @@ SELECT A.* FROM (
         console.log('[INFO] Ejecutando queryPagosRegistrados...');
         const pagosRegistrados = await runQuery(queryPagosRegistrados)
             .catch(err => {
-                logGenerator('PortalPaymentController', 'error', `Error queryPagosRegistrados: ${err.message}`);
+                logGenerator(logFileName, 'error', `Error queryPagosRegistrados: ${err.message}`);
                 console.error('❌ Falló queryPagosRegistrados:', err.message);
                 return { recordset: [] };
             });
@@ -217,7 +218,7 @@ SELECT A.* FROM (
             console.log(`  [INFO] Ejecutando queryFacturasPagadas para lote ${hdr.LotePago} / asiento ${hdr.AsientoPago}...`);
             const invoices = await runQuery(queryFacturasPagadas, database[index])
                 .catch(err => {
-                    logGenerator('PortalPaymentController', 'error', `Error queryFacturasPagadas: ${err.message}`);
+                    logGenerator(logFileName, 'error', `Error queryFacturasPagadas: ${err.message}`);
                     console.error('  [ERROR] Falló queryFacturasPagadas:', err.message);
                     return { recordset: [] };
                 });
@@ -277,7 +278,7 @@ SELECT A.* FROM (
                     'Content-Type': 'application/json'
                 }
             }).catch(err => {
-                logGenerator('PortalPaymentController', 'error', `Error POST payment: ${err.message}`);
+                logGenerator(logFileName, 'error', `Error POST payment: ${err.message}`);
                 return err.response || { status: 500, data: err.message };
             });
 
@@ -309,7 +310,7 @@ SELECT A.* FROM (
                 console.log(`  [INFO] INSERT control table con status='${statusTag}' y idFocaltec=${idPortal ?? 'NULL'}`);
                 const result = await runQuery(insertSql)
                     .catch(err => {
-                        logGenerator('PortalPaymentController', 'error', `Insert control table failed: ${err.message}`);
+                        logGenerator(logFileName, 'error', `Insert control table failed: ${err.message}`);
                         console.error('  ❌ Falló INSERT control table:', err.message);
                         return { rowsAffected: [0] };
                     });
@@ -333,7 +334,7 @@ SELECT A.* FROM (
 
     } catch (err) {
         console.error('[ERROR] Error inesperado en uploadPayments:', err.message);
-        logGenerator('PortalPaymentController', 'error', `Unexpected error: ${err.message}`);
+        logGenerator(logFileName, 'error', `Unexpected error: ${err.message}`);
         notifier.notify({
             title: 'Error en uploadPayments',
             message: err.message,

@@ -10,6 +10,7 @@ const { logGenerator } = require('../src/utils/LogGenerator');
  * @param {string} empresa - Empresa en autorizaciones (ej: 'COPDAT')
  */
 async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
+    const logFileName = 'PO_Diagnostic';
     console.log(`\n=== DIAGNÓSTICO COMPLETO PARA ${poNumber} ===`);
     console.log(`Base de datos: ${database}`);
     console.log(`Empresa: ${empresa}`);
@@ -199,11 +200,11 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             console.log('❓ REVISAR: Hay algún problema no identificado');
         }
 
-        logGenerator('PO_Diagnostic', 'info', `Diagnóstico completado para ${poNumber}`);
+        logGenerator(logFileName, 'info', `Diagnóstico completado para ${poNumber}`);
 
     } catch (error) {
         console.error('\n❌ ERROR DURANTE EL DIAGNÓSTICO:', error.message);
-        logGenerator('PO_Diagnostic', 'error', `Error en diagnóstico para ${poNumber}: ${error.message}`);
+        logGenerator(logFileName, 'error', `Error en diagnóstico para ${poNumber}: ${error.message}`);
     }
 }
 

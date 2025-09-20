@@ -11,6 +11,7 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cf
 const urlPayments = (index, paymentId) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments/${paymentId}`;
 
 async function getTypePTest(index) {
+    const logFileName = 'GetTypePTest';
     let date = new Date();
     let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
     let dateUntil = new Date().toISOString().slice(0, 10);
@@ -63,12 +64,12 @@ async function getTypePTest(index) {
                         }
                     } catch (error) {
                         console.log(`[ERROR] No se pudo obtener información del pago con ID ${paymentId}:`, error.message);
-                        logGenerator('GetTypePTest', 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
+                        logGenerator(logFileName, 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
                         continue;
                     }
                 } else {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos ni payment_id`);
-                    logGenerator('GetTypePTest', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos ni payment_id`);
+                    logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener pagos ni payment_id`);
                     continue;
                 }
             }
@@ -80,7 +81,7 @@ async function getTypePTest(index) {
         return data;
     } catch (error) {
         console.log('[ERROR] Error al obtener CFDI de tipo P:', error.message);
-        logGenerator('GetTypePTest', 'error', `Error al obtener CFDI de tipo P: ${error.message}`);
+        logGenerator(logFileName, 'error', `Error al obtener CFDI de tipo P: ${error.message}`);
         return [];
     }
 }

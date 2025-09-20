@@ -29,66 +29,70 @@ app.use(function (req, res) {
 });
 
 const server = app.listen(3030, () => {
+    const logFileName = 'ServerStart';
     const msg = 'El servidor se inició correctamente en el puerto 3030';
     console.log(msg);
-    logGenerator('server_start', 'info', msg);
+    logGenerator(logFileName, 'info', msg);
 });
 
 try {
+    const logFileName = 'ServerStart';
     notifier.notify({
         title: 'Bienvenido!',
         message: 'El servidor se inició correctamente en el puerto 3030',
         sound: true,
         wait: true
     });
-    logGenerator('server_start', 'info', '[INFO] Notificación enviada correctamente.');
+    logGenerator(logFileName, 'info', '[INFO] Notificación enviada correctamente.');
 } catch (error) {
+    const logFileName = 'ServerStart';
     console.error('[ERROR] Fallo al enviar la notificación:', error);
-    logGenerator('server_start', 'error', `[ERROR] Fallo al enviar la notificación: ${error.message}`);
+    logGenerator(logFileName, 'error', `[ERROR] Fallo al enviar la notificación: ${error.message}`);
 }
 
 forResponse = async () => {
+    const logFileName = 'ForResponse';
     const date = getCurrentDate();
-    logGenerator('forResponse', 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
+    logGenerator(logFileName, 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
 
     const tenantIds = credentials.parsed.TENANT_ID.split(',');
     for (let i = 0; i < tenantIds.length; i++) {
         try {
-            logGenerator('forResponse', 'info', `[INFO] Procesando tenant con índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] Procesando tenant con índice ${i}`);
 
             await buildProvidersXML(i);
-            logGenerator('forResponse', 'info', `[INFO] buildProvidersXML completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] buildProvidersXML completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await downloadCFDI(i);
-            logGenerator('forResponse', 'info', `[INFO] downloadCFDI completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] downloadCFDI completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await checkPayments(i);
-            logGenerator('forResponse', 'info', `[INFO] checkPayments completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] checkPayments completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await uploadPayments(i);
-            logGenerator('forResponse', 'info', `[INFO] uploadPayments completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] uploadPayments completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await createPurchaseOrders(i);
-            logGenerator('forResponse', 'info', `[INFO] createPurchaseOrders completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] createPurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await cancellationPurchaseOrders(i);
-            logGenerator('forResponse', 'info', `[INFO] cancellationPurchaseOrders completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] cancellationPurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             await closePurchaseOrders(i);
-            logGenerator('forResponse', 'info', `[INFO] closePurchaseOrders completado para el índice ${i}`);
+            logGenerator(logFileName, 'info', `[INFO] closePurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
         } catch (error) {
-            logGenerator('forResponse', 'error', `[ERROR] Error procesando el índice ${i}: ${error.message}`);
+            logGenerator(logFileName, 'error', `[ERROR] Error procesando el índice ${i}: ${error.message}`);
         }
     }
 
-    logGenerator('forResponse', 'info', '[END] Proceso forResponse completado.');
+    logGenerator(logFileName, 'info', '[END] Proceso forResponse completado.');
 }
 
 forResponse().then(() => {

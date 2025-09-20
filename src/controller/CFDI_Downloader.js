@@ -73,6 +73,7 @@ function getAfeAndOrden(additional_info, additional_amount = null) {
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function downloadCFDI(index) {
+    const logFileName = 'CFDI_Downloader';
     const cfdiData = [];
 
     const typeE = await getTypeE(index);
@@ -145,17 +146,17 @@ async function downloadCFDI(index) {
         fileStream.data
             .pipe(fs.createWriteStream(outPath))
             .on('finish', () => {
-                agregarEtiquetaAddenda(xmlPath, cfdiData[i], index);
+                agregarEtiquetaAddenda(xmlPath, cfdiData[i], index, logFileName);
                 console.log(`[INFO] Archivo ${name} descargado`);
             })
             .on('error', (err) => {
                 console.log('[ERROR] Error al descargar el archivo: ' + err);
-                logGenerator('CFDI_Downloader', 'error', 'Error al descargar el archivo: ' + err);
+                logGenerator(logFileName, 'error', 'Error al descargar el archivo: ' + err);
                 // Si ocurre un error, intenta eliminar el archivo (si existe)
                 fs.unlink(xmlPath, (unlinkErr) => {
                     if (unlinkErr) {
                         console.error(`[ERROR] Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
-                        logGenerator(`Error al eliminar el archivo ${xmlPath}:`, 'error', unlinkErr);
+                        logGenerator(logFileName, 'error', `Error al eliminar el archivo ${xmlPath}: ${unlinkErr}`);
                         return;
                     }
                     console.log(`[INFO] Archivo ${xmlPath} eliminado exitosamente.`);
@@ -164,11 +165,11 @@ async function downloadCFDI(index) {
     }
 }
 
-function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
+function agregarEtiquetaAddenda(xmlPath, dataCfdi, index, logFileName = 'CFDI_Downloader') {
     fs.readFile(xmlPath, 'utf8', async (err, data) => {
         if (err) {
             console.error(`[ERROR] Error al leer el archivo ${xmlPath}:`, err);
-            logGenerator(`Error al leer el archivo ${xmlPath}:`, 'error', err);
+            logGenerator(logFileName, 'error', `Error al leer el archivo ${xmlPath}: ${err}`);
             return;
         }
 
@@ -184,7 +185,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${dataCfdi.rfcReceptor}') AND Parametro = 'DataBase';`
         const dbResponse = await runQuery(query).catch(() => {
             console.log('Error al ejecutar la consulta:', query);
-            logGenerator('CFDI_Downloader', 'error', 'Error al ejecutar la consulta: ' + query);
+            logGenerator(logFileName, 'error', 'Error al ejecutar la consulta: ' + query);
             return { recordset: [{ Resultado: 'NOT_FOUND' }] };
         });
 
@@ -204,11 +205,11 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
 
         if (!firstBankAccountValue) {
             console.log(`[WARN] No se tienen los datos del banco. Eliminando archivo: ${xmlPath}`);
-            logGenerator('CFDI_Downloader', 'error', 'No se tienen los datos del banco. Eliminando archivo: ' + xmlPath);
+            logGenerator(logFileName, 'error', 'No se tienen los datos del banco. Eliminando archivo: ' + xmlPath);
             fs.unlink(xmlPath, (unlinkErr) => {
                 if (unlinkErr) {
                     console.error(`[ERROR] Error al eliminar el archivo ${xmlPath}:`, unlinkErr);
-                    logGenerator(`Error al eliminar el archivo ${xmlPath}:`, 'error', unlinkErr);
+                    logGenerator(logFileName, 'error', `Error al eliminar el archivo ${xmlPath}: ${unlinkErr}`);
                     return;
                 }
                 console.log(`[INFO] Archivo ${xmlPath} eliminado exitosamente.`);
@@ -219,7 +220,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
         parser(data, (err, result) => {
             if (err) {
                 console.error(`[ERROR] Error al analizar el archivo ${xmlPath}:`, err);
-                logGenerator(`Error al analizar el archivo ${xmlPath}:`, 'error', err);
+                logGenerator(logFileName, 'error', `Error al analizar el archivo ${xmlPath}: ${err}`);
                 return;
             }
 
@@ -326,7 +327,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index) {
             fs.writeFile(xmlPath, xml, 'utf8', (err) => {
                 if (err) {
                     console.error(`[ERROR] Error al escribir el archivo ${xmlPath}:`, err);
-                    logGenerator(`Error al escribir el archivo ${xmlPath}:`, 'error', err);
+                    logGenerator(logFileName, 'error', `Error al escribir el archivo ${xmlPath}: ${err}`);
                     return;
                 }
                 console.log(`[INFO] Archivo ${xmlPath} actualizado exitosamente.`);

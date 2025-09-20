@@ -23,6 +23,7 @@ databases.push(...databaseValues);
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
 
 async function getTypeP(index) {
+    const logFileName = 'GetTypesCFDI';
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -73,17 +74,17 @@ async function getTypeP(index) {
                             };
                         } else {
                             console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
-                            logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
+                            logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener información en el endpoint de pagos`);
                             continue;
                         }
                     } catch (error) {
                         console.log(`[ERROR] No se pudo obtener información del pago con ID ${paymentId}:`, error.message);
-                        logGenerator('GetTypesCFDI', 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
+                        logGenerator(logFileName, 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
                         continue;
                     }
                 } else {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
+                    logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por no tener payment_id`);
                     continue;
                 }
             }
@@ -93,7 +94,7 @@ async function getTypeP(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
 
@@ -108,7 +109,7 @@ async function getTypeP(index) {
                 data.push(item);
             } catch (error) {
                 console.log(`[ERROR] Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
+                logGenerator(logFileName, 'error', `Error ejecutando consultas SQL para UUID ${item.cfdi.timbre.uuid}: ${error.message}`);
                 continue;
             }
         }
@@ -116,7 +117,7 @@ async function getTypeP(index) {
         return data;
     } catch (error) {
         try {
-            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
+            logGenerator(logFileName, 'error', 'Error al obtener el tipo de comprobante "P" : \n' + error + '\n');
         } catch (err) {
             console.log('Error al enviar notificación: ' + err);
         }
@@ -125,6 +126,7 @@ async function getTypeP(index) {
 }
 
 async function getTypeI(index) {
+    const logFileName = 'GetTypesCFDI';
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -157,7 +159,7 @@ async function getTypeI(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
 
@@ -185,14 +187,14 @@ async function getTypeI(index) {
                 data.push(item);
             } catch (error) {
                 console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator('GetTypesCFDI', 'error', 'Error executing query: \n' + error + '\n');
+                logGenerator(logFileName, 'error', 'Error executing query: \n' + error + '\n');
             }
         }
 
         return data;
     } catch (error) {
         try {
-            logGenerator('GetTypesCFDI', 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
+            logGenerator(logFileName, 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
         } catch (err) {
             console.log('Error al enviar notificacion: ' + err);
             console.log('Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
@@ -203,6 +205,7 @@ async function getTypeI(index) {
 
 
 async function getTypeIToSend(index) {
+    const logFileName = 'GetTypesCFDI';
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -234,7 +237,7 @@ async function getTypeIToSend(index) {
             const rels = item.cfdi.cfdis_relacionados;
             if (!Array.isArray(rels) || !rels.some(r => r.tipo_relacion === '07')) {
                 console.log(`[INFO] UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
-                logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
+                logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por no tener cfdi_relacionados tipo 07`);
                 continue;
             }
 
@@ -249,12 +252,12 @@ async function getTypeIToSend(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
             } catch (err) {
                 console.log(`Error ejecutando rfcQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando rfcQuery para UUID ${uuid}: ${err.stack}`);
+                logGenerator(logFileName, 'error', `Error ejecutando rfcQuery para UUID ${uuid}: ${err.stack}`);
                 continue;
             }
 
@@ -276,7 +279,7 @@ async function getTypeIToSend(index) {
                 }
             } catch (err) {
                 console.log(`Error ejecutando cfdiQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando cfdiQuery para UUID ${uuid}: ${err.stack}`);
+                logGenerator(logFileName, 'error', `Error ejecutando cfdiQuery para UUID ${uuid}: ${err.stack}`);
                 continue;
             }
 
@@ -295,7 +298,7 @@ async function getTypeIToSend(index) {
                 }
             } catch (err) {
                 console.log(`Error ejecutando poCheckQuery: ${err.message}`);
-                logGenerator('GetTypesCFDI', 'error', `Error ejecutando poCheckQuery para UUID ${uuid}: ${err.stack}`);
+                logGenerator(logFileName, 'error', `Error ejecutando poCheckQuery para UUID ${uuid}: ${err.stack}`);
                 continue;
             }
 
@@ -305,12 +308,13 @@ async function getTypeIToSend(index) {
 
         return data;
     } catch (error) {
-        logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "I" TO_SEND :\n${error.stack}`);
+        logGenerator(logFileName, 'error', `Error al obtener el tipo de comprobante "I" TO_SEND :\n${error.stack}`);
         return [];
     }
 }
 
 async function getTypeE(index) {
+    const logFileName = 'GetTypesCFDI';
     let dateFrom = getOneMonthAgoString();
     let dateUntil = getCurrentDateString();
 
@@ -349,7 +353,7 @@ async function getTypeE(index) {
                 const rfcResult = await runQuery(rfcQuery);
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator('GetTypesCFDI', 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
+                    logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
                     continue;
                 }
 
@@ -386,13 +390,13 @@ async function getTypeE(index) {
                 data.push(item);
             } catch (error) {
                 console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator('GetTypesCFDI', 'error', `Error executing query: \n${error}\n`);
+                logGenerator(logFileName, 'error', `Error executing query: \n${error}\n`);
             }
         }
 
         return data;
     } catch (error) {
-        logGenerator('GetTypesCFDI', 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
+        logGenerator(logFileName, 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
         return [];
     }
 }

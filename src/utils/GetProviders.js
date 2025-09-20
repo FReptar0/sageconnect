@@ -31,6 +31,7 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/pr
  * @returns {Promise<Array>} - Arreglo de proveedores filtrados.
  */
 async function getProviders(index) {
+    const logFileName = 'GetProviders';
     // Se usa el mes actual como referencia para las fechas de aceptación
     let today = getCurrentDateString();
     console.log('[INFO] Today:', today);
@@ -48,14 +49,14 @@ async function getProviders(index) {
         
         if (response.data.total === 0) {
             console.log('[INFO] No providers found');
-            logGenerator('getProviders', 'INFO', 'No providers found');
+            logGenerator(logFileName, 'INFO', 'No providers found');
             return [];
         }
 
         return response.data.items;
     } catch (error) {
         console.error('[ERROR] Error fetching providers:', error);
-        logGenerator('getProviders', 'ERROR', error);
+        logGenerator(logFileName, 'ERROR', error);
         notifier.notify({
             title: 'Focaltec',
             message: `[ERROR] Error fetching providers: ${error.message}`,

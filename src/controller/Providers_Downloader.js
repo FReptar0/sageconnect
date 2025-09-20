@@ -52,18 +52,19 @@ function formatDateForFilename() {
  * @param {number} index - Índice del tenant a procesar.
  */
 async function buildProvidersXML(index) {
+    const logFileName = 'Providers_Downloader';
     // Log de inicio del proceso
-    logGenerator('buildProvidersXML', 'info', `[START] Iniciando la generación del archivo XML para el índice ${index}.`);
+    logGenerator(logFileName, 'info', `[START] Iniciando la generación del archivo XML para el índice ${index}.`);
 
     // 1. Obtener proveedores
     let providers = await getProviders(index);
     if (!providers || providers.length === 0) {
-        logGenerator('buildProvidersXML', 'warn', `[WARN] No hay proveedores para procesar en el índice ${index}.`);
+        logGenerator(logFileName, 'warn', `[WARN] No hay proveedores para procesar en el índice ${index}.`);
         console.log('[WARN] No hay proveedores para procesar.');
         return;
     }
 
-    logGenerator('buildProvidersXML', 'info', `[INFO] Se encontraron ${providers.length} proveedores para procesar en el índice ${index}.`);
+    logGenerator(logFileName, 'info', `[INFO] Se encontraron ${providers.length} proveedores para procesar en el índice ${index}.`);
 
     // 2. Datos del Emisor (tomados de .env)
     const emisor = {
@@ -236,17 +237,17 @@ async function buildProvidersXML(index) {
 
     try {
         fs.writeFileSync(outputPath, xml, 'utf8');
-        logGenerator('buildProvidersXML', 'info', `[OK] Archivo XML generado exitosamente en: ${outputPath}`);
+        logGenerator(logFileName, 'info', `[OK] Archivo XML generado exitosamente en: ${outputPath}`);
         console.log('[OK] Archivo XML generado en:', outputPath);
     } catch (err) {
-        logGenerator('buildProvidersXML', 'error', `[ERROR] Error al escribir el archivo XML en ${outputPath}: ${err.message}`);
+        logGenerator(logFileName, 'error', `[ERROR] Error al escribir el archivo XML en ${outputPath}: ${err.message}`);
         console.error('[ERROR] Error al escribir el archivo XML:', err);
     }
 }
 
 // buildProvidersXML(0).catch(err => {
 //     console.error('Error en buildProvidersXML:', err);
-//     logGenerator('buildProvidersXML', 'ERROR', err);
+//     logGenerator(logFileName, 'ERROR', err);
 // });
 
 module.exports = { buildProvidersXML };
