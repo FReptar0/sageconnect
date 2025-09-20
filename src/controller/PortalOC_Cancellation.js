@@ -15,7 +15,8 @@ const {
 
 // utilería de conexión
 const { runQuery } = require('../utils/SQLServerConnection');
-const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
+const { getCurrentDateCompact, getCurrentDateFormatted } = require('../utils/TimezoneHelper');
+const { logGenerator } = require('../utils/LogGenerator');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -27,6 +28,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const today = getCurrentDateCompact();
+    const logFileName = `${getCurrentDateFormatted()}-Cancellation`;
 
     // 1) Obtener POs canceladas en Sage
     const sql = `
@@ -42,8 +44,10 @@ async function cancellationPurchaseOrders(index) {
     try {
         ({ recordset } = await runQuery(sql, databases[index]));
         console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
+        logGenerator(logFileName, 'info', `[INFO] Iniciando cancellationPurchaseOrders para index=${index}. Total de registros recuperados: ${recordset.length}`);
     } catch (err) {
         console.error(`[ERROR] Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}:`, err);
+        logGenerator(logFileName, 'error', `[ERROR] Error al ejecutar la consulta SQL en tenant ${tenantIds[index]}: ${err.message}`);
         return;
     }
 
@@ -66,10 +70,12 @@ async function cancellationPurchaseOrders(index) {
             ({ recordset: existing } = await runQuery(checkSql, 'FESA'));
         } catch (err) {
             console.error(`❌ Error al verificar existencia en FESA para ${ponumber}:`, err);
+            logGenerator(logFileName, 'error', `[ERROR] Error al verificar existencia en FESA para ${ponumber}: ${err.message}`);
             continue;
         }
         if (existing.length === 0) {
             console.log(`[WARN] PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
+            logGenerator(logFileName, 'warn', `[WARN] PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
             continue;
         }
 
@@ -95,14 +101,19 @@ async function cancellationPurchaseOrders(index) {
                 `   -> Endpoint: ${endpoint}\n` +
                 `   -> Status:   ${resp.status} ${resp.statusText}`
             );
+            logGenerator(logFileName, 'info', `[OK] PO ${ponumber} cancelada en portal. Status: ${resp.status} ${resp.statusText}`);
         } catch (err) {
             console.error(`[ERROR] [${i + 1}/${recordset.length}] Error cancelando PO ${ponumber}:`);
+            let errorMsg = '';
             if (err.response) {
                 console.error(`   -> ${err.response.status} ${err.response.statusText}`);
                 console.error(`   -> Body:`, err.response.data);
+                errorMsg = `${err.response.status} ${err.response.statusText}: ${JSON.stringify(err.response.data)}`;
             } else {
                 console.error(`   -> ${err.message}`);
+                errorMsg = err.message;
             }
+            logGenerator(logFileName, 'error', `[ERROR] Error cancelando PO ${ponumber}: ${errorMsg}`);
             continue;
         }
 
@@ -119,8 +130,10 @@ async function cancellationPurchaseOrders(index) {
         try {
             await runQuery(updateSql, 'FESA');
             console.log(`[OK] PO ${ponumber} marcada CANCELLED en FESA`);
+            logGenerator(logFileName, 'info', `[OK] PO ${ponumber} marcada CANCELLED en FESA`);
         } catch (err) {
             console.error(`[ERROR] Error actualizando FESA para PO ${ponumber}:`, err);
+            logGenerator(logFileName, 'error', `[ERROR] Error actualizando FESA para PO ${ponumber}: ${err.message}`);
         }
     }
 }

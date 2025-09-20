@@ -14,7 +14,8 @@ const {
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
-const { getCurrentDateString } = require('../utils/TimezoneHelper');
+const { getCurrentDateString, getCurrentDateFormatted } = require('../utils/TimezoneHelper');
+const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
@@ -30,6 +31,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
+  const logFileName = `${getCurrentDateFormatted()}-Creation`;
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
@@ -175,8 +177,10 @@ order by A.PONUMBER, B.PORLREV;
   try {
     ({ recordset } = await runQuery(sql, databases[index]));
     console.log(`[INFO] Recuperadas ${recordset.length} filas de la base`);
+    logGenerator(logFileName, 'info', `[INFO] Iniciando createPurchaseOrders para index=${index}. Total de registros recuperados: ${recordset.length}`);
   } catch (dbErr) {
     console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
+    logGenerator(logFileName, 'error', `[ERROR] Error al ejecutar la consulta SQL en index=${index}: ${dbErr.message}`);
     return;
   }
 
@@ -191,7 +195,7 @@ order by A.PONUMBER, B.PORLREV;
     let poToSend = { ...po };
     if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
     if (poToSend.requisition_number === 0) delete poToSend.requisition_number;
-    console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
+    //console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
 
     // 4.1) Comprobar si ya existe en fesaOCFocaltec
     const checkSql = `
@@ -205,6 +209,7 @@ order by A.PONUMBER, B.PORLREV;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
       console.log(`[WARN] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      logGenerator(logFileName, 'warn', `[WARN] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       continue;
     }
 
@@ -217,9 +222,11 @@ order by A.PONUMBER, B.PORLREV;
     try {
       validateExternPurchaseOrder(po);
       console.log(`[OK] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación Joi`);
+      logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} pasó validación Joi`);
     } catch (valErr) {
       console.error(`[ERROR] Joi validation failed for PO ${po.external_id}:`);
       valErr.details.forEach(d => console.error(`   -> ${d.message}`));
+      logGenerator(logFileName, 'error', `[ERROR] Validación Joi falló para PO ${po.external_id}: ${valErr.details.map(d => d.message).join('; ')}`);
 
       // Insert ERROR en fesaOCFocaltec
       const respAPI = valErr.details.map(d => d.message).join('; ');
@@ -259,6 +266,7 @@ order by A.PONUMBER, B.PORLREV;
         `[INFO] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
         `   -> Status: ${resp.status} ${resp.statusText}`
       );
+      logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} enviada OK. Status: ${resp.status} ${resp.statusText}`);
 
       // 4.5) Insert POSTED en fesaOCFocaltec
       const idFocaltec = resp.data.id;
@@ -276,6 +284,7 @@ order by A.PONUMBER, B.PORLREV;
           )
       `;
       await runQuery(sqlOk, 'FESA');
+      logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} marcada POSTED en FESA con idFocaltec: ${idFocaltec}`);
 
     } catch (err) {
       console.error(`[ERROR] [${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
@@ -289,6 +298,7 @@ order by A.PONUMBER, B.PORLREV;
         console.error('   -> No hubo respuesta del servidor o timeout.');
         respAPI = err.message;
       }
+      logGenerator(logFileName, 'error', `[ERROR] Error enviando PO ${po.external_id}: ${respAPI}`);
 
       // 4.6) Insert ERROR en fesaOCFocaltec
       const sqlErr = `
@@ -305,6 +315,7 @@ order by A.PONUMBER, B.PORLREV;
           )
       `;
       await runQuery(sqlErr, 'FESA');
+      logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
     }
   }
 }

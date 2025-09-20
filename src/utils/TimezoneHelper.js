@@ -86,6 +86,16 @@ function getCurrentDateCompact() {
 }
 
 /**
+ * Gets current date in DD-MM-YYYY format using configured timezone
+ * @returns {string} Date string in DD-MM-YYYY format
+ */
+function getCurrentDateFormatted() {
+    const dateString = getCurrentDateString(); // YYYY-MM-DD
+    const [year, month, day] = dateString.split('-');
+    return `${day}-${month}-${year}`;
+}
+
+/**
  * Gets date one month ago in YYYY-MM format using configured timezone
  * @returns {string} Date string in YYYY-MM format (month ago)
  */
@@ -208,6 +218,7 @@ module.exports = {
     getCurrentDate,
     getCurrentDateString,
     getCurrentDateCompact,
+    getCurrentDateFormatted,
     getOneMonthAgoString,
     getOneMonthAgoCompact,
     getCurrentISOString,
