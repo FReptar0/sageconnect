@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SageConnect - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+        crossorigin="anonymous"></script>
+</head>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        min-height: 100vh;
+    }
+
+    .navbar-brand {
+        font-weight: 700;
+        font-size: 1.5rem;
+    }
+
+    .dashboard-container {
+        padding: 2rem 0;
+    }
+
+    .card {
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border: none;
+        backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    .card-header {
+        background: linear-gradient(45deg, #2c3e50, #3498db);
+        color: white;
+        border-radius: 15px 15px 0 0 !important;
+        font-weight: 600;
+    }
+
+    .status-card {
+        transition: all 0.3s ease;
+    }
+
+    .status-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+
+    .status-active {
+        background-color: #28a745;
+        animation: pulse 2s infinite;
+    }
+
+    .status-inactive {
+        background-color: #dc3545;
+    }
+
+    .status-warning {
+        background-color: #ffc107;
+    }
+
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(40, 167, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
+    }
+
+    .timer-display {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+
+    .log-viewer {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 8px;
+        padding: 1rem;
+        max-height: 400px;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+
+    .log-line {
+        margin-bottom: 4px;
+        white-space: pre-wrap;
+    }
+
+    .log-info { color: #4ec9b0; }
+    .log-warn { color: #dcdcaa; }
+    .log-error { color: #f44747; }
+    .log-start { color: #569cd6; font-weight: bold; }
+
+    .btn-refresh {
+        background: linear-gradient(45deg, #2c3e50, #3498db);
+        border: none;
+        color: white;
+    }
+
+    .btn-refresh:hover {
+        background: linear-gradient(45deg, #1a252f, #2980b9);
+        color: white;
+    }
+
+    .metric-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2c3e50;
+    }
+
+    .metric-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .loading-spinner {
+        display: none;
+    }
+
+    .navbar {
+        background: rgba(255, 255, 255, 0.95) !important;
+        backdrop-filter: blur(10px);
+    }
+
+    .execution-time {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+
+    .next-execution-timer {
+        background: linear-gradient(45deg, #28a745, #20c997);
+        color: white;
+        padding: 1rem;
+        border-radius: 10px;
+        text-align: center;
+    }
+
+    /* Fullscreen Modal Styles */
+    .fullscreen-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: #1e1e1e;
+        z-index: 2000;
+        display: none;
+        flex-direction: column;
+    }
+
+    .fullscreen-header {
+        background: linear-gradient(45deg, #2c3e50, #3498db);
+        color: white;
+        padding: 1rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #444;
+    }
+
+    .fullscreen-search-container {
+        background: #2d2d2d;
+        padding: 1rem 2rem;
+        border-bottom: 1px solid #444;
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .fullscreen-content {
+        flex: 1;
+        padding: 1rem 2rem;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: #d4d4d4;
+    }
+
+    .search-input {
+        background: #333;
+        border: 1px solid #555;
+        color: white;
+        border-radius: 5px;
+        padding: 0.5rem 1rem;
+        flex: 1;
+        max-width: 400px;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: #3498db;
+        box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+    }
+
+    .search-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .search-stats {
+        color: #aaa;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+
+    .fullscreen-log-line {
+        margin-bottom: 4px;
+        white-space: pre-wrap;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+
+    .highlight-match {
+        background-color: #ffd700;
+        color: #000;
+        padding: 1px 2px;
+        border-radius: 2px;
+    }
+
+    .current-match {
+        background-color: #ff6b35;
+        color: white;
+    }
+
+    .fullscreen-btn {
+        background: #3498db;
+        border: none;
+        color: white;
+        padding: 0.4rem 0.8rem;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+
+    .fullscreen-btn:hover {
+        background: #2980b9;
+    }
+
+    .fullscreen-btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+    }
+</style>
+
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-cogs me-2"></i>
+                SageConnect Dashboard
+            </a>
+            <div class="d-flex">
+                <button class="btn btn-refresh me-2" onclick="refreshDashboard()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Actualizar
+                </button>
+                <select class="form-select me-2" id="dateSelector" style="width: auto;">
+                    <option value="">Hoy</option>
+                </select>
+                <button class="btn btn-danger" onclick="shutdownServer()">
+                    <i class="fas fa-power-off me-1"></i>
+                    Detener Servidor
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Content -->
+    <div class="dashboard-container">
+        <div class="container">
+            
+            <!-- Status Cards Row -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card status-card h-100">
+                        <div class="card-body text-center">
+                            <div id="systemStatus" class="mb-2">
+                                <span class="status-indicator status-inactive"></span>
+                                <span class="fw-bold">Sistema</span>
+                            </div>
+                            <div class="metric-number" id="systemStatusText">---</div>
+                            <div class="metric-label">Estado del Sistema</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card status-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-file-alt fa-2x text-primary mb-2"></i>
+                            <div class="metric-number" id="activeLogsCount">0</div>
+                            <div class="metric-label">Archivos de Log Activos</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card status-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-database fa-2x text-info mb-2"></i>
+                            <div class="metric-number" id="totalLogLines">0</div>
+                            <div class="metric-label">Total de Lineas</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="card status-card h-100">
+                        <div class="card-body text-center">
+                            <i class="fas fa-hdd fa-2x text-warning mb-2"></i>
+                            <div class="metric-number" id="totalLogSize">0 KB</div>
+                            <div class="metric-label">Tamaño Total</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Execution Status Row -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-clock me-2"></i>
+                            Estado de Ejecución
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <strong>Última Ejecución:</strong>
+                                <div class="execution-time" id="lastExecutionTime">---</div>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Próxima Ejecución:</strong>
+                                <div class="execution-time" id="nextExecutionTime">---</div>
+                            </div>
+                            <div class="next-execution-timer" id="nextExecutionTimer">
+                                <div class="timer-display" id="countdownTimer">--:--</div>
+                                <small>hasta la próxima ejecución</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header" id="logTypesHeader">
+                            <i class="fas fa-list me-2"></i>
+                            Tipos de Log Disponibles
+                        </div>
+                        <div class="card-body">
+                            <div class="row" id="logTypesList">
+                                <!-- Log types will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Log Viewer Row -->
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span>
+                                <i class="fas fa-terminal me-2"></i>
+                                Visor de Logs
+                            </span>
+                            <div>
+                                <select class="form-select form-select-sm d-inline-block" id="logTypeSelector" style="width: auto;">
+                                    <option value="">Seleccionar tipo de log...</option>
+                                </select>
+                                <button class="btn btn-sm btn-outline-light ms-2" onclick="loadLogContent()">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-light ms-2" onclick="openFullscreenViewer()" title="Abrir en pantalla completa">
+                                    <i class="fas fa-expand"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="log-viewer" id="logViewer">
+                                <div class="text-center text-muted">
+                                    <i class="fas fa-file-alt fa-3x mb-3"></i>
+                                    <p>Cargando ServerStatus log...</p>
+                                    <div class="spinner-border spinner-border-sm mt-2" role="status">
+                                        <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Fullscreen Log Viewer Modal -->
+    <div class="fullscreen-modal" id="fullscreenModal">
+        <div class="fullscreen-header">
+            <div class="d-flex align-items-center">
+                <h4 class="mb-0 me-3">
+                    <i class="fas fa-terminal me-2"></i>
+                    <span id="fullscreenLogTitle">Visor de Logs - Pantalla Completa</span>
+                </h4>
+                <select class="form-select form-select-sm" id="fullscreenLogSelector" style="width: 250px;">
+                    <option value="">Seleccionar tipo de log...</option>
+                </select>
+            </div>
+            <button class="btn btn-outline-light" onclick="closeFullscreenViewer()">
+                <i class="fas fa-times me-1"></i>
+                Cerrar
+            </button>
+        </div>
+        
+        <div class="fullscreen-search-container">
+            <i class="fas fa-search text-muted me-2"></i>
+            <input type="text" class="search-input" id="fullscreenSearchInput" placeholder="Buscar en el log..." />
+            <div class="search-controls">
+                <button class="fullscreen-btn" id="prevMatchBtn" onclick="navigateMatch(-1)" disabled>
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+                <button class="fullscreen-btn" id="nextMatchBtn" onclick="navigateMatch(1)" disabled>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <span class="search-stats" id="searchStats">0 de 0</span>
+                <button class="fullscreen-btn ms-3" onclick="clearSearch()">
+                    <i class="fas fa-times me-1"></i>
+                    Limpiar
+                </button>
+            </div>
+        </div>
+        
+        <div class="fullscreen-content" id="fullscreenContent">
+            <div class="text-center text-muted mt-5">
+                <i class="fas fa-file-alt fa-3x mb-3"></i>
+                <p>Selecciona un tipo de log para comenzar</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-spinner position-fixed top-50 start-50 translate-middle" id="loadingSpinner">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+        </div>
+    </div>
+
+    <script>
+        let dashboardData = null;
+        let countdownInterval = null;
+        let shutdownCheckInterval = null;
+        let isShutdownWarningShown = false;
+        
+        // Fullscreen viewer variables
+        let fullscreenLogData = [];
+        let searchMatches = [];
+        let currentMatchIndex = -1;
+        let searchTerm = '';
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadDashboard();
+            
+            // Auto-refresh every 30 seconds
+            setInterval(loadDashboard, 30000);
+            
+            // Start shutdown monitoring
+            startShutdownMonitoring();
+        });
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                showLoading(true);
+                
+                const selectedDate = document.getElementById('dateSelector').value;
+                const url = selectedDate ? `/api/dashboard?date=${selectedDate}` : '/api/dashboard';
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json; charset=utf-8',
+                        'Content-Type': 'application/json; charset=utf-8'
+                    }
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    dashboardData = result.data;
+                    updateDashboard(result.data);
+                } else {
+                    console.error('Error loading dashboard:', result.error);
+                    showError('Error al cargar el dashboard: ' + result.error);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Error de conexión al cargar el dashboard');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Update dashboard with data
+        function updateDashboard(data) {
+            // Update statistics
+            updateStatistics(data.statistics);
+            
+            // Update execution info
+            updateExecutionInfo(data.execution);
+            
+            // Update log types
+            updateLogTypes(data.logTypes, data.logs);
+            
+            // Update available dates
+            updateAvailableDates(data.availableDates);
+            
+            // Update system status
+            updateSystemStatus(data.execution);
+            
+            // Auto-select and load ServerStatus log by default
+            autoSelectDefaultLog();
+        }
+
+        // Update statistics cards
+        function updateStatistics(stats) {
+            document.getElementById('activeLogsCount').textContent = stats.activeFiles || 0;
+            document.getElementById('totalLogLines').textContent = stats.totalLines ? stats.totalLines.toLocaleString() : 0;
+            document.getElementById('totalLogSize').textContent = formatBytes(stats.totalSize || 0);
+        }
+
+        // Update execution information
+        function updateExecutionInfo(execution) {
+            if (execution.lastExecution) {
+                const lastTime = new Date(execution.lastExecution);
+                document.getElementById('lastExecutionTime').textContent = formatDateTime(lastTime);
+            } else {
+                document.getElementById('lastExecutionTime').textContent = 'No disponible';
+            }
+
+            if (execution.nextExecution) {
+                const nextTime = new Date(execution.nextExecution);
+                document.getElementById('nextExecutionTime').textContent = formatDateTime(nextTime);
+                startCountdownTimer(nextTime);
+            } else {
+                document.getElementById('nextExecutionTime').textContent = 'No disponible';
+                document.getElementById('countdownTimer').textContent = '--:--';
+            }
+        }
+
+        // Update system status
+        function updateSystemStatus(execution) {
+            const statusElement = document.getElementById('systemStatus');
+            const statusTextElement = document.getElementById('systemStatusText');
+            const indicator = statusElement.querySelector('.status-indicator');
+            
+            if (execution.status === 'Active') {
+                indicator.className = 'status-indicator status-active';
+                statusTextElement.textContent = 'Activo';
+            } else if (execution.status === 'Error') {
+                indicator.className = 'status-indicator status-inactive';
+                statusTextElement.textContent = 'Error';
+            } else {
+                indicator.className = 'status-indicator status-warning';
+                statusTextElement.textContent = 'Inactivo';
+            }
+        }
+
+        // Update log types
+        function updateLogTypes(logTypes, logsData) {
+            const container = document.getElementById('logTypesList');
+            const selector = document.getElementById('logTypeSelector');
+            
+            // Clear existing content
+            container.innerHTML = '';
+            selector.innerHTML = '<option value="">Seleccionar tipo de log...</option>';
+            
+            let availableCount = 0;
+            
+            logTypes.forEach(logType => {
+                // Add to grid
+                const logStatus = logsData[logType];
+                
+                let statusClass, statusIcon, statusText;
+                
+                if (logStatus.exists) {
+                    statusClass = 'text-success';
+                    statusIcon = 'fas fa-check-circle';
+                    statusText = logType;
+                    availableCount++;
+                } else {
+                    statusClass = 'text-muted';
+                    statusIcon = 'fas fa-minus-circle';
+                    statusText = logType;
+                }
+                
+                const col = document.createElement('div');
+                col.className = 'col-6 col-md-4 mb-2';
+                col.innerHTML = `
+                    <small class="${statusClass}" ${!logStatus.exists ? 'style="opacity: 0.7;"' : ''}>
+                        <i class="${statusIcon} me-1"></i>
+                        ${statusText}
+                    </small>
+                `;
+                container.appendChild(col);
+                
+                // Add to selector
+                const option = document.createElement('option');
+                option.value = logType;
+                option.textContent = logStatus.exists ? logType : `${logType} (No disponible)`;
+                option.disabled = !logStatus.exists;
+                if (!logStatus.exists) {
+                    option.style.color = '#6c757d';
+                }
+                selector.appendChild(option);
+            });
+            
+            // Update the card header with count
+            const logTypesHeader = document.getElementById('logTypesHeader');
+            if (logTypesHeader) {
+                const totalCount = logTypes.length;
+                const missingCount = totalCount - availableCount;
+                
+                let statusBadge = '';
+                if (missingCount > 0) {
+                    statusBadge = `<span class="badge bg-secondary ms-2">${missingCount} no ejecutados</span>`;
+                }
+                
+                logTypesHeader.innerHTML = `
+                    <i class="fas fa-list me-2"></i>
+                    Tipos de Log Disponibles
+                    <span class="badge bg-primary ms-2">${availableCount}/${totalCount}</span>
+                    ${statusBadge}
+                `;
+            }
+        }
+
+        // Update available dates
+        function updateAvailableDates(dates) {
+            const selector = document.getElementById('dateSelector');
+            const currentValue = selector.value;
+            
+            // Keep current options and add new ones
+            while (selector.children.length > 1) {
+                selector.removeChild(selector.lastChild);
+            }
+            
+            dates.forEach(date => {
+                const option = document.createElement('option');
+                option.value = date;
+                option.textContent = formatDate(new Date(date));
+                selector.appendChild(option);
+            });
+            
+            // Restore selection if it still exists
+            if (currentValue && dates.includes(currentValue)) {
+                selector.value = currentValue;
+            }
+        }
+
+        // Load log content
+        async function loadLogContent() {
+            const logType = document.getElementById('logTypeSelector').value;
+            if (!logType) {
+                alert('Por favor selecciona un tipo de log primero');
+                return;
+            }
+            
+            console.log('Loading log content for:', logType);
+            
+            try {
+                const selectedDate = document.getElementById('dateSelector').value;
+                const url = selectedDate ? 
+                    `/api/logs/${logType}?date=${selectedDate}&lines=200` : 
+                    `/api/logs/${logType}?lines=200`;
+                
+                console.log('Fetching URL:', url);
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json; charset=utf-8'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                console.log('API Result success:', result.success);
+                
+                if (result.success) {
+                    displayLogContent(result.data);
+                } else {
+                    showError('Error al cargar el log: ' + result.error);
+                }
+                
+            } catch (error) {
+                console.error('Error loading log:', error);
+                showError('Error al cargar el contenido del log: ' + error.message);
+            }
+        }
+
+        // Display log content
+        function displayLogContent(logData) {
+            console.log('Displaying log content - exists:', logData.exists, 'lines:', logData.lines ? logData.lines.length : 0);
+            
+            const viewer = document.getElementById('logViewer');
+            
+            if (!logData.exists || !logData.lines || logData.lines.length === 0) {
+                viewer.innerHTML = `
+                    <div class="text-center text-muted">
+                        <i class="fas fa-file fa-3x mb-3"></i>
+                        <p>No hay contenido disponible para este log</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            viewer.innerHTML = '';
+            
+            logData.lines.forEach(line => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'log-line';
+                
+                // Apply syntax highlighting
+                let className = 'log-info';
+                if (line.includes('[ERROR]')) className = 'log-error';
+                else if (line.includes('[WARN]')) className = 'log-warn';
+                else if (line.includes('[START]')) className = 'log-start';
+                
+                lineDiv.className += ' ' + className;
+                
+                // Use innerHTML with proper escaping to handle UTF-8 characters
+                const escapedLine = line
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#x27;');
+                    
+                lineDiv.innerHTML = escapedLine;
+                viewer.appendChild(lineDiv);
+            });
+            
+            // Scroll to bottom
+            viewer.scrollTop = viewer.scrollHeight;
+        }
+
+        // Start countdown timer
+        function startCountdownTimer(nextTime) {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            
+            countdownInterval = setInterval(() => {
+                const now = new Date();
+                const diff = nextTime - now;
+                
+                if (diff <= 0) {
+                    document.getElementById('countdownTimer').textContent = '00:00';
+                    clearInterval(countdownInterval);
+                    // Refresh dashboard when timer reaches zero
+                    setTimeout(loadDashboard, 1000);
+                    return;
+                }
+                
+                const minutes = Math.floor(diff / (1000 * 60));
+                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                
+                document.getElementById('countdownTimer').textContent = 
+                    `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }, 1000);
+        }
+
+        // Utility functions
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function formatDateTime(date) {
+            return date.toLocaleString('es-MX', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('es-MX', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        function showLoading(show) {
+            document.getElementById('loadingSpinner').style.display = show ? 'block' : 'none';
+        }
+
+        function showError(message) {
+            // Simple error display - could be enhanced with toast notifications
+            console.error(message);
+            alert(message);
+        }
+
+        function refreshDashboard() {
+            loadDashboard();
+        }
+
+        // Shutdown server function
+        async function shutdownServer() {
+            const confirmed = confirm(
+                '¿Estás seguro de que quieres detener el servidor?\n\n' +
+                'Esta acción cerrará el dashboard y detendrá SageConnect completamente.'
+            );
+            
+            if (!confirmed) {
+                return;
+            }
+            
+            try {
+                // Show shutdown message
+                document.body.innerHTML = `
+                    <div style="
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        z-index: 9999;
+                        color: white;
+                        text-align: center;
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    ">
+                        <div>
+                            <i class="fas fa-power-off fa-4x mb-4"></i>
+                            <h2>Deteniendo Servidor...</h2>
+                            <p>SageConnect se está cerrando correctamente</p>
+                            <div class="spinner-border mt-3" role="status">
+                                <span class="visually-hidden">Cerrando...</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Send shutdown request
+                const response = await fetch('/api/shutdown', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json; charset=utf-8'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Update message
+                    setTimeout(() => {
+                        document.body.innerHTML = `
+                            <div style="
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 100%;
+                                height: 100%;
+                                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+                                display: flex;
+                                justify-content: center;
+                                align-items: center;
+                                z-index: 9999;
+                                color: white;
+                                text-align: center;
+                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                            ">
+                                <div>
+                                    <i class="fas fa-check-circle fa-4x mb-4"></i>
+                                    <h2>Servidor Detenido</h2>
+                                    <p>SageConnect se ha cerrado correctamente</p>
+                                    <small>Puedes cerrar esta ventana del navegador</small>
+                                </div>
+                            </div>
+                        `;
+                    }, 1500);
+                } else {
+                    throw new Error(result.error || 'Error desconocido');
+                }
+                
+            } catch (error) {
+                console.error('Error shutting down server:', error);
+                alert('Error al detener el servidor: ' + error.message);
+                
+                // Reload the page to restore the dashboard
+                location.reload();
+            }
+        }
+
+        // Auto-select default log
+        function autoSelectDefaultLog() {
+            const selector = document.getElementById('logTypeSelector');
+            
+            // Check if ServerStatus option exists and is enabled
+            const serverStatusOption = Array.from(selector.options).find(option => 
+                option.value === 'ServerStatus' && !option.disabled
+            );
+            
+            if (serverStatusOption && selector.value === '') {
+                selector.value = 'ServerStatus';
+                console.log('Auto-selected ServerStatus log');
+                
+                // Auto-load the log content
+                setTimeout(() => {
+                    loadLogContent();
+                }, 500);
+            } else if (selector.value === '') {
+                // If ServerStatus is not available, try to select the first available log
+                const firstAvailableOption = Array.from(selector.options).find(option => 
+                    option.value !== '' && !option.disabled
+                );
+                
+                if (firstAvailableOption) {
+                    selector.value = firstAvailableOption.value;
+                    console.log('Auto-selected first available log:', firstAvailableOption.value);
+                    
+                    setTimeout(() => {
+                        loadLogContent();
+                    }, 500);
+                } else {
+                    // No logs available at all
+                    const viewer = document.getElementById('logViewer');
+                    viewer.innerHTML = `
+                        <div class="text-center text-muted">
+                            <i class="fas fa-minus-circle fa-3x mb-3"></i>
+                            <h5>No hay logs disponibles</h5>
+                            <p>No se encontraron archivos de log para la fecha seleccionada</p>
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Los logs se generan cuando el sistema está en funcionamiento
+                            </small>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Start shutdown monitoring
+        function startShutdownMonitoring() {
+            console.log('Starting auto-shutdown monitoring...');
+            
+            shutdownCheckInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/shutdown-status');
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        handleShutdownStatus(result.data);
+                    }
+                } catch (error) {
+                    console.error('Error checking shutdown status:', error);
+                }
+            }, 10000); // Check every 10 seconds
+        }
+
+        // Handle shutdown status updates
+        function handleShutdownStatus(status) {
+            // Handle shutdown warning (2 minutes before)
+            if (status.warning && !isShutdownWarningShown) {
+                showShutdownWarning(status.warning);
+                isShutdownWarningShown = true;
+            }
+            
+            // Handle imminent shutdown (30 seconds before)
+            if (status.shutdownMessage) {
+                showAutoShutdownNotification(status.shutdownMessage);
+                return;
+            }
+            
+            // Update shutdown info in UI if scheduled
+            if (status.scheduled) {
+                updateShutdownInfo(status);
+            }
+        }
+
+        // Show shutdown warning notification
+        function showShutdownWarning(warning) {
+            const scheduledTime = new Date(warning.scheduledTime);
+            const shutdownTime = new Date(warning.shutdownTime);
+            
+            const notification = document.createElement('div');
+            notification.className = 'alert alert-warning fade show position-fixed';
+            notification.style.cssText = `
+                top: 80px;
+                right: 20px;
+                z-index: 1050;
+                min-width: 400px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            
+            notification.innerHTML = `
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle fa-2x me-3 text-warning"></i>
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1"><strong>⚠️ Cierre Automático Obligatorio</strong></h6>
+                        <p class="mb-1">El servidor se cerrará automáticamente a las <strong>${shutdownTime.toLocaleTimeString('es-MX')}</strong></p>
+                        <small class="text-muted">
+                            <strong>Motivo:</strong> Evitar conflicto de puerto con proceso automático programado para las ${scheduledTime.toLocaleTimeString('es-MX')}
+                        </small>
+                        <div class="mt-2">
+                            <small class="text-warning">
+                                <i class="fas fa-info-circle me-1"></i>
+                                <strong>Este cierre es obligatorio y no se puede cancelar</strong>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Keep notification until shutdown
+        }
+
+        // Show auto-shutdown notification (final warning)
+        function showAutoShutdownNotification(shutdownMsg) {
+            const scheduledTime = new Date(shutdownMsg.scheduledTime);
+            
+            document.body.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 9999;
+                    color: white;
+                    text-align: center;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                ">
+                    <div class="container">
+                        <div class="row justify-content-center">
+                            <div class="col-md-8 col-lg-6">
+                                <i class="fas fa-server fa-4x mb-4"></i>
+                                <h2 class="mb-3">🔄 Cambio de Proceso Automático</h2>
+                                <p class="lead mb-4">El dashboard web se está cerrando para permitir que inicie el proceso automático programado</p>
+                                <div class="alert alert-light text-dark mx-auto" style="max-width: 500px;">
+                                    <h6 class="mb-2"><i class="fas fa-info-circle me-2"></i>Información del Proceso:</h6>
+                                    <p class="mb-1"><strong>Hora programada:</strong> ${scheduledTime.toLocaleTimeString('es-MX')}</p>
+                                    <p class="mb-1"><strong>Motivo:</strong> Evitar conflicto de puerto 3030</p>
+                                    <p class="mb-0"><strong>Duración estimada:</strong> ~1 minuto</p>
+                                </div>
+                                <div class="mt-4">
+                                    <div class="spinner-border spinner-border-lg" role="status">
+                                        <span class="visually-hidden">Cerrando servidor web...</span>
+                                    </div>
+                                    <p class="mt-3 mb-0">Cerrando servidor web...</p>
+                                </div>
+                                <div class="mt-4 text-light">
+                                    <small>
+                                        <i class="fas fa-lightbulb me-1"></i>
+                                        <strong>Consejo:</strong> Puedes volver a iniciar el dashboard con <code>npm run web-only</code> después del proceso automático
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Update shutdown info in dashboard
+        function updateShutdownInfo(status) {
+            // Add a small indicator in the navbar or status area
+            let shutdownIndicator = document.getElementById('shutdownIndicator');
+            
+            if (!shutdownIndicator && status.secondsUntilShutdown > 0) {
+                shutdownIndicator = document.createElement('div');
+                shutdownIndicator.id = 'shutdownIndicator';
+                shutdownIndicator.className = 'alert alert-danger alert-sm d-none d-md-block';
+                shutdownIndicator.style.cssText = `
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    z-index: 1040;
+                    min-width: 300px;
+                    font-size: 0.85rem;
+                `;
+                
+                document.body.appendChild(shutdownIndicator);
+            }
+            
+            if (shutdownIndicator && status.secondsUntilShutdown > 0) {
+                const minutes = Math.floor(status.secondsUntilShutdown / 60);
+                const seconds = status.secondsUntilShutdown % 60;
+                
+                shutdownIndicator.innerHTML = `
+                    <div class="d-flex align-items-center">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <small>
+                            <strong>⚠️ Cierre automático en:</strong> ${minutes}:${seconds.toString().padStart(2, '0')}
+                        </small>
+                    </div>
+                `;
+            } else if (shutdownIndicator) {
+                shutdownIndicator.remove();
+            }
+        }
+
+
+        // Handle date selector change
+        document.getElementById('dateSelector').addEventListener('change', function() {
+            // Reset log viewer to loading state
+            const viewer = document.getElementById('logViewer');
+            viewer.innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="fas fa-file-alt fa-3x mb-3"></i>
+                    <p>Cargando ServerStatus log...</p>
+                    <div class="spinner-border spinner-border-sm mt-2" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                </div>
+            `;
+            
+            loadDashboard();
+        });
+
+        // === FULLSCREEN VIEWER FUNCTIONS ===
+
+        // Open fullscreen viewer
+        function openFullscreenViewer() {
+            const modal = document.getElementById('fullscreenModal');
+            const currentLogType = document.getElementById('logTypeSelector').value;
+            
+            // Populate log selector
+            populateFullscreenLogSelector();
+            
+            // Set current log type if selected
+            if (currentLogType) {
+                document.getElementById('fullscreenLogSelector').value = currentLogType;
+                loadFullscreenLog(currentLogType);
+            }
+            
+            modal.style.display = 'flex';
+            
+            // Focus on search input
+            setTimeout(() => {
+                document.getElementById('fullscreenSearchInput').focus();
+            }, 100);
+        }
+
+        // Close fullscreen viewer
+        function closeFullscreenViewer() {
+            const modal = document.getElementById('fullscreenModal');
+            modal.style.display = 'none';
+            
+            // Clear search
+            clearSearch();
+        }
+
+        // Populate fullscreen log selector
+        function populateFullscreenLogSelector() {
+            const selector = document.getElementById('fullscreenLogSelector');
+            const mainSelector = document.getElementById('logTypeSelector');
+            
+            // Clear and copy options from main selector
+            selector.innerHTML = '<option value="">Seleccionar tipo de log...</option>';
+            
+            for (let i = 1; i < mainSelector.options.length; i++) {
+                const option = mainSelector.options[i];
+                const newOption = new Option(option.text, option.value);
+                newOption.disabled = option.disabled;
+                if (option.disabled) {
+                    newOption.style.color = '#6c757d';
+                }
+                selector.add(newOption);
+            }
+        }
+
+        // Load log content in fullscreen
+        async function loadFullscreenLog(logType) {
+            if (!logType) return;
+            
+            const content = document.getElementById('fullscreenContent');
+            const title = document.getElementById('fullscreenLogTitle');
+            
+            // Show loading
+            content.innerHTML = `
+                <div class="text-center text-muted mt-5">
+                    <div class="spinner-border mb-3" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p>Cargando ${logType}...</p>
+                </div>
+            `;
+            
+            title.textContent = `${logType} - Pantalla Completa`;
+            
+            try {
+                const selectedDate = document.getElementById('dateSelector').value;
+                const url = selectedDate ? 
+                    `/api/logs/${logType}?date=${selectedDate}&lines=0` : 
+                    `/api/logs/${logType}?lines=0`; // 0 = all lines
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json; charset=utf-8'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayFullscreenLogContent(result.data);
+                } else {
+                    content.innerHTML = `
+                        <div class="text-center text-danger mt-5">
+                            <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                            <p>Error al cargar el log: ${result.error}</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="text-center text-danger mt-5">
+                        <i class="fas fa-exclamation-triangle fa-3x mb-3"></i>
+                        <p>Error de conexión: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Display log content in fullscreen
+        function displayFullscreenLogContent(logData) {
+            const content = document.getElementById('fullscreenContent');
+            
+            if (!logData.exists || !logData.lines || logData.lines.length === 0) {
+                content.innerHTML = `
+                    <div class="text-center text-muted mt-5">
+                        <i class="fas fa-file fa-3x mb-3"></i>
+                        <p>No hay contenido disponible para este log</p>
+                    </div>
+                `;
+                fullscreenLogData = [];
+                return;
+            }
+            
+            fullscreenLogData = logData.lines;
+            renderFullscreenLog();
+        }
+
+        // Render fullscreen log with current search highlighting
+        function renderFullscreenLog() {
+            const content = document.getElementById('fullscreenContent');
+            content.innerHTML = '';
+            
+            fullscreenLogData.forEach((line, index) => {
+                const lineDiv = document.createElement('div');
+                lineDiv.className = 'fullscreen-log-line';
+                lineDiv.dataset.lineIndex = index;
+                
+                // Apply syntax highlighting
+                let className = 'log-info';
+                if (line.includes('[ERROR]')) className = 'log-error';
+                else if (line.includes('[WARN]')) className = 'log-warn';
+                else if (line.includes('[START]')) className = 'log-start';
+                
+                lineDiv.className += ' ' + className;
+                
+                // Apply search highlighting if there's a search term
+                if (searchTerm && line.toLowerCase().includes(searchTerm.toLowerCase())) {
+                    lineDiv.innerHTML = highlightSearchTerm(line, searchTerm);
+                } else {
+                    lineDiv.textContent = line;
+                }
+                
+                content.appendChild(lineDiv);
+            });
+            
+            // Update search matches if there's a search term
+            if (searchTerm) {
+                updateSearchMatches();
+            }
+        }
+
+        // Highlight search term in text
+        function highlightSearchTerm(text, term) {
+            const escapedText = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#x27;');
+                
+            const regex = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return escapedText.replace(regex, '<span class="highlight-match">$1</span>');
+        }
+
+        // Search functionality
+        function performSearch() {
+            const input = document.getElementById('fullscreenSearchInput');
+            searchTerm = input.value.trim();
+            
+            if (!searchTerm) {
+                clearSearch();
+                return;
+            }
+            
+            // Re-render with highlighting
+            renderFullscreenLog();
+        }
+
+        // Update search matches and navigation
+        function updateSearchMatches() {
+            const content = document.getElementById('fullscreenContent');
+            const matches = content.querySelectorAll('.highlight-match');
+            
+            searchMatches = Array.from(matches);
+            currentMatchIndex = searchMatches.length > 0 ? 0 : -1;
+            
+            // Update UI
+            updateSearchStats();
+            updateSearchNavigation();
+            
+            // Highlight current match
+            if (currentMatchIndex >= 0) {
+                highlightCurrentMatch();
+                scrollToCurrentMatch();
+            }
+        }
+
+        // Update search statistics
+        function updateSearchStats() {
+            const stats = document.getElementById('searchStats');
+            if (searchMatches.length > 0) {
+                stats.textContent = `${currentMatchIndex + 1} de ${searchMatches.length}`;
+            } else if (searchTerm) {
+                stats.textContent = '0 de 0';
+            } else {
+                stats.textContent = '';
+            }
+        }
+
+        // Update search navigation buttons
+        function updateSearchNavigation() {
+            const prevBtn = document.getElementById('prevMatchBtn');
+            const nextBtn = document.getElementById('nextMatchBtn');
+            
+            const hasMatches = searchMatches.length > 0;
+            prevBtn.disabled = !hasMatches;
+            nextBtn.disabled = !hasMatches;
+        }
+
+        // Navigate between search matches
+        function navigateMatch(direction) {
+            if (searchMatches.length === 0) return;
+            
+            // Remove current highlight
+            if (currentMatchIndex >= 0) {
+                searchMatches[currentMatchIndex].classList.remove('current-match');
+            }
+            
+            // Calculate new index
+            currentMatchIndex += direction;
+            if (currentMatchIndex >= searchMatches.length) {
+                currentMatchIndex = 0;
+            } else if (currentMatchIndex < 0) {
+                currentMatchIndex = searchMatches.length - 1;
+            }
+            
+            // Highlight new current match
+            highlightCurrentMatch();
+            scrollToCurrentMatch();
+            updateSearchStats();
+        }
+
+        // Highlight current match
+        function highlightCurrentMatch() {
+            if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
+                searchMatches[currentMatchIndex].classList.add('current-match');
+            }
+        }
+
+        // Scroll to current match
+        function scrollToCurrentMatch() {
+            if (currentMatchIndex >= 0 && currentMatchIndex < searchMatches.length) {
+                const match = searchMatches[currentMatchIndex];
+                const content = document.getElementById('fullscreenContent');
+                
+                // Calculate scroll position to center the match
+                const matchTop = match.offsetTop;
+                const contentHeight = content.clientHeight;
+                const scrollTop = matchTop - (contentHeight / 2);
+                
+                content.scrollTo({
+                    top: Math.max(0, scrollTop),
+                    behavior: 'smooth'
+                });
+            }
+        }
+
+        // Clear search
+        function clearSearch() {
+            const input = document.getElementById('fullscreenSearchInput');
+            input.value = '';
+            searchTerm = '';
+            searchMatches = [];
+            currentMatchIndex = -1;
+            
+            // Re-render without highlighting
+            if (fullscreenLogData.length > 0) {
+                renderFullscreenLog();
+            }
+            
+            updateSearchStats();
+            updateSearchNavigation();
+        }
+
+        // Event listeners for fullscreen viewer
+        document.getElementById('fullscreenLogSelector').addEventListener('change', function() {
+            const logType = this.value;
+            if (logType) {
+                clearSearch();
+                loadFullscreenLog(logType);
+            }
+        });
+
+        document.getElementById('fullscreenSearchInput').addEventListener('input', function() {
+            // Debounce search
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(() => {
+                performSearch();
+            }, 300);
+        });
+
+        document.getElementById('fullscreenSearchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    navigateMatch(-1); // Previous match
+                } else {
+                    navigateMatch(1);  // Next match
+                }
+            } else if (e.key === 'Escape') {
+                closeFullscreenViewer();
+            }
+        });
+
+        // Keyboard shortcuts for fullscreen viewer
+        document.addEventListener('keydown', function(e) {
+            const modal = document.getElementById('fullscreenModal');
+            if (modal.style.display === 'flex') {
+                if (e.key === 'Escape') {
+                    closeFullscreenViewer();
+                } else if (e.key === 'F3' || (e.ctrlKey && e.key === 'f')) {
+                    e.preventDefault();
+                    document.getElementById('fullscreenSearchInput').focus();
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

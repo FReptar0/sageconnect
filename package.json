@@ -6,7 +6,10 @@
   "scripts": {
     "test": "jest",
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "web-only": "node src/index.js --web-only",
+    "dev:web-only": "nodemon src/index.js --web-only",
+    "background-only": "node src/background.js"
   },
   "author": "FReptar0",
   "license": "ISC",
