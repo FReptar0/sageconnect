@@ -7,6 +7,7 @@ const {
     getLastExecutionInfo, 
     getAvailableLogDates, 
     getLogStatistics,
+    getStorageOverview,
     LOG_TYPES 
 } = require('../services/LogDashboardService');
 const { autoShutdownService } = require('../services/AutoShutdownService');
@@ -39,11 +40,12 @@ router.get('/api/dashboard', async (req, res) => {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
         const date = req.query.date || null;
         
-        const [logsData, executionInfo, logStats, availableDates] = await Promise.all([
+        const [logsData, executionInfo, logStats, availableDates, storageOverview] = await Promise.all([
             getAllLogs(date),
             getLastExecutionInfo(),
             getLogStatistics(),
-            getAvailableLogDates()
+            getAvailableLogDates(),
+            getStorageOverview()
         ]);
         
         res.json({
@@ -53,6 +55,7 @@ router.get('/api/dashboard', async (req, res) => {
                 execution: executionInfo,
                 statistics: logStats,
                 availableDates,
+                storageOverview,
                 logTypes: LOG_TYPES
             }
         });

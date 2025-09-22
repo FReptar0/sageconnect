@@ -377,7 +377,7 @@
             </div>
 
             <!-- Log Viewer Row -->
-            <div class="row">
+            <div class="row mb-4">
                 <div class="col-md-12">
                     <div class="card">
                         <div class="card-header d-flex justify-content-between align-items-center">
@@ -404,6 +404,103 @@
                                     <p>Cargando ServerStatus log...</p>
                                     <div class="spinner-border spinner-border-sm mt-2" role="status">
                                         <span class="visually-hidden">Cargando...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Storage Overview Row -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-database me-2"></i>
+                            Resumen de Almacenamiento de Logs
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <!-- Storage Summary Cards -->
+                                <div class="col-md-3 mb-3">
+                                    <div class="card bg-light h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-folder fa-2x text-primary mb-2"></i>
+                                            <div class="metric-number" id="totalDirectories">0</div>
+                                            <div class="metric-label">Directorios</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <div class="card bg-light h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-file-alt fa-2x text-success mb-2"></i>
+                                            <div class="metric-number" id="totalStorageFiles">0</div>
+                                            <div class="metric-label">Archivos Totales</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <div class="card bg-light h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-hdd fa-2x text-warning mb-2"></i>
+                                            <div class="metric-number" id="totalStorageSize">0 MB</div>
+                                            <div class="metric-label">Espacio Total</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 mb-3">
+                                    <div class="card bg-light h-100">
+                                        <div class="card-body text-center">
+                                            <i class="fas fa-calendar-alt fa-2x text-info mb-2"></i>
+                                            <div class="metric-number" id="dateRange">-</div>
+                                            <div class="metric-label">Rango de Fechas</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Storage Breakdown Tables -->
+                            <div class="row mt-4">
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-chart-bar me-2"></i>Por Tipo de Log</h6>
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th>Tipo</th>
+                                                    <th>Archivos</th>
+                                                    <th>Tamaño</th>
+                                                    <th>Líneas</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="logTypeBreakdownTable">
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted">Cargando...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <h6><i class="fas fa-calendar me-2"></i>Por Fecha (Últimas 10)</h6>
+                                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="table-light sticky-top">
+                                                <tr>
+                                                    <th>Fecha</th>
+                                                    <th>Archivos</th>
+                                                    <th>Tamaño</th>
+                                                    <th>Líneas</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="dateBreakdownTable">
+                                                <tr>
+                                                    <td colspan="4" class="text-center text-muted">Cargando...</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -534,6 +631,9 @@
             
             // Update available dates
             updateAvailableDates(data.availableDates);
+            
+            // Update storage overview
+            updateStorageOverview(data.storageOverview);
             
             // Update system status
             updateSystemStatus(data.execution);
@@ -676,6 +776,94 @@
             if (currentValue && dates.includes(currentValue)) {
                 selector.value = currentValue;
             }
+        }
+
+        // Update storage overview section
+        function updateStorageOverview(storageData) {
+            // Update summary cards
+            document.getElementById('totalDirectories').textContent = storageData.totalDirectories || 0;
+            document.getElementById('totalStorageFiles').textContent = storageData.totalFiles || 0;
+            document.getElementById('totalStorageSize').textContent = formatBytes(storageData.totalSize || 0);
+            
+            // Update date range
+            const dateRangeElement = document.getElementById('dateRange');
+            if (storageData.oldestDate && storageData.newestDate) {
+                const oldest = formatDate(new Date(storageData.oldestDate));
+                const newest = formatDate(new Date(storageData.newestDate));
+                if (storageData.oldestDate === storageData.newestDate) {
+                    dateRangeElement.textContent = newest;
+                } else {
+                    dateRangeElement.textContent = `${oldest} - ${newest}`;
+                }
+                dateRangeElement.style.fontSize = '1rem';
+            } else {
+                dateRangeElement.textContent = 'Sin datos';
+            }
+            
+            // Update log type breakdown table
+            updateLogTypeBreakdownTable(storageData.logTypeBreakdown);
+            
+            // Update date breakdown table
+            updateDateBreakdownTable(storageData.dateBreakdown);
+        }
+
+        // Update log type breakdown table
+        function updateLogTypeBreakdownTable(logTypeBreakdown) {
+            const tbody = document.getElementById('logTypeBreakdownTable');
+            tbody.innerHTML = '';
+            
+            if (!logTypeBreakdown || Object.keys(logTypeBreakdown).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay datos disponibles</td></tr>';
+                return;
+            }
+            
+            // Sort by file count descending
+            const sortedTypes = Object.entries(logTypeBreakdown)
+                .sort(([,a], [,b]) => b.files - a.files);
+            
+            sortedTypes.forEach(([logType, data]) => {
+                if (data.files > 0) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${logType}</strong></td>
+                        <td><span class="badge bg-primary">${data.files}</span></td>
+                        <td>${formatBytes(data.size)}</td>
+                        <td>${data.lines.toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(row);
+                }
+            });
+            
+            if (tbody.children.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay archivos de log</td></tr>';
+            }
+        }
+
+        // Update date breakdown table
+        function updateDateBreakdownTable(dateBreakdown) {
+            const tbody = document.getElementById('dateBreakdownTable');
+            tbody.innerHTML = '';
+            
+            if (!dateBreakdown || dateBreakdown.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay datos disponibles</td></tr>';
+                return;
+            }
+            
+            // Show only the last 10 dates
+            const recentDates = dateBreakdown.slice(0, 10);
+            
+            recentDates.forEach(dateData => {
+                const row = document.createElement('tr');
+                const formattedDate = formatDate(new Date(dateData.date));
+                
+                row.innerHTML = `
+                    <td><strong>${formattedDate}</strong></td>
+                    <td><span class="badge bg-success">${dateData.files}</span></td>
+                    <td>${formatBytes(dateData.size)}</td>
+                    <td>${dateData.lines.toLocaleString()}</td>
+                `;
+                tbody.appendChild(row);
+            });
         }
 
         // Load log content
@@ -1092,7 +1280,7 @@
                                 <div class="mt-4 text-light">
                                     <small>
                                         <i class="fas fa-lightbulb me-1"></i>
-                                        <strong>Consejo:</strong> Puedes volver a iniciar el dashboard con <code>npm run web-only</code> después del proceso automático
+                                        <strong>Consejo:</strong> Puedes volver a iniciar el dashboard con <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: bold;">npm run web-only</code> después del proceso automático
                                     </small>
                                 </div>
                             </div>

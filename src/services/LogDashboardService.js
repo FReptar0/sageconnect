@@ -295,6 +295,123 @@ async function getLogStatistics() {
     }
 }
 
+/**
+ * Gets comprehensive storage statistics across all dates and log types
+ * @returns {Promise<Object>} Complete storage overview
+ */
+async function getStorageOverview() {
+    const logFileName = 'LogDashboardService';
+    
+    try {
+        const sageConnectDir = path.join(path_env.parsed.LOG_PATH, 'sageconnect');
+        
+        if (!fs.existsSync(sageConnectDir)) {
+            return {
+                totalDirectories: 0,
+                totalFiles: 0,
+                totalSize: 0,
+                totalLines: 0,
+                oldestDate: null,
+                newestDate: null,
+                dateBreakdown: [],
+                logTypeBreakdown: {}
+            };
+        }
+        
+        const dates = fs.readdirSync(sageConnectDir)
+            .filter(item => {
+                const itemPath = path.join(sageConnectDir, item);
+                return fs.statSync(itemPath).isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(item);
+            })
+            .sort();
+        
+        let totalFiles = 0;
+        let totalSize = 0;
+        let totalLines = 0;
+        const dateBreakdown = [];
+        const logTypeBreakdown = {};
+        
+        // Initialize log type breakdown
+        LOG_TYPES.forEach(logType => {
+            logTypeBreakdown[logType] = {
+                files: 0,
+                size: 0,
+                lines: 0,
+                dates: []
+            };
+        });
+        
+        // Process each date directory
+        for (const date of dates) {
+            const dateDir = path.join(sageConnectDir, date);
+            const dateStats = {
+                date: date,
+                files: 0,
+                size: 0,
+                lines: 0,
+                logTypes: {}
+            };
+            
+            // Process each log type in this date
+            for (const logType of LOG_TYPES) {
+                const logFilePath = path.join(dateDir, `${logType}.log`);
+                
+                if (fs.existsSync(logFilePath)) {
+                    const stats = fs.statSync(logFilePath);
+                    const content = fs.readFileSync(logFilePath, 'utf8');
+                    const lines = content.trim().split('\n').filter(line => line.length > 0);
+                    
+                    // Update totals
+                    totalFiles++;
+                    totalSize += stats.size;
+                    totalLines += lines.length;
+                    
+                    // Update date breakdown
+                    dateStats.files++;
+                    dateStats.size += stats.size;
+                    dateStats.lines += lines.length;
+                    dateStats.logTypes[logType] = {
+                        size: stats.size,
+                        lines: lines.length,
+                        lastModified: stats.mtime
+                    };
+                    
+                    // Update log type breakdown
+                    logTypeBreakdown[logType].files++;
+                    logTypeBreakdown[logType].size += stats.size;
+                    logTypeBreakdown[logType].lines += lines.length;
+                    logTypeBreakdown[logType].dates.push(date);
+                }
+            }
+            
+            if (dateStats.files > 0) {
+                dateBreakdown.push(dateStats);
+            }
+        }
+        
+        const result = {
+            totalDirectories: dates.length,
+            totalFiles,
+            totalSize,
+            totalLines,
+            oldestDate: dates.length > 0 ? dates[0] : null,
+            newestDate: dates.length > 0 ? dates[dates.length - 1] : null,
+            dateBreakdown: dateBreakdown.reverse(), // Most recent first
+            logTypeBreakdown
+        };
+        
+        logGenerator(logFileName, 'info', 
+            `Storage overview calculated - ${totalFiles} files across ${dates.length} directories, total size: ${(totalSize / 1024 / 1024).toFixed(2)} MB`
+        );
+        
+        return result;
+        
+    } catch (error) {
+        logGenerator(logFileName, 'error', `Error getting storage overview: ${error.message}`);
+        throw error;
+    }
+}
+
 module.exports = {
     LOG_TYPES,
     getAllLogs,
@@ -302,6 +419,7 @@ module.exports = {
     getLastExecutionInfo,
     getAvailableLogDates,
     getLogStatistics,
+    getStorageOverview,
     getLastScheduledTime,
     getNextScheduledTime
 };
