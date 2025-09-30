@@ -58,15 +58,44 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             SELECT 
                 RTRIM(PONUMBER) as PONUMBER,
                 RTRIM(VDCODE) as PROVIDER_ID,
-                RTRIM(ORDDATE) as ORDER_DATE,
-                RTRIM(ORDSTATUS) as ORDER_STATUS,
-                RTRIM(POSTATUS) as PO_STATUS,
+                A.[DATE] as ORDER_DATE,
+                RTRIM(A.DESCRIPTIO) as DESCRIPTION,
+                RTRIM(A.REFERENCE) as REFERENCE,
+                A.DOCTOTAL as TOTAL_AMOUNT,
+                RTRIM(A.CURRENCY) as CURRENCY,
                 PORHSEQ
-            FROM ${database}.dbo.POPORH1 
+            FROM ${database}.dbo.POPORH1 A
             WHERE PONUMBER = '${poNumber}'`;
         
         const detailsResult = await runQuery(detailsQuery);
         console.table(detailsResult.recordset);
+
+        // 2.1 Verificar líneas de la OC
+        console.log('\n2.1. LÍNEAS DE LA OC (POPORL)');
+        console.log('==============================');
+        const linesQuery = `
+            SELECT 
+                RTRIM(A.PONUMBER) as PONUMBER,
+                RTRIM(B.ITEMNO) as ITEM_CODE,
+                RTRIM(B.ITEMDESC) as ITEM_DESCRIPTION,
+                RTRIM(B.[LOCATION]) as WAREHOUSE_LOCATION,
+                B.SQORDERED as QTY_ORDERED,
+                B.SQOUTSTAND as QTY_OUTSTANDING,
+                B.COMPLETION as COMPLETION_STATUS,
+                B.UNITCOST as UNIT_COST,
+                B.EXTENDED as LINE_TOTAL
+            FROM ${database}.dbo.POPORH1 A
+            INNER JOIN ${database}.dbo.POPORL B ON A.PORHSEQ = B.PORHSEQ
+            WHERE A.PONUMBER = '${poNumber}'
+            ORDER BY B.PORLREV`;
+        
+        const linesResult = await runQuery(linesQuery);
+        if (linesResult.recordset.length === 0) {
+            console.log('❌ No se encontraron líneas para esta OC');
+        } else {
+            console.log(`Líneas encontradas: ${linesResult.recordset.length}`);
+            console.table(linesResult.recordset);
+        }
 
         // 3. Verificar campos opcionales (AFE y USOCFDI)
         console.log('\n3. CAMPOS OPCIONALES (AFE Y USOCFDI)');
