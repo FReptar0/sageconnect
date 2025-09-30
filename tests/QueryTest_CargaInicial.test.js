@@ -6,10 +6,24 @@ const path = require('path');
 const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
 const pathEnv = dotenv.config({ path: '.env.path' }).parsed;
 
+// carga las variables de configuración general (incluyendo direcciones por defecto)
+const config = dotenv.config({ path: '.env' }).parsed;
+
 const {
   DATABASES,
   EXTERNAL_IDS
 } = creds;
+
+// Variables de configuración de direcciones por defecto para órdenes de compra
+// Estas variables se usan cuando la tabla ICLOC no tiene datos de dirección para una ubicación
+// Si no están configuradas en el .env, se usa string vacío como fallback
+const DEFAULT_ADDRESS_CITY = config?.DEFAULT_ADDRESS_CITY || '';
+const DEFAULT_ADDRESS_COUNTRY = config?.DEFAULT_ADDRESS_COUNTRY || '';
+const DEFAULT_ADDRESS_IDENTIFIER = config?.DEFAULT_ADDRESS_IDENTIFIER || '';
+const DEFAULT_ADDRESS_MUNICIPALITY = config?.DEFAULT_ADDRESS_MUNICIPALITY || '';
+const DEFAULT_ADDRESS_STATE = config?.DEFAULT_ADDRESS_STATE || '';
+const DEFAULT_ADDRESS_STREET = config?.DEFAULT_ADDRESS_STREET || '';
+const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
 
 // Utilerías
 const { runQuery } = require('../src/utils/SQLServerConnection');
@@ -53,21 +67,21 @@ async function testCargaInicialQuery(databaseIndex = 0) {
   
   logGenerator(logFileName, 'info', `Iniciando prueba de query para base de datos: ${databases[databaseIndex]}`);
 
-  // Query original del archivo PortalOC_CreationBatch.js
+  // Query actualizada con variables de configuración del archivo PortalOC_CreationBatch.js
   const sql = `
 select 
   'ACCEPTED' as ACCEPTANCE_STATUS,
-  ISNULL(RTRIM(F.CITY),'')                     as [ADDRESSES_CITY],
-  ISNULL(RTRIM(F.COUNTRY),'')                  as [ADDRESSES_COUNTRY],
+  ISNULL(RTRIM(F.CITY),'${DEFAULT_ADDRESS_CITY}')                     as [ADDRESSES_CITY],
+  ISNULL(RTRIM(F.COUNTRY),'${DEFAULT_ADDRESS_COUNTRY}')                  as [ADDRESSES_COUNTRY],
   ''                                           as [ADDRESSES_EXTERIOR_NUMBER],
-  ISNULL(RTRIM(F.[LOCATION]),'')               as [ADDRESSES_IDENTIFIER],
+  ISNULL(RTRIM(F.[LOCATION]),'${DEFAULT_ADDRESS_IDENTIFIER}')               as [ADDRESSES_IDENTIFIER],
   ''                                           as [ADDRESSES_INTERIOR_NUMBER],
-  ISNULL(RTRIM(F.ADDRESS2),'')                 as [ADDRESSES_MUNICIPALITY],
-  ISNULL(RTRIM(F.[STATE]),'')                  as [ADDRESSES_STATE],
-  ISNULL(RTRIM(F.ADDRESS1),'')                 as [ADDRESSES_STREET],
+  ISNULL(RTRIM(F.ADDRESS2),'${DEFAULT_ADDRESS_MUNICIPALITY}')                 as [ADDRESSES_MUNICIPALITY],
+  ISNULL(RTRIM(F.[STATE]),'${DEFAULT_ADDRESS_STATE}')                  as [ADDRESSES_STATE],
+  ISNULL(RTRIM(F.ADDRESS1),'${DEFAULT_ADDRESS_STREET}')                 as [ADDRESSES_STREET],
   ''                                           as [ADDRESSES_SUBURB],
   'SHIPPING'                                   as [ADDRESSES_TYPE],
-  ISNULL(RTRIM(F.ZIP),'')                      as [ADDRESSES_ZIP],
+  ISNULL(RTRIM(F.ZIP),'${DEFAULT_ADDRESS_ZIP}')                      as [ADDRESSES_ZIP],
   'F' + LEFT(
     (SELECT RTRIM(VDESC)
        FROM ${databases[databaseIndex]}.dbo.CSOPTFD
