@@ -52,17 +52,17 @@ async function createInitialLoadPurchaseOrders(index) {
   const sql = `
 select 
   'ACCEPTED' as ACCEPTANCE_STATUS,
-  ISNULL(RTRIM(F.CITY),'${DEFAULT_ADDRESS_CITY}')                     as [ADDRESSES_CITY],
-  ISNULL(RTRIM(F.COUNTRY),'${DEFAULT_ADDRESS_COUNTRY}')                  as [ADDRESSES_COUNTRY],
+  ISNULL(NULLIF(RTRIM(F.CITY),''),'${DEFAULT_ADDRESS_CITY}')                     as [ADDRESSES_CITY],
+  ISNULL(NULLIF(RTRIM(F.COUNTRY),''),'${DEFAULT_ADDRESS_COUNTRY}')                  as [ADDRESSES_COUNTRY],
   ''                                           as [ADDRESSES_EXTERIOR_NUMBER],
-  ISNULL(RTRIM(F.[LOCATION]),'${DEFAULT_ADDRESS_IDENTIFIER}')               as [ADDRESSES_IDENTIFIER],
+  ISNULL(NULLIF(RTRIM(F.[LOCATION]),''),'${DEFAULT_ADDRESS_IDENTIFIER}')               as [ADDRESSES_IDENTIFIER],
   ''                                           as [ADDRESSES_INTERIOR_NUMBER],
-  ISNULL(RTRIM(F.ADDRESS2),'${DEFAULT_ADDRESS_MUNICIPALITY}')                 as [ADDRESSES_MUNICIPALITY],
-  ISNULL(RTRIM(F.[STATE]),'${DEFAULT_ADDRESS_STATE}')                  as [ADDRESSES_STATE],
-  ISNULL(RTRIM(F.ADDRESS1),'${DEFAULT_ADDRESS_STREET}')                 as [ADDRESSES_STREET],
+  ISNULL(NULLIF(RTRIM(F.ADDRESS2),''),'${DEFAULT_ADDRESS_MUNICIPALITY}')                 as [ADDRESSES_MUNICIPALITY],
+  ISNULL(NULLIF(RTRIM(F.[STATE]),''),'${DEFAULT_ADDRESS_STATE}')                  as [ADDRESSES_STATE],
+  ISNULL(NULLIF(RTRIM(F.ADDRESS1),''),'${DEFAULT_ADDRESS_STREET}')                 as [ADDRESSES_STREET],
   ''                                           as [ADDRESSES_SUBURB],
   'SHIPPING'                                   as [ADDRESSES_TYPE],
-  ISNULL(RTRIM(F.ZIP),'${DEFAULT_ADDRESS_ZIP}')                      as [ADDRESSES_ZIP],
+  ISNULL(NULLIF(RTRIM(F.ZIP),''),'${DEFAULT_ADDRESS_ZIP}')                      as [ADDRESSES_ZIP],
   'F' + LEFT(
     (SELECT RTRIM(VDESC)
        FROM ${databases[index]}.dbo.CSOPTFD
