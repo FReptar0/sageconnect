@@ -78,6 +78,37 @@ npm install
 
 ---
 
+## Configuration Setup
+
+After installing the dependencies, you need to configure the environment files. The repository includes example configuration files that you can use as templates:
+
+### 1. Copy Example Files
+
+Copy the provided example files and remove the `.example` suffix:
+
+```bash
+cp .env.example .env
+cp .env.credentials.database.example .env.credentials.database
+cp .env.credentials.focaltec.example .env.credentials.focaltec
+cp .env.credentials.mailing.example .env.credentials.mailing
+cp .env.path.example .env.path
+```
+
+### 2. Edit Configuration Files
+
+Open each configuration file and replace the example values with your actual credentials and settings:
+
+- **`.env`**: General application settings and default addresses
+- **`.env.credentials.database`**: SQL Server connection credentials
+- **`.env.credentials.focaltec`**: Portal de Proveedores API credentials
+- **`.env.credentials.mailing`**: Email configuration for notifications
+- **`.env.path`**: File system paths for logs and downloads
+
+> :warning: **Security Notice**: Never commit the actual `.env` files to version control. Only the `.example` files should be tracked in Git.
+> :bangbang: **Important**: Make sure to configure all environment variables properly before running the application. Missing or incorrect configuration may cause runtime errors.
+
+---
+
 ## Configuration
 
 ### Environment variables
@@ -90,22 +121,18 @@ The following environment variables must be configured for the program to run co
 | :---: | :---: | :---: |
 | WAIT_TIME | Time in hours, to be used for the program to repeat its functionality every x time.  | 10 |
 | IMPORT_CFDIS_ROUTE | Used to define the path to the sage executable to be called to perform the invoice import process. | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe |
-| ARG | The name of the SAGE 300 database to be used by the executable for its operations. | TERDAT |
-| NOMBRE | Company name for CFDI fiscal information. | TERP SA de CV |
-| RFC | Company RFC (tax identification number) for CFDI fiscal information. | TRP0000000XX0 |
+| ARG | The name of the SAGE 300 database to be used by the executable for its operations. | YOUR_DATABASE_NAME |
+| NOMBRE | Company name for CFDI fiscal information. | Tu Empresa SA de CV |
+| RFC | Company RFC (tax identification number) for CFDI fiscal information. | ABC123456DEF |
 | REGIMEN | Tax regime code for CFDI fiscal information. | 601 |
 | TIMEZONE | IANA timezone identifier for all date/time operations in the system. Must be a valid timezone. | America/Mexico_City |
-| DEFAULT_ADDRESS_CITY | Default city for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MORELOS |
+| DEFAULT_ADDRESS_CITY | Default city for purchase orders when ICLOC table has no data. Leave empty if no default needed. | TU_CIUDAD |
 | DEFAULT_ADDRESS_COUNTRY | Default country for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MEXICO |
-| DEFAULT_ADDRESS_IDENTIFIER | Default location identifier for purchase orders when ICLOC table has no data. Leave empty if no default needed. | ID |
-| DEFAULT_ADDRESS_MUNICIPALITY | Default municipality for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MUNICIPIO |
-| DEFAULT_ADDRESS_STATE | Default state for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MORELOS |
-| DEFAULT_ADDRESS_STREET | Default street for purchase orders when ICLOC table has no data. Leave empty if no default needed. | CALLE PRINCIPAL |
-| DEFAULT_ADDRESS_ZIP | Default ZIP code for purchase orders when ICLOC table has no data. Leave empty if no default needed. | 00000 |
-
-> :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
->
-> **DEFAULT ADDRESS Configuration**: These variables provide fallback values when the ICLOC table in SAGE 300 doesn't contain address information for a location. If these variables are not set or left empty, the system will use empty strings as defaults. This ensures purchase orders always have valid address fields for Portal de Proveedores API compliance.
+| DEFAULT_ADDRESS_IDENTIFIER | Default location identifier for purchase orders when ICLOC table has no data. Leave empty if no default needed. | ID_EXAMPLE |
+| DEFAULT_ADDRESS_MUNICIPALITY | Default municipality for purchase orders when ICLOC table has no data. Leave empty if no default needed. | TU_MUNICIPIO |
+| DEFAULT_ADDRESS_STATE | Default state for purchase orders when ICLOC table has no data. Leave empty if no default needed. | TU_ESTADO |
+| DEFAULT_ADDRESS_STREET | Default street for purchase orders when ICLOC table has no data. Leave empty if no default needed. | CALLE EJEMPLO |
+| DEFAULT_ADDRESS_ZIP | Default ZIP code for purchase orders when ICLOC table has no data. Leave empty if no default needed. | 12345 |
 
 > :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
 >
@@ -115,15 +142,19 @@ The following environment variables must be configured for the program to run co
 > - `Asia/Tokyo` (UTC+9)
 >
 > All date filtering, logging, and timestamp operations throughout the system will use this timezone. If an invalid timezone is provided, the system will fall back to local server time and display a warning.
+>
+> :bangbang: **DEFAULT ADDRESS Configuration**: These variables provide fallback values when the ICLOC table in SAGE 300 doesn't contain address information for a location. If these variables are not set or left empty, the system will use empty strings as defaults. This ensures purchase orders always have valid address fields for Portal de Proveedores API compliance.
+>
+> The system uses `ISNULL(NULLIF(RTRIM(field),''), default_value)` logic to handle both NULL values and empty strings from the database, ensuring that Portal de Proveedores API requirements are met.
 
 ### .env.credentials.database
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
-| USER | Is the user name for SQLServer database. | sa |
-| PASSWORD | Is the password for the acording user. | sa |
-| SERVER | Is the server name for the conecction. | EC2AMAZ-IMEIBNC |
-| DATABASE | It is the default name of the database where some actions must occur. | FESA |
+| USER | Is the user name for SQLServer database. | your_db_user |
+| PASSWORD | Is the password for the acording user. | your_db_password |
+| SERVER | Is the server name for the conecction. | your_sql_server_host |
+| DATABASE | It is the default name of the database where some actions must occur. | YOUR_DATABASE_NAME |
 
 ### .env.credentials.focaltec
 
@@ -134,11 +165,11 @@ The following environment variables must be configured for the program to run co
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | URL | It is the URL of the focaltec API. | <https://api-sandbox.portaldeproveedores.mx> |
-| TENANT_ID | These are the company identifiers provided by Focaltec. | t8e8412hgs4kopf,t8e86cuiuennbl,t8e881bms3hygj8 |
-| API_KEY | This is one of the key values used by focaltec | EDaYeHfGbgnpevkE,QjgN7i3EHh7kOnuE,6hNTwGkVj9zLZgDX |
-| API_SECRET | This is another of the key values used by focaltec | NMcqO1qxQmx66yEQ3tqzFspxe2ALwXbrtcfIY8upZdeiPbDY,iUJRIrquQvFa6LvDzeDlQIk8clwYc14kuiEVGysRioqkcFyt,SDZHVho74TJK2xyshLsl6VSvWRYCt16fBJ00BDnZ3CUXjeZN |
-| DATABASES | It is the name of the database corresponding to each company. | CMXDAT,TSMDAT,ARKDAT |
-| EXTERNAL_IDS | It is the external id that focaltec assigns to every company | CGO031231JM7, CGO031231JM8, CGO031231JM9 |
+| TENANT_ID | These are the company identifiers provided by Focaltec. | your_tenant_id_1,your_tenant_id_2,your_tenant_id_3 |
+| API_KEY | This is one of the key values used by focaltec | your_api_key_1,your_api_key_2,your_api_key_3 |
+| API_SECRET | This is another of the key values used by focaltec | your_api_secret_1,your_api_secret_2,your_api_secret_3 |
+| DATABASES | It is the name of the database corresponding to each company. | DATABASE1,DATABASE2,DATABASE3 |
+| EXTERNAL_IDS | It is the external id that focaltec assigns to every company | RFC1,RFC2,RFC3 |
 
 > :bangbang: Make sure that the values correspond to each other, for example, if the first TENANT_ID is for Charger, then the first API_KEY, API_SECRET and DATABASE must be for Charger.
 
@@ -154,12 +185,13 @@ You can use either Google API credentials (OAuth2) or your own SMTP server for s
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | MAIL_PROVIDER | Set to `google` to use Google API | google |
-| CLIENT_ID | Google API client ID | 213110698827-j2ih3tvkp4hlc4prngfa5hr9qdh2r9bq.apps.googleusercontent.com |
-| SECRET_CLIENT | Google API client secret | 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 |
-| REFRESH_TOKEN | Google API refresh token | 1//04MQuKAFpXo-_CgYIARAAGAQSNwF-L9IrQKynzPc1WJTkShu3Afzt5z_A_gPcXzdUw5TPTz8u1lgbUnXpZqR7Wcj8rgBMLQWqyTE |
+| CLIENT_ID | Google API client ID | your-client-id.apps.googleusercontent.com |
+| SECRET_CLIENT | Google API client secret | GOCSPX-your_client_secret |
+| REFRESH_TOKEN | Google API refresh token | 1//your_refresh_token |
 | REDIRECT_URI | Always <https://developers.google.com/oauthplayground> | <https://developers.google.com/oauthplayground> |
-| SEND_MAILS | The email address registered with Google API | <fernando.rodriguez@tersoft.mx> |
-| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<fernando.rodriguez+1@tersoft.mx> |
+| SEND_MAILS | The email address registered with Google API | <your_gmail@gmail.com> |
+| MAILING_NOTICES | Comma-separated list of recipient emails | <admin@tuempresa.com>,<notifications@tuempresa.com> |
+| MAILING_CC | Comma-separated list of CC (carbon copy) recipient emails | <backup@tuempresa.com>,<supervisor@tuempresa.com> |
 
 In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow the next steps:
 
@@ -201,49 +233,56 @@ In order to get CLIENT_ID, SECRET_CLIENT and REFRESH_TOKEN you need to follow th
 | Variable | Description | Example |
 | :---: | :---: | :---: |
 | MAIL_PROVIDER | Set to `custom` to use your SMTP server (or leave unset) | custom |
-| eFrom | Sender email address | <Notificacionescozamin@capstonecopper.com> |
-| ePass | Password for SMTP auth (leave empty if not needed) | (your password) |
-| eServer | SMTP server address | 10.230.0.24 |
-| ePuerto | SMTP port | 25 |
-| eSSL | TRUE for SSL, FALSE otherwise | FALSE |
-| MAILING_NOTICES | Comma-separated list of recipient emails | <fernando.rodriguez@tersoft.mx>,<santiagopj19@gmail.com> |
+| eFrom | Sender email address | <notificaciones@tuempresa.com> |
+| ePass | Password for SMTP auth (leave empty if not needed) | tu_password_email |
+| eServer | SMTP server address | mail.tuempresa.com |
+| ePuerto | SMTP port | 587 |
+| eSSL | TRUE for SSL, FALSE otherwise | TRUE |
+| MAILING_NOTICES | Comma-separated list of recipient emails | <admin@tuempresa.com>,<notifications@tuempresa.com> |
+| MAILING_CC | Comma-separated list of CC (carbon copy) recipient emails | <backup@tuempresa.com>,<supervisor@tuempresa.com> |
 
 > :bangbang: Make sure that the MAILING_NOTICES variable follows the same sequence as the multiple value variables in focaltec, which means that they must be separated by commas and must be related.
 > :bangbang: If the first tenant is for charger then the first mail of MAILING_NOTICES must also be the mail where the notices for charger will arrive.
 
 ### .env.path
 
-These are the paths where the CFDI's will be saved and logs generated
+These are the file system paths used by the application for storing downloads, providers data, and log files.
 
 | Variable | Description | Example |
 | :---: | :---: | :---: |
-| PATH | It is the path where the CFDI's will be saved | D:\XMLSFOCALTEC |
-| LOG_PATH | It is the base path where log files will be generated. The system will create a 'sageconnect' subdirectory inside this path. | C:\Logs\ |
+| PATH | Directory path where downloaded CFDI files will be saved | /Desktop/YourProject/downloads |
+| PROVIDERS_PATH | Directory path where provider-related files and data will be stored | C:\Providers\ |
+| LOG_PATH | Base directory path where log files will be generated. The system will create a 'sageconnect' subdirectory inside this path. | C:\Logs\ |
 
-> :bangbang: **LOG_PATH Configuration**: The LOG_PATH should end with a trailing slash and the system will automatically create a 'sageconnect' subdirectory. For example, if LOG_PATH is `C:\Logs\`, log files will be saved to `C:\Logs\sageconnect\`. Make sure the specified path exists and has write permissions.
+> :bangbang: **Path Configuration Notes**:
+>
+> - **LOG_PATH**: Should end with a trailing slash. The system automatically creates a 'sageconnect' subdirectory. For example, if LOG_PATH is `C:\Logs\`, log files will be saved to `C:\Logs\sageconnect\`.
+> - **PROVIDERS_PATH**: Used for storing provider synchronization data and temporary files related to supplier management.
+> - **PATH**: Main download directory for CFDI files retrieved from the Portal de Proveedores.
+>
+> Make sure all specified paths exist and have appropriate read/write permissions for the application.
 
 ---
 
 ## Preserving Local Environment Files
 
-> [!IMPORTANT]  
-> This project tracks several `.env` files in the repo:
->
-> - `.env`
-> - `.env.credentials.database`
-> - `.env.credentials.focaltec`
-> - `.env.credentials.mailing`
-> - `.env.path`
->
-> To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
->
-> ```bash
-> git update-index --skip-worktree .env
-> git update-index --skip-worktree .env.credentials.database
-> git update-index --skip-worktree .env.credentials.focaltec
-> git update-index --skip-worktree .env.credentials.mailing
-> git update-index --skip-worktree .env.path
-> ```
+This project tracks several `.env` files in the repo:
+
+- `.env`
+- `.env.credentials.database`
+- `.env.credentials.focaltec`
+- `.env.credentials.mailing`
+- `.env.path`
+
+To prevent your local values from being overwritten on `git pull` or `git merge`, mark them as **skip-worktree**:
+
+```bash
+git update-index --skip-worktree .env
+git update-index --skip-worktree .env.credentials.database
+git update-index --skip-worktree .env.credentials.focaltec
+git update-index --skip-worktree .env.credentials.mailing
+git update-index --skip-worktree .env.path
+```
 
 ---
 
