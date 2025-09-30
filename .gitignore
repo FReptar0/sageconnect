@@ -1,14 +1,82 @@
-node_modules
-.qodo
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
 
 # Environment files (keep only .example files in repo)
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .env.credentials.*
 .env.path
 !.env.*.example
 
 # Logs and generated files
 *.log
-*.json
-*.xml
+logs/
 reports/
+C:\Logs\*/
+
+# Runtime and temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
+
+# SAGE 300 and CFDI related files
+*.xml
+*.json
+!package*.json
+!jest.config.js
+!babel.config.js
+*.cfdi
+*.pdf
+
+# PM2 process management
+.pm2/
+ecosystem.config.js
+
+# IDE and editor files
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Development tools
+.qodo/
+.eslintcache
+
+# Backup files
+*.bak
+*.backup
+*~
