@@ -136,6 +136,39 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             console.log('\nAnálisis de direcciones por línea de la OC:');
             console.table(addressResult.recordset);
             
+            // Mostrar la dirección final consolidada que se enviaría al Portal
+            console.log(`\n🏠 DIRECCIÓN FINAL QUE SE ENVIARÍA AL PORTAL PARA ${poNumber}:`);
+            console.log('=========================================================');
+            
+            // Tomar la primera línea como referencia para la dirección (todas deberían ser iguales)
+            const firstRow = addressResult.recordset[0];
+            const finalAddress = {
+                'Ciudad': firstRow.FINAL_CITY,
+                'País': firstRow.FINAL_COUNTRY,
+                'Identificador': firstRow.FINAL_IDENTIFIER,
+                'Municipio': firstRow.FINAL_MUNICIPALITY,
+                'Estado': firstRow.FINAL_STATE,
+                'Calle': firstRow.FINAL_STREET,
+                'Código Postal': firstRow.FINAL_ZIP,
+                'Fuente de Datos': firstRow.ADDRESS_SOURCE
+            };
+            
+            console.table([finalAddress]);
+            
+            // Verificar si hay inconsistencias entre líneas
+            const uniqueAddresses = new Set(addressResult.recordset.map(row => 
+                `${row.FINAL_CITY}|${row.FINAL_COUNTRY}|${row.FINAL_STATE}`
+            ));
+            
+            if (uniqueAddresses.size > 1) {
+                console.log('⚠️  ALERTA: Hay direcciones diferentes entre las líneas de la OC:');
+                addressResult.recordset.forEach((row, index) => {
+                    console.log(`   Línea ${index + 1} (${row.LOCATION_CODE}): ${row.FINAL_CITY}, ${row.FINAL_STATE}, ${row.FINAL_COUNTRY}`);
+                });
+            } else {
+                console.log('✅ Todas las líneas de la OC usan la misma dirección');
+            }
+            
             // Analizar si hay problemas de dirección
             const hasNullLocations = addressResult.recordset.some(row => row.LOCATION_CODE === null || row.LOCATION_CODE === '');
             const hasMissingIclocData = addressResult.recordset.some(row => row.ADDRESS_SOURCE.includes('NO EXISTE EN ICLOC'));
@@ -155,8 +188,23 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             }
         }
 
+        // 4.1 Resumen de dirección para esta OC específica
+        if (addressResult.recordset.length > 0) {
+            const firstRow = addressResult.recordset[0];
+            console.log(`\n📋 RESUMEN DE DIRECCIÓN PARA ${poNumber}:`);
+            console.log('==========================================');
+            console.log(`🏢 Ubicación/Almacén: ${firstRow.LOCATION_CODE || 'NO ESPECIFICADO'}`);
+            console.log(`🏙️  Ciudad: ${firstRow.FINAL_CITY} ${firstRow.FINAL_CITY === DEFAULT_ADDRESS_CITY ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`🌍 País: ${firstRow.FINAL_COUNTRY} ${firstRow.FINAL_COUNTRY === DEFAULT_ADDRESS_COUNTRY ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`🗺️  Estado: ${firstRow.FINAL_STATE} ${firstRow.FINAL_STATE === DEFAULT_ADDRESS_STATE ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`🏘️  Municipio: ${firstRow.FINAL_MUNICIPALITY} ${firstRow.FINAL_MUNICIPALITY === DEFAULT_ADDRESS_MUNICIPALITY ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`🛣️  Calle: ${firstRow.FINAL_STREET} ${firstRow.FINAL_STREET === DEFAULT_ADDRESS_STREET ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`📮 Código Postal: ${firstRow.FINAL_ZIP} ${firstRow.FINAL_ZIP === DEFAULT_ADDRESS_ZIP ? '(DEFAULT)' : '(ICLOC)'}`);
+            console.log(`📍 Identificador: ${firstRow.FINAL_IDENTIFIER} ${firstRow.FINAL_IDENTIFIER === DEFAULT_ADDRESS_IDENTIFIER ? '(DEFAULT)' : '(ICLOC)'}`);
+        }
+
         // 5. Verificar autorización
-        console.log('\n4. ESTADO DE AUTORIZACIÓN');
+        console.log('\n5. ESTADO DE AUTORIZACIÓN');
         console.log('=========================');
         const authQuery = `
             SELECT 
