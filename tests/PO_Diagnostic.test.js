@@ -378,6 +378,119 @@ async function getAuthorizedPOsToday(empresa = 'COPDAT') {
     }
 }
 
+/**
+ * Función para comparar direcciones entre query de producción y diagnóstico
+ */
+async function compareAddressQueries(database = 'COPDAT') {
+    console.log('\n=== COMPARACIÓN DE QUERIES DE DIRECCIONES ===');
+    console.log(`Base de datos: ${database}\n`);
+
+    try {
+        // Query tal como aparece en QueryTest_CargaInicial.test.js (con defaults)
+        const queryWithDefaults = `
+            SELECT TOP 5
+                RTRIM(A.PONUMBER) as PONUMBER,
+                RTRIM(B.[LOCATION]) as LOCATION_CODE,
+                ISNULL(RTRIM(F.CITY),'${DEFAULT_ADDRESS_CITY}') as [ADDRESSES_CITY],
+                ISNULL(RTRIM(F.COUNTRY),'${DEFAULT_ADDRESS_COUNTRY}') as [ADDRESSES_COUNTRY],
+                ISNULL(RTRIM(F.[LOCATION]),'${DEFAULT_ADDRESS_IDENTIFIER}') as [ADDRESSES_IDENTIFIER],
+                ISNULL(RTRIM(F.ADDRESS2),'${DEFAULT_ADDRESS_MUNICIPALITY}') as [ADDRESSES_MUNICIPALITY],
+                ISNULL(RTRIM(F.[STATE]),'${DEFAULT_ADDRESS_STATE}') as [ADDRESSES_STATE],
+                ISNULL(RTRIM(F.ADDRESS1),'${DEFAULT_ADDRESS_STREET}') as [ADDRESSES_STREET],
+                ISNULL(RTRIM(F.ZIP),'${DEFAULT_ADDRESS_ZIP}') as [ADDRESSES_ZIP],
+                -- Datos raw para comparación
+                RTRIM(ISNULL(F.CITY, 'NULL')) as RAW_CITY,
+                RTRIM(ISNULL(F.COUNTRY, 'NULL')) as RAW_COUNTRY,
+                RTRIM(ISNULL(F.ADDRESS1, 'NULL')) as RAW_STREET
+            FROM ${database}.dbo.POPORH1 A
+            LEFT OUTER JOIN ${database}.dbo.POPORL B ON A.PORHSEQ = B.PORHSEQ
+            LEFT OUTER JOIN ${database}.dbo.ICLOC F ON B.[LOCATION] = F.[LOCATION]
+            LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X ON A.PONUMBER = X.PONumber
+            WHERE X.Autorizada = 1
+                AND X.Empresa = '${database}'
+                AND A.[DATE] between '20250101' and '20251231'
+                AND B.SQOUTSTAND > 0 
+                AND B.COMPLETION = 1
+            ORDER BY A.PONUMBER`;
+
+        console.log('Ejecutando query con valores por defecto configurados...');
+        const resultWithDefaults = await runQuery(queryWithDefaults);
+        
+        console.log(`\nResultados encontrados: ${resultWithDefaults.recordset.length}`);
+        console.log('\nPrimeras 5 OCs con análisis de direcciones:');
+        console.table(resultWithDefaults.recordset);
+
+        // Mostrar estadísticas de uso de defaults
+        const stats = {
+            totalRows: resultWithDefaults.recordset.length,
+            usingDefaultCity: 0,
+            usingDefaultCountry: 0,
+            usingDefaultState: 0,
+            nullLocations: 0,
+            uniqueLocations: new Set()
+        };
+
+        resultWithDefaults.recordset.forEach(row => {
+            if (row.ADDRESSES_CITY === DEFAULT_ADDRESS_CITY) stats.usingDefaultCity++;
+            if (row.ADDRESSES_COUNTRY === DEFAULT_ADDRESS_COUNTRY) stats.usingDefaultCountry++;
+            if (row.ADDRESSES_STATE === DEFAULT_ADDRESS_STATE) stats.usingDefaultState++;
+            if (!row.LOCATION_CODE || row.LOCATION_CODE.trim() === '') stats.nullLocations++;
+            if (row.LOCATION_CODE) stats.uniqueLocations.add(row.LOCATION_CODE);
+        });
+
+        console.log('\n=== ESTADÍSTICAS DE USO DE VALORES POR DEFECTO ===');
+        console.table([{
+            'Total Filas': stats.totalRows,
+            'Usando Default City': stats.usingDefaultCity,
+            'Usando Default Country': stats.usingDefaultCountry,
+            'Usando Default State': stats.usingDefaultState,
+            'Ubicaciones NULL': stats.nullLocations,
+            'Ubicaciones Únicas': stats.uniqueLocations.size
+        }]);
+
+        console.log('\n=== VALORES POR DEFECTO CONFIGURADOS ===');
+        console.table([{
+            DEFAULT_CITY: DEFAULT_ADDRESS_CITY,
+            DEFAULT_COUNTRY: DEFAULT_ADDRESS_COUNTRY,
+            DEFAULT_IDENTIFIER: DEFAULT_ADDRESS_IDENTIFIER,
+            DEFAULT_MUNICIPALITY: DEFAULT_ADDRESS_MUNICIPALITY,
+            DEFAULT_STATE: DEFAULT_ADDRESS_STATE,
+            DEFAULT_STREET: DEFAULT_ADDRESS_STREET,
+            DEFAULT_ZIP: DEFAULT_ADDRESS_ZIP
+        }]);
+
+        // Verificar ubicaciones problemáticas
+        if (stats.uniqueLocations.size > 0) {
+            console.log('\n=== ANÁLISIS DE UBICACIONES ===');
+            const locationAnalysisQuery = `
+                SELECT 
+                    F.[LOCATION] as LOCATION_CODE,
+                    COUNT(*) as USAGE_COUNT,
+                    RTRIM(ISNULL(F.CITY, 'NULL')) as CITY_IN_ICLOC,
+                    RTRIM(ISNULL(F.COUNTRY, 'NULL')) as COUNTRY_IN_ICLOC,
+                    RTRIM(ISNULL(F.[STATE], 'NULL')) as STATE_IN_ICLOC,
+                    CASE 
+                        WHEN F.CITY IS NULL OR RTRIM(F.CITY) = '' THEN 'USARÁ DEFAULT'
+                        ELSE 'USARÁ ICLOC'
+                    END as CITY_SOURCE
+                FROM ${database}.dbo.ICLOC F
+                WHERE F.[LOCATION] IN ('${Array.from(stats.uniqueLocations).join("','")}')
+                GROUP BY F.[LOCATION], F.CITY, F.COUNTRY, F.[STATE]
+                ORDER BY COUNT(*) DESC`;
+            
+            const locationAnalysis = await runQuery(locationAnalysisQuery);
+            console.log('\nAnálisis detallado de ubicaciones:');
+            console.table(locationAnalysis.recordset);
+        }
+
+        logGenerator('PO_Diagnostic', 'info', `Comparación de queries completada. Total filas: ${stats.totalRows}`);
+
+    } catch (error) {
+        console.error('\n❌ ERROR EN COMPARACIÓN DE QUERIES:', error.message);
+        logGenerator('PO_Diagnostic', 'error', `Error en comparación de queries: ${error.message}`);
+    }
+}
+
 // Ejemplos de uso
 async function runTests() {
     console.log('INICIANDO PRUEBAS DE DIAGNÓSTICO DE OCs');
@@ -398,13 +511,19 @@ async function runTests() {
         console.log(`- Empresa: ${empresa}\n`);
         
         await diagnosticPO(poNumber, database, empresa);
+    } else if (args[0] === 'compare-addresses') {
+        // Comparar queries de direcciones
+        const database = args[1] || 'COPDAT';
+        await compareAddressQueries(database);
     } else {
         // Prueba específica para PO0075624 por defecto
         await diagnosticPO('PO0075624', 'COPDAT', 'COPDAT');
     }
 
-    // Obtener todas las OCs autorizadas hoy
-    await getAuthorizedPOsToday('COPDAT');
+    // Obtener todas las OCs autorizadas hoy si no es comparación de direcciones
+    if (args[0] !== 'compare-addresses') {
+        await getAuthorizedPOsToday('COPDAT');
+    }
 
     console.log('\n✅ PRUEBAS COMPLETADAS');
 }
@@ -413,6 +532,7 @@ async function runTests() {
 module.exports = {
     diagnosticPO,
     getAuthorizedPOsToday,
+    compareAddressQueries,
     runTests
 };
 
