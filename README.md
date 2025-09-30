@@ -95,6 +95,17 @@ The following environment variables must be configured for the program to run co
 | RFC | Company RFC (tax identification number) for CFDI fiscal information. | TRP0000000XX0 |
 | REGIMEN | Tax regime code for CFDI fiscal information. | 601 |
 | TIMEZONE | IANA timezone identifier for all date/time operations in the system. Must be a valid timezone. | America/Mexico_City |
+| DEFAULT_ADDRESS_CITY | Default city for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MORELOS |
+| DEFAULT_ADDRESS_COUNTRY | Default country for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MEXICO |
+| DEFAULT_ADDRESS_IDENTIFIER | Default location identifier for purchase orders when ICLOC table has no data. Leave empty if no default needed. | ID |
+| DEFAULT_ADDRESS_MUNICIPALITY | Default municipality for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MUNICIPIO |
+| DEFAULT_ADDRESS_STATE | Default state for purchase orders when ICLOC table has no data. Leave empty if no default needed. | MORELOS |
+| DEFAULT_ADDRESS_STREET | Default street for purchase orders when ICLOC table has no data. Leave empty if no default needed. | CALLE PRINCIPAL |
+| DEFAULT_ADDRESS_ZIP | Default ZIP code for purchase orders when ICLOC table has no data. Leave empty if no default needed. | 00000 |
+
+> :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
+>
+> **DEFAULT ADDRESS Configuration**: These variables provide fallback values when the ICLOC table in SAGE 300 doesn't contain address information for a location. If these variables are not set or left empty, the system will use empty strings as defaults. This ensures purchase orders always have valid address fields for Portal de Proveedores API compliance.
 
 > :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
 >
