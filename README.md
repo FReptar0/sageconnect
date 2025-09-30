@@ -78,6 +78,38 @@ npm install
 
 ---
 
+## Configuration Setup
+
+After installing the dependencies, you need to configure the environment files. The repository includes example configuration files that you can use as templates:
+
+### 1. Copy Example Files
+
+Copy the provided example files and remove the `.example` suffix:
+
+```bash
+cp .env.example .env
+cp .env.credentials.database.example .env.credentials.database
+cp .env.credentials.focaltec.example .env.credentials.focaltec
+cp .env.credentials.mailing.example .env.credentials.mailing
+cp .env.path.example .env.path
+```
+
+### 2. Edit Configuration Files
+
+Open each configuration file and replace the example values with your actual credentials and settings:
+
+- **`.env`**: General application settings and default addresses
+- **`.env.credentials.database`**: SQL Server connection credentials
+- **`.env.credentials.focaltec`**: Portal de Proveedores API credentials
+- **`.env.credentials.mailing`**: Email configuration for notifications
+- **`.env.path`**: File system paths for logs and downloads
+
+> :warning: **Security Notice**: Never commit the actual `.env` files to version control. Only the `.example` files should be tracked in Git.
+
+> :bangbang: **Important**: Make sure to configure all environment variables properly before running the application. Missing or incorrect configuration may cause runtime errors.
+
+---
+
 ## Configuration
 
 ### Environment variables
