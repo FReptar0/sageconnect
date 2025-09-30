@@ -1,6 +1,13 @@
 node_modules
 .qodo
+
+# Environment files (keep only .example files in repo)
 .env
+.env.credentials.*
+.env.path
+!.env.*.example
+
+# Logs and generated files
 *.log
 *.json
 *.xml
