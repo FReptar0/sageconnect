@@ -1,7 +1,21 @@
 // tests/PO_Diagnostic.test.js
 
+const dotenv = require('dotenv');
 const { runQuery } = require('../src/utils/SQLServerConnection');
 const { logGenerator } = require('../src/utils/LogGenerator');
+
+// carga las variables de configuración general (incluyendo direcciones por defecto)
+const config = dotenv.config({ path: '.env' }).parsed;
+
+// Variables de configuración de direcciones por defecto para órdenes de compra
+// Estas variables se usan cuando la tabla ICLOC no tiene datos de dirección para una ubicación
+const DEFAULT_ADDRESS_CITY = config?.DEFAULT_ADDRESS_CITY || '';
+const DEFAULT_ADDRESS_COUNTRY = config?.DEFAULT_ADDRESS_COUNTRY || '';
+const DEFAULT_ADDRESS_IDENTIFIER = config?.DEFAULT_ADDRESS_IDENTIFIER || '';
+const DEFAULT_ADDRESS_MUNICIPALITY = config?.DEFAULT_ADDRESS_MUNICIPALITY || '';
+const DEFAULT_ADDRESS_STATE = config?.DEFAULT_ADDRESS_STATE || '';
+const DEFAULT_ADDRESS_STREET = config?.DEFAULT_ADDRESS_STREET || '';
+const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
 
 /**
  * Diagnóstico completo para verificar por qué una OC no está siendo procesada
@@ -72,7 +86,76 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
         const optionalResult = await runQuery(optionalFieldsQuery);
         console.table(optionalResult.recordset);
 
-        // 4. Verificar autorización
+        // 4. Verificar datos de dirección de ICLOC vs valores por defecto
+        console.log('\n4. ANÁLISIS DE DIRECCIONES (ICLOC vs DEFAULTS)');
+        console.log('===============================================');
+        
+        console.log('Valores por defecto configurados en .env:');
+        console.table([{
+            DEFAULT_CITY: DEFAULT_ADDRESS_CITY,
+            DEFAULT_COUNTRY: DEFAULT_ADDRESS_COUNTRY,
+            DEFAULT_IDENTIFIER: DEFAULT_ADDRESS_IDENTIFIER,
+            DEFAULT_MUNICIPALITY: DEFAULT_ADDRESS_MUNICIPALITY,
+            DEFAULT_STATE: DEFAULT_ADDRESS_STATE,
+            DEFAULT_STREET: DEFAULT_ADDRESS_STREET,
+            DEFAULT_ZIP: DEFAULT_ADDRESS_ZIP
+        }]);
+
+        const addressQuery = `
+            SELECT DISTINCT
+                RTRIM(B.[LOCATION]) as LOCATION_CODE,
+                RTRIM(ISNULL(F.CITY, 'NULL')) as ICLOC_CITY,
+                RTRIM(ISNULL(F.COUNTRY, 'NULL')) as ICLOC_COUNTRY,
+                RTRIM(ISNULL(F.[LOCATION], 'NULL')) as ICLOC_IDENTIFIER,
+                RTRIM(ISNULL(F.ADDRESS2, 'NULL')) as ICLOC_MUNICIPALITY,
+                RTRIM(ISNULL(F.[STATE], 'NULL')) as ICLOC_STATE,
+                RTRIM(ISNULL(F.ADDRESS1, 'NULL')) as ICLOC_STREET,
+                RTRIM(ISNULL(F.ZIP, 'NULL')) as ICLOC_ZIP,
+                -- Valores que se usarían en la query final
+                ISNULL(RTRIM(F.CITY),'${DEFAULT_ADDRESS_CITY}') as FINAL_CITY,
+                ISNULL(RTRIM(F.COUNTRY),'${DEFAULT_ADDRESS_COUNTRY}') as FINAL_COUNTRY,
+                ISNULL(RTRIM(F.[LOCATION]),'${DEFAULT_ADDRESS_IDENTIFIER}') as FINAL_IDENTIFIER,
+                ISNULL(RTRIM(F.ADDRESS2),'${DEFAULT_ADDRESS_MUNICIPALITY}') as FINAL_MUNICIPALITY,
+                ISNULL(RTRIM(F.[STATE]),'${DEFAULT_ADDRESS_STATE}') as FINAL_STATE,
+                ISNULL(RTRIM(F.ADDRESS1),'${DEFAULT_ADDRESS_STREET}') as FINAL_STREET,
+                ISNULL(RTRIM(F.ZIP),'${DEFAULT_ADDRESS_ZIP}') as FINAL_ZIP,
+                CASE 
+                    WHEN F.[LOCATION] IS NULL THEN 'LOCATION NO EXISTE EN ICLOC'
+                    WHEN F.CITY IS NULL OR RTRIM(F.CITY) = '' THEN 'USARÁ DEFAULT CITY'
+                    ELSE 'USARÁ DATOS DE ICLOC'
+                END as ADDRESS_SOURCE
+            FROM ${database}.dbo.POPORH1 A
+            LEFT OUTER JOIN ${database}.dbo.POPORL B ON A.PORHSEQ = B.PORHSEQ
+            LEFT OUTER JOIN ${database}.dbo.ICLOC F ON B.[LOCATION] = F.[LOCATION]
+            WHERE A.PONUMBER = '${poNumber}'`;
+        
+        const addressResult = await runQuery(addressQuery);
+        if (addressResult.recordset.length === 0) {
+            console.log('❌ No se encontraron datos de ubicación para esta OC');
+        } else {
+            console.log('\nAnálisis de direcciones por línea de la OC:');
+            console.table(addressResult.recordset);
+            
+            // Analizar si hay problemas de dirección
+            const hasNullLocations = addressResult.recordset.some(row => row.LOCATION_CODE === null || row.LOCATION_CODE === '');
+            const hasMissingIclocData = addressResult.recordset.some(row => row.ADDRESS_SOURCE.includes('NO EXISTE EN ICLOC'));
+            const usesDefaults = addressResult.recordset.some(row => row.ADDRESS_SOURCE.includes('DEFAULT'));
+            
+            console.log('\nResumen de análisis de direcciones:');
+            if (hasNullLocations) {
+                console.log('⚠️  PROBLEMA: Algunas líneas no tienen código de ubicación');
+            }
+            if (hasMissingIclocData) {
+                console.log('⚠️  PROBLEMA: Algunas ubicaciones no existen en tabla ICLOC');
+            }
+            if (usesDefaults) {
+                console.log('✅ INFO: Se están usando valores por defecto del .env');
+            } else {
+                console.log('✅ INFO: Se están usando datos completos de ICLOC');
+            }
+        }
+
+        // 5. Verificar autorización
         console.log('\n4. ESTADO DE AUTORIZACIÓN');
         console.log('=========================');
         const authQuery = `
@@ -96,8 +179,8 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             console.table(authResult.recordset);
         }
 
-        // 5. Verificar fecha de autorización
-        console.log('\n5. FECHA DE AUTORIZACIÓN');
+        // 6. Verificar fecha de autorización
+        console.log('\n6. FECHA DE AUTORIZACIÓN');
         console.log('========================');
         const authDateQuery = `
             SELECT 
@@ -122,8 +205,8 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             console.table(authDateResult.recordset);
         }
 
-        // 6. Verificar si ya fue procesada
-        console.log('\n6. ¿YA FUE PROCESADA ANTERIORMENTE?');
+        // 7. Verificar si ya fue procesada
+        console.log('\n7. ¿YA FUE PROCESADA ANTERIORMENTE?');
         console.log('===================================');
         const processedQuery = `
             SELECT 
@@ -148,8 +231,8 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             console.table(processedResult.recordset);
         }
 
-        // 7. Consulta final que usa el sistema
-        console.log('\n7. RESULTADO DE LA CONSULTA COMPLETA DEL SISTEMA');
+        // 8. Consulta final que usa el sistema
+        console.log('\n8. RESULTADO DE LA CONSULTA COMPLETA DEL SISTEMA');
         console.log('================================================');
         const finalQuery = `
             SELECT 
@@ -174,8 +257,65 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
         const finalResult = await runQuery(finalQuery);
         console.table(finalResult.recordset);
 
-        // 8. Resumen y recomendaciones
-        console.log('\n8. RESUMEN Y RECOMENDACIONES');
+        // Agregar query completa con direcciones para comparar con producción
+        console.log('\n8.1. SIMULACIÓN COMPLETA DE LA QUERY DE PRODUCCIÓN');
+        console.log('==================================================');
+        const productionSimulationQuery = `
+            SELECT 
+                'ACCEPTED' as ACCEPTANCE_STATUS,
+                ISNULL(RTRIM(F.CITY),'${DEFAULT_ADDRESS_CITY}') as [ADDRESSES_CITY],
+                ISNULL(RTRIM(F.COUNTRY),'${DEFAULT_ADDRESS_COUNTRY}') as [ADDRESSES_COUNTRY],
+                ISNULL(RTRIM(F.[LOCATION]),'${DEFAULT_ADDRESS_IDENTIFIER}') as [ADDRESSES_IDENTIFIER],
+                ISNULL(RTRIM(F.ADDRESS2),'${DEFAULT_ADDRESS_MUNICIPALITY}') as [ADDRESSES_MUNICIPALITY],
+                ISNULL(RTRIM(F.[STATE]),'${DEFAULT_ADDRESS_STATE}') as [ADDRESSES_STATE],
+                ISNULL(RTRIM(F.ADDRESS1),'${DEFAULT_ADDRESS_STREET}') as [ADDRESSES_STREET],
+                ISNULL(RTRIM(F.ZIP),'${DEFAULT_ADDRESS_ZIP}') as [ADDRESSES_ZIP],
+                RTRIM(A.PONUMBER) as [EXTERNAL_ID],
+                RTRIM(B.ITEMNO) as [LINES_CODE],
+                RTRIM(B.ITEMDESC) as [LINES_DESCRIPTION],
+                B.SQOUTSTAND as [LINES_QUANTITY],
+                RTRIM(B.[LOCATION]) as [WAREHOUSE],
+                -- Campos de diagnóstico
+                CASE 
+                    WHEN F.[LOCATION] IS NULL THEN 'LOCATION_NO_EXISTS'
+                    WHEN F.CITY IS NULL OR RTRIM(F.CITY) = '' THEN 'USING_DEFAULT_CITY'
+                    ELSE 'USING_ICLOC_DATA'
+                END as ADDRESS_DATA_SOURCE,
+                RTRIM(ISNULL(F.CITY, 'NULL_IN_ICLOC')) as RAW_ICLOC_CITY,
+                RTRIM(ISNULL(F.COUNTRY, 'NULL_IN_ICLOC')) as RAW_ICLOC_COUNTRY
+            FROM ${database}.dbo.POPORH1 A
+            LEFT OUTER JOIN ${database}.dbo.POPORL B ON A.PORHSEQ = B.PORHSEQ
+            LEFT OUTER JOIN ${database}.dbo.ICLOC F ON B.[LOCATION] = F.[LOCATION]
+            LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X ON A.PONUMBER = X.PONumber
+            WHERE A.PONUMBER = '${poNumber}'
+                AND X.Autorizada = 1
+                AND X.Empresa = '${empresa}'
+            ORDER BY B.PORLREV`;
+        
+        try {
+            const productionResult = await runQuery(productionSimulationQuery);
+            if (productionResult.recordset.length === 0) {
+                console.log('❌ La OC no aparecería en la query de producción');
+            } else {
+                console.log(`✅ La OC aparecería en producción con ${productionResult.recordset.length} líneas:`);
+                console.table(productionResult.recordset.map(row => ({
+                    EXTERNAL_ID: row.EXTERNAL_ID,
+                    LINES_CODE: row.LINES_CODE,
+                    WAREHOUSE: row.WAREHOUSE,
+                    ADDRESSES_CITY: row.ADDRESSES_CITY,
+                    ADDRESSES_COUNTRY: row.ADDRESSES_COUNTRY,
+                    ADDRESSES_STATE: row.ADDRESSES_STATE,
+                    ADDRESS_DATA_SOURCE: row.ADDRESS_DATA_SOURCE,
+                    RAW_ICLOC_CITY: row.RAW_ICLOC_CITY,
+                    RAW_ICLOC_COUNTRY: row.RAW_ICLOC_COUNTRY
+                })));
+            }
+        } catch (prodErr) {
+            console.error('❌ Error ejecutando simulación de producción:', prodErr.message);
+        }
+
+        // 9. Resumen y recomendaciones
+        console.log('\n9. RESUMEN Y RECOMENDACIONES');
         console.log('============================');
         
         const isAuthorized = authResult.recordset.length > 0 && authResult.recordset[0].Autorizada === 1;
