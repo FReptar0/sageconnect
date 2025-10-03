@@ -79,6 +79,11 @@ async function downloadCFDI(index) {
     console.log(`[INICIO] Ejecutando proceso de descarga de CFDIs - Tenant: ${tenantIds[index]}`);
 
     const typeE = await getTypeE(index);
+    console.log(`[CFDI-E] Recibidos ${typeE.length} CFDIs tipo E (CREDIT_NOTE) sin filtrar:`);
+    typeE.forEach((type, idx) => {
+        console.log(`  [${idx + 1}] ID: ${type.id} | UUID: ${type.cfdi?.timbre?.uuid || 'N/A'} | RFC: ${type.cfdi?.receptor?.rfc || 'N/A'} | Provider: ${type.metadata?.provider_id || 'N/A'}`);
+    });
+    
     typeE.forEach((type) => {
         cfdiData.push({
             cfdiId: type.id,
@@ -90,6 +95,11 @@ async function downloadCFDI(index) {
     });
 
     const typeI = await getTypeI(index);
+    console.log(`[CFDI-I] Recibidos ${typeI.length} CFDIs tipo I (INVOICE) sin filtrar:`);
+    typeI.forEach((type, idx) => {
+        console.log(`  [${idx + 1}] ID: ${type.id} | UUID: ${type.cfdi?.timbre?.uuid || 'N/A'} | RFC: ${type.cfdi?.receptor?.rfc || 'N/A'} | Provider: ${type.metadata?.provider_id || 'N/A'}`);
+    });
+    
     typeI.forEach((type) => {
         cfdiData.push({
             cfdiId: type.id,
@@ -101,6 +111,11 @@ async function downloadCFDI(index) {
     });
 
     const typeIToSend = await getTypeIToSend(index);
+    console.log(`[CFDI-IToSend] Recibidos ${typeIToSend.length} CFDIs tipo I (INVOICE TO_SEND) sin filtrar:`);
+    typeIToSend.forEach((type, idx) => {
+        console.log(`  [${idx + 1}] ID: ${type.id} | UUID: ${type.cfdi?.timbre?.uuid || 'N/A'} | RFC: ${type.cfdi?.receptor?.rfc || 'N/A'} | Provider: ${type.metadata?.provider_id || 'N/A'}`);
+    });
+    
     typeIToSend.forEach((type) => {
         cfdiData.push({
             cfdiId: type.id,
@@ -110,6 +125,9 @@ async function downloadCFDI(index) {
             additional_amount: type.metadata.additional_amount
         });
     });
+
+    console.log(`[CONSOLIDADO] Total de CFDIs a procesar: ${cfdiData.length}`);
+    console.log(`[RESUMEN] Tipos: E=${typeE.length}, I=${typeI.length}, IToSend=${typeIToSend.length}`);
 
     const apiKey = apiKeys[index];
     const apiSecret = apiSecrets[index];
