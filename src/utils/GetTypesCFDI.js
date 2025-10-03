@@ -115,6 +115,7 @@ async function getTypeP(index) {
             }
         }
 
+        console.log(`[CFDI-P] UUIDs extraídos: ${data.map(item => item.cfdi.timbre.uuid).join(', ')}`);
         return data;
     } catch (error) {
         try {
@@ -193,6 +194,7 @@ async function getTypeI(index) {
             }
         }
 
+        console.log(`[CFDI-I] UUIDs extraídos: ${data.map(item => item.cfdi.timbre.uuid).join(', ')}`);
         return data;
     } catch (error) {
         try {
@@ -309,6 +311,7 @@ async function getTypeIToSend(index) {
             data.push(item);
         }
 
+        console.log(`[CFDI-IToSend] UUIDs extraídos: ${data.map(item => item.cfdi.timbre.uuid).join(', ')}`);
         return data;
     } catch (error) {
         logGenerator(logFileName, 'error', `Error al obtener el tipo de comprobante "I" TO_SEND :\n${error.stack}`);
@@ -398,6 +401,7 @@ async function getTypeE(index) {
             }
         }
 
+        console.log(`[CFDI-E] UUIDs extraídos: ${data.map(item => item.cfdi.timbre.uuid).join(', ')}`);
         return data;
     } catch (error) {
         logGenerator(logFileName, 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
