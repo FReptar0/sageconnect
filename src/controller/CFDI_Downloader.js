@@ -75,6 +75,8 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function downloadCFDI(index) {
     const logFileName = 'CFDI_Downloader';
     const cfdiData = [];
+    
+    console.log(`[INICIO] Ejecutando proceso de descarga de CFDIs - Tenant: ${tenantIds[index]}`);
 
     const typeE = await getTypeE(index);
     typeE.forEach((type) => {

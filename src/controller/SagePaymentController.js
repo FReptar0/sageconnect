@@ -29,7 +29,7 @@ async function checkPayments(index) {
     let currentDate = getCurrentDateCompact();
     const logFileName = 'SagePaymentController';
 
-    console.log(`[INFO] Iniciando checkPayments para index=${index}`);
+    console.log(`[INICIO] Ejecutando proceso de verificación de pagos CFDI - Index: ${index} - Fecha: ${currentDate}`);
 
     const resultPayments = await getTypeP(index);
 

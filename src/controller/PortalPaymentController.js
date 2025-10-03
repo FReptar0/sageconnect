@@ -26,7 +26,7 @@ async function uploadPayments(index) {
     try {
         const currentDate = getCurrentDateCompact();
 
-        console.log(`\n=== Iniciando uploadPayments para tenant index=${index} (db=${database[index]}) con fecha desde ${currentDate} ===`);
+        console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]} - Fecha desde: ${currentDate}`);
 
         const queryEncabezadosPago = `
 SELECT A.* FROM (

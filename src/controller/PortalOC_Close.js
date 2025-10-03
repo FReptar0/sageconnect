@@ -30,6 +30,8 @@ async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const oneMonthAgo = getOneMonthAgoCompact();
     const logFileName = 'PortalOC_Close';
+    
+    console.log(`[INICIO] Ejecutando proceso de cierre de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha desde: ${oneMonthAgo.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}`);
 
     // 1) Obtener POs canceladas en Sage
     const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER

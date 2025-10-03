@@ -53,6 +53,9 @@ function formatDateForFilename() {
  */
 async function buildProvidersXML(index) {
     const logFileName = 'Providers_Downloader';
+    
+    console.log(`[INICIO] Ejecutando proceso de generación de XML de proveedores - Index: ${index}`);
+    
     // Log de inicio del proceso
     logGenerator(logFileName, 'info', `[START] Iniciando la generación del archivo XML para el índice ${index}.`);
 

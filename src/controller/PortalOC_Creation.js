@@ -47,6 +47,9 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
   const logFileName = 'PortalOC_Creation';
+  
+  console.log(`[INICIO] Ejecutando proceso de creación de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha: ${today}`);
+  
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
@@ -223,7 +226,6 @@ order by A.PONUMBER, B.PORLREV;
     `;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
-      console.log(`[WARN] [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       logGenerator(logFileName, 'warn', `[WARN] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       continue;
     }
