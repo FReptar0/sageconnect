@@ -62,7 +62,7 @@ async function closePurchaseOrders(index) {
     // 2) Para cada PO, verificar y cerrar
     for (let i = 0; i < recordset.length; i++) {
         const ponumber = recordset[i].PONUMBER;
-        console.log(`\n[PROCESS] Procesando [${i + 1}/${recordset.length}] PO ${ponumber}`);
+        //console.log(`\n[PROCESS] Procesando [${i + 1}/${recordset.length}] PO ${ponumber}`);
 
         // 2.1) Verificar en fesaOCFocaltec
         const checkSql = `

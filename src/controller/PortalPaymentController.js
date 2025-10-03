@@ -174,7 +174,7 @@ SELECT A.* FROM (
         // 4) Procesar cada pago restante
         for (let i = 0; i < payments.recordset.length; i++) {
             const hdr = payments.recordset[i];
-            console.log(`\n[PROCESS] Procesando pago [${i + 1}/${payments.recordset.length}]: ${hdr.external_id}`);
+            //console.log(`\n[PROCESS] Procesando pago [${i + 1}/${payments.recordset.length}]: ${hdr.external_id}`);
 
             // 4.1) Consultar facturas asociadas
             const queryFacturasPagadas = `
