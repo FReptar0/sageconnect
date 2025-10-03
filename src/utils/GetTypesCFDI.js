@@ -32,7 +32,7 @@ async function getTypeP(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `&from=${dateFrom}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=PAYMENT_CFDI`,
@@ -136,7 +136,7 @@ async function getTypeI(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `&from=${dateFrom}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -216,7 +216,7 @@ async function getTypeIToSend(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `&from=${dateFrom}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -326,7 +326,7 @@ async function getTypeE(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `&from=${dateFrom}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=CREDIT_NOTE`,
