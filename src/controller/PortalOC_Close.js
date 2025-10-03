@@ -82,7 +82,6 @@ async function closePurchaseOrders(index) {
             continue;
         }
         if (existing.length === 0) {
-            console.log(`[WARN] PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
             logGenerator(logFileName, 'warn', `[WARN] PO ${ponumber} no registrada (POSTED) en FESA, omitiendo.`);
             continue;
         }
