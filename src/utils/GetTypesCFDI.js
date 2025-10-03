@@ -21,7 +21,7 @@ apiSecrets.push(...apiSecretValues);
 databases.push(...databaseValues);
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
-const BEGINING_CURRENT_DATE = getCurrentDateString().slice(0, 7);
+const BEGINING_CURRENT_YEAR = `${new Date().getFullYear()}-01`;
 
 async function getTypeP(index) {
     const logFileName = 'GetTypesCFDI';
