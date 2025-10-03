@@ -21,7 +21,6 @@ apiSecrets.push(...apiSecretValues);
 databases.push(...databaseValues);
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
-const BEGINING_CURRENT_YEAR = `${new Date().getFullYear()}-01`;
 
 async function getTypeP(index) {
     const logFileName = 'GetTypesCFDI';
@@ -33,7 +32,7 @@ async function getTypeP(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${BEGINING_CURRENT_DATE}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=PAYMENT_CFDI`,
@@ -137,7 +136,7 @@ async function getTypeI(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${BEGINING_CURRENT_DATE}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -217,7 +216,7 @@ async function getTypeIToSend(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${BEGINING_CURRENT_DATE}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -327,7 +326,7 @@ async function getTypeE(index) {
         const response = await axios.get(
             urlBase(index) +
             //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${BEGINING_CURRENT_DATE}-01` +
+            `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=CREDIT_NOTE`,
