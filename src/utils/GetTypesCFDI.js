@@ -31,7 +31,7 @@ async function getTypeP(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?to=${dateUntil}` +
+            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
@@ -135,7 +135,7 @@ async function getTypeI(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?to=${dateUntil}` +
+            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
@@ -215,7 +215,7 @@ async function getTypeIToSend(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?to=${dateUntil}` +
+            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
@@ -325,7 +325,7 @@ async function getTypeE(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?to=${dateUntil}` +
+            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
             `&from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
