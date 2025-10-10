@@ -33,10 +33,9 @@ async function closePurchaseOrders(index) {
     
     console.log(`[INICIO] Ejecutando proceso de cierre de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha desde: ${oneMonthAgo.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}`);
 
-    // 1) Obtener POs canceladas en Sage
     const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER
       FROM POPORH1 A
-      LEFT OUTER JOIN PORCPH1 B ON A.PORHSEQ = B.PORHSEQ
+      LEFT OUTER JOIN PORCPH1 B ON A.PORHSEQ = B.PORHSEQ AND A.LASTRECEIP = B.RCPNUMBER
      WHERE (SELECT SUM(B.OQCANCELED) FROM POPORL B WHERE B.PORHSEQ = A.PORHSEQ) = 0
        AND A.ISCOMPLETE = 1
        AND A.DTCOMPLETE >= '${oneMonthAgo}'
