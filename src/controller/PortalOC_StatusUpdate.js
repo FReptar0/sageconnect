@@ -1,7 +1,7 @@
 // scripts/updatePOStatus.js
 
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { logGenerator } = require('../src/utils/LogGenerator');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { logGenerator } = require('../utils/LogGenerator');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
