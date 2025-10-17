@@ -38,22 +38,6 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             return;
         }
 
-        // 2. Verificar detalles de la OC
-        console.log('\n2. DETALLES DE LA OC EN POPORH1');
-        console.log('===============================');
-        const detailsQuery = `
-            SELECT 
-                RTRIM(PONUMBER) as PONUMBER,
-                RTRIM(VDCODE) as PROVIDER_ID,
-                RTRIM(ORDDATE) as ORDER_DATE,
-                RTRIM(POSTSATUS) as PO_STATUS,
-                PORHSEQ
-            FROM ${database}.dbo.POPORH1 
-            WHERE PONUMBER = '${poNumber}'`;
-        
-        const detailsResult = await runQuery(detailsQuery);
-        console.table(detailsResult.recordset);
-
         // 3. Verificar campos opcionales (AFE y USOCFDI)
         console.log('\n3. CAMPOS OPCIONALES (AFE Y USOCFDI)');
         console.log('====================================');
