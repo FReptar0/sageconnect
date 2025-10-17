@@ -46,7 +46,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
                 RTRIM(PONUMBER) as PONUMBER,
                 RTRIM(VDCODE) as PROVIDER_ID,
                 RTRIM(ORDDATE) as ORDER_DATE,
-                RTRIM(ORDSTATUS) as ORDER_STATUS,
+                RTRIM(POSTSATUS) as PO_STATUS,
                 PORHSEQ
             FROM ${database}.dbo.POPORH1 
             WHERE PONUMBER = '${poNumber}'`;
