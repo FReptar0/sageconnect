@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const path_env = dotenv.config({ path: '.env.path' });
 
-logGenerator = (fileName, logLevel, logMessage) => {
+const logGenerator = (fileName, logLevel, logMessage) => {
     const isoDate = getCurrentDateString(); // YYYY-MM-DD format for folder structure
     
     // Create folder path: logs/sageconnect/YYYY-MM-DD/
