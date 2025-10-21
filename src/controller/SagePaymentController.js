@@ -126,18 +126,7 @@ async function checkPayments(index) {
                         });
 
                 if (insertUUIDResult.rowsAffected[0] > 0) {
-                    const data = {
-                        h1: "Se insertó el UUID",
-                        p: `Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}.`,
-                        status: 200,
-                        message: "Se insertó el UUID exitosamente",
-                        position: index,
-                        idCia: idCiaResult.recordset[0].idCia,
-                        database: idCiaResult.recordset[0].DataBaseName,
-                        timestamp: getCurrentISOString()
-                    };
-                    logGenerator(logFileName, 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}. Detalles: ${JSON.stringify(data)}`);
-                    emails.push(data);
+                    logGenerator(logFileName, 'info', `[OK] Se insertó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
                 } else {
                     const data = {
                         h1: "Error al insertar el UUID",
@@ -167,16 +156,7 @@ async function checkPayments(index) {
                         });
 
                 if (updateUUIDResult.rowsAffected[0] > 0) {
-                    const data = {
-                        h1: "Se actualizó el UUID",
-                        p: `Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
-                        status: 200,
-                        message: "Se actualizó el UUID",
-                        position: index,
-                        idCia: idCiaResult.recordset[0].idCia,
-                    }
                     logGenerator(logFileName, 'info', `[OK] Se actualizó el UUID ${resultPayments[i].cfdi.timbre.uuid} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
-                    emails.push(data);
                 } else {
                     const data = {
                         h1: "Error al actualizar el UUID",
@@ -211,16 +191,7 @@ async function checkPayments(index) {
                     });
 
                 if (insertFECHATIMResult.rowsAffected[0] > 0) {
-                    const data = {
-                        h1: "Se insertó la fecha de timbrado",
-                        p: `Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
-                        status: 200,
-                        message: "Se insertó la fecha de timbrado",
-                        position: index,
-                        idCia: idCiaResult.recordset[0].idCia,
-                    }
                     logGenerator(logFileName, 'info', `[OK] Se insertó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
-                    emails.push(data);
                 } else {
                     const data = {
                         h1: "Error al insertar la fecha de timbrado",
@@ -249,16 +220,7 @@ async function checkPayments(index) {
                     });
 
                 if (updateFECHATIMResult.rowsAffected[0] > 0) {
-                    const data = {
-                        h1: "Se actualizó la fecha de timbrado",
-                        p: `Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`,
-                        status: 200,
-                        message: "Se actualizó la fecha de timbrado",
-                        position: index,
-                        idCia: idCiaResult.recordset[0].idCia,
-                    }
                     logGenerator(logFileName, 'info', `[OK] Se actualizó la fecha de timbrado ${fechaTimbrado} en la factura ${resultPayments[i].metadata.payment_info.payments[0].external_id}`);
-                    emails.push(data);
                 } else {
                     const data = {
                         h1: "Error al actualizar la fecha de timbrado",
