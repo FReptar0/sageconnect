@@ -133,6 +133,7 @@ The following environment variables must be configured for the program to run co
 | DEFAULT_ADDRESS_STATE | Default state for purchase orders when ICLOC table has no data. Leave empty if no default needed. | TU_ESTADO |
 | DEFAULT_ADDRESS_STREET | Default street for purchase orders when ICLOC table has no data. Leave empty if no default needed. | CALLE EJEMPLO |
 | DEFAULT_ADDRESS_ZIP | Default ZIP code for purchase orders when ICLOC table has no data. Leave empty if no default needed. | 12345 |
+| ADDRESS_IDENTIFIERS_SKIP | Comma-separated list of location identifiers (LOCATION) to skip during processing. Records with these locations will be excluded from purchase order creation. | LOCATION1,LOCATION2,LOCATION3 |
 
 > :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
 >
@@ -146,6 +147,8 @@ The following environment variables must be configured for the program to run co
 > :bangbang: **DEFAULT ADDRESS Configuration**: These variables provide fallback values when the ICLOC table in SAGE 300 doesn't contain address information for a location. If these variables are not set or left empty, the system will use empty strings as defaults. This ensures purchase orders always have valid address fields for Portal de Proveedores API compliance.
 >
 > The system uses `ISNULL(NULLIF(RTRIM(field),''), default_value)` logic to handle both NULL values and empty strings from the database, ensuring that Portal de Proveedores API requirements are met.
+>
+> :bangbang: **ADDRESS_IDENTIFIERS_SKIP Configuration**: This variable allows you to exclude specific location identifiers from purchase order processing. When configured, any purchase order lines with locations matching the specified identifiers will be filtered out from the query results. This is useful for excluding test locations, inactive warehouses, or locations that should not be processed by the Portal de Proveedores integration. Leave empty if no locations should be skipped.
 
 ### .env.credentials.database
 

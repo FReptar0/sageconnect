@@ -26,6 +26,7 @@ const DEFAULT_ADDRESS_MUNICIPALITY = config?.DEFAULT_ADDRESS_MUNICIPALITY || '';
 const DEFAULT_ADDRESS_STATE = config?.DEFAULT_ADDRESS_STATE || '';
 const DEFAULT_ADDRESS_STREET = config?.DEFAULT_ADDRESS_STREET || '';
 const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
+const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
@@ -49,6 +50,17 @@ async function createPurchaseOrders(index) {
   const logFileName = 'PortalOC_Creation';
   
   console.log(`[INICIO] Ejecutando proceso de creación de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha: ${today}`);
+  
+  // Preparar filtro de ubicaciones a omitir
+  const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
+  const skipCondition = skipIdentifiers.length > 0 
+    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
+    : '';
+  
+  if (skipIdentifiers.length > 0) {
+    console.log(`[INFO] Omitiendo ubicaciones: ${skipIdentifiers.join(', ')}`);
+    logGenerator(logFileName, 'info', `[INFO] Ubicaciones omitidas: ${skipIdentifiers.join(', ')}`);
+  }
   
   // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
@@ -187,6 +199,7 @@ where
      where Empresa = '${databases[index]}'
        and PONumber = A.PONUMBER
   ) = CAST(GETDATE() AS DATE)
+  ${skipCondition}
 order by A.PONUMBER, B.PORLREV;
 `;
 
