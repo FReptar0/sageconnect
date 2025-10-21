@@ -66,7 +66,7 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         console.log('\n3. DATOS DE UBICACIÓN EN TABLA ICLOC');
         console.log('===================================');
         const locationQuery = `
-            SELECT DISTINCT
+            SELECT 
                 RTRIM(B.[LOCATION]) as LOCATION_CODE,
                 CASE 
                     WHEN F.[LOCATION] IS NOT NULL THEN 'SÍ EXISTE EN ICLOC'
@@ -83,7 +83,7 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
             LEFT OUTER JOIN ${database}.dbo.POPORL B ON A.PORHSEQ = B.PORHSEQ
             LEFT OUTER JOIN ${database}.dbo.ICLOC F ON B.[LOCATION] = F.[LOCATION]
             WHERE A.PONUMBER = '${poNumber}'
-            ORDER BY B.[LOCATION]`;
+            ORDER BY RTRIM(B.[LOCATION])`;
         
         const locationResult = await runQuery(locationQuery, database);
         console.table(locationResult.recordset);
