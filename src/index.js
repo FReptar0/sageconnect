@@ -15,15 +15,22 @@ const server = startServer(3030, webOnlyMode);
 
 // Start background processes only if not in web-only mode
 if (!webOnlyMode) {
-    startBackgroundProcesses();
-    
-    // Auto-terminate after background processes complete (for scheduled tasks)
-    if (process.env.AUTO_TERMINATE === 'true') {
-        setTimeout(() => {
+    // Start background processes (now async)
+    startBackgroundProcesses().then(() => {
+        // Background processes completed successfully
+        if (process.env.AUTO_TERMINATE === 'true') {
             console.log('[AUTO-TERMINATE] Cerrando servidor y finalizando proceso');
             server.close(() => {
                 process.exit(0);
             });
-        }, 15000); // Wait 15 seconds for all processes to complete
-    }
+        }
+    }).catch((error) => {
+        console.error('[ERROR] Error en procesos de background:', error);
+        if (process.env.AUTO_TERMINATE === 'true') {
+            console.log('[AUTO-TERMINATE] Cerrando servidor debido a error');
+            server.close(() => {
+                process.exit(1);
+            });
+        }
+    });
 }
