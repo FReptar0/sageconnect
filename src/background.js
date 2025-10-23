@@ -117,6 +117,9 @@ function startChildProcess() {
                 console.error(`[ERROR] Proceso de importación finalizó con código ${code}`);
                 logGenerator(logFileName, 'error', `[CLOSE] Proceso de importación finalizó con código de error ${code}`);
             }
+            
+            // Mark that child process is complete
+            global.childProcessComplete = true;
         });
     } else {
         console.warn('[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG. El proceso de importación de CFDIs no se ejecutará.');
@@ -170,9 +173,25 @@ function startBackgroundProcesses() {
     // Start main CFDI processing
     forResponse().then(() => {
         startChildProcess();
+        
+        // Auto-terminate after child process completes (for scheduled tasks)
+        if (process.env.AUTO_TERMINATE === 'true') {
+            setTimeout(() => {
+                logGenerator(logFileName, 'info', '[AUTO-TERMINATE] Finalizando proceso automáticamente después de completar tareas');
+                process.exit(0);
+            }, 10000); // Wait 10 seconds for child process to start/complete
+        }
     }).catch((error) => {
         console.log(error);
         logGenerator(logFileName, 'error', `[ERROR] Error en proceso principal: ${error.message}`);
+        
+        // Exit on error if auto-terminate is enabled
+        if (process.env.AUTO_TERMINATE === 'true') {
+            setTimeout(() => {
+                logGenerator(logFileName, 'error', '[AUTO-TERMINATE] Finalizando proceso debido a error');
+                process.exit(1);
+            }, 5000);
+        }
     });
 }
 

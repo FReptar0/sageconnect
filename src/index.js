@@ -16,4 +16,14 @@ const server = startServer(3030, webOnlyMode);
 // Start background processes only if not in web-only mode
 if (!webOnlyMode) {
     startBackgroundProcesses();
+    
+    // Auto-terminate after background processes complete (for scheduled tasks)
+    if (process.env.AUTO_TERMINATE === 'true') {
+        setTimeout(() => {
+            console.log('[AUTO-TERMINATE] Cerrando servidor y finalizando proceso');
+            server.close(() => {
+                process.exit(0);
+            });
+        }, 15000); // Wait 15 seconds for all processes to complete
+    }
 }

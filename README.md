@@ -134,6 +134,7 @@ The following environment variables must be configured for the program to run co
 | DEFAULT_ADDRESS_STREET | Default street for purchase orders when ICLOC table has no data. Leave empty if no default needed. | CALLE EJEMPLO |
 | DEFAULT_ADDRESS_ZIP | Default ZIP code for purchase orders when ICLOC table has no data. Leave empty if no default needed. | 12345 |
 | ADDRESS_IDENTIFIERS_SKIP | Comma-separated list of location identifiers (LOCATION) to skip during processing. Records with these locations will be excluded from purchase order creation. | LOCATION1,LOCATION2,LOCATION3 |
+| AUTO_TERMINATE | Set to `true` to enable automatic process termination after completing all tasks. Useful for scheduled tasks that need to exit cleanly. | false |
 
 > :bangbang: **TIMEZONE Configuration**: The TIMEZONE variable must be set to a valid [IANA timezone identifier](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Common examples include:
 >
@@ -149,6 +150,15 @@ The following environment variables must be configured for the program to run co
 > The system uses `ISNULL(NULLIF(RTRIM(field),''), default_value)` logic to handle both NULL values and empty strings from the database, ensuring that Portal de Proveedores API requirements are met.
 >
 > :bangbang: **ADDRESS_IDENTIFIERS_SKIP Configuration**: This variable allows you to exclude specific location identifiers from purchase order processing. When configured, any purchase order lines with locations matching the specified identifiers will be filtered out from the query results. This is useful for excluding test locations, inactive warehouses, or locations that should not be processed by the Portal de Proveedores integration. Leave empty if no locations should be skipped.
+>
+> :bangbang: **AUTO_TERMINATE Configuration**: When set to `true`, the application will automatically terminate after completing all background processes and CFDI operations. This is particularly useful for scheduled tasks on Windows Server that need to run every 15 minutes without leaving the process running indefinitely. When enabled, the application will:
+>
+> - Complete all CFDI processing tasks (forResponse function)
+> - Wait for the child import process to finish
+> - Automatically exit after 15 seconds to free up the port
+> - Prevent conflicts with subsequent scheduled executions
+>
+> For scheduled tasks, use the provided `RunSageconnect.bat` script which automatically sets this variable to `true`. For normal server operation, keep this set to `false` to maintain the web server running.
 
 ### .env.credentials.database
 
@@ -286,6 +296,28 @@ git update-index --skip-worktree .env.credentials.focaltec
 git update-index --skip-worktree .env.credentials.mailing
 git update-index --skip-worktree .env.path
 ```
+
+---
+
+## :alarm_clock: Scheduled Task Setup (Windows Server)
+
+If you need to run SageConnect as a scheduled task on Windows Server (every 15 minutes), use the provided `RunSageconnect.bat` script instead of `npm run start`:
+
+Configure your Windows Task Scheduler to run:
+```cmd
+C:\path\to\sageconnect\RunSageconnect.bat
+```
+
+This script automatically:
+- Sets `AUTO_TERMINATE=true` environment variable
+- Changes to the correct directory (update the path in the script as needed)
+- Runs the application with proper termination
+- Logs execution times for monitoring
+- Exits cleanly to prevent port conflicts
+
+> :bangbang: **Important**: 
+> - Update the path `E:\sageconnect` in `RunSageconnect.bat` to match your installation directory
+> - Do not use `npm run start` directly for scheduled tasks as the process will never terminate and cause port conflicts with subsequent executions
 
 ---
 
