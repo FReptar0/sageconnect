@@ -59,10 +59,11 @@ async function forResponse() {
             logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
-            logGenerator(logFileName, 'info', `[START] Iniciando cancellationPurchaseOrders para el índice ${i}`);
-            await cancellationPurchaseOrders(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] cancellationPurchaseOrders completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // TOFIX: Temporarily disable cancellation process to avoid conflicts until cancellation logic is improved to detected when it should be updated instead of blindly cancelled
+            // logGenerator(logFileName, 'info', `[START] Iniciando cancellationPurchaseOrders para el índice ${i}`);
+            // await cancellationPurchaseOrders(i);
+            // logGenerator(logFileName, 'info', `[COMPLETE] cancellationPurchaseOrders completado para el índice ${i}`);
+            // await new Promise(resolve => setTimeout(resolve, 5000));
 
             logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
             await closePurchaseOrders(i);
