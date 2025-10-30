@@ -26,10 +26,10 @@ const LOG_TYPES = [
     'PortalPaymentController',
     
     // Purchase Order Logs
-    'PortalOC_Creation',
-    'PortalOC_Cancellation', 
-    'PortalOC_Close',
-    'PortalOC_StatusUpdate',
+    'PortalOC_Creator',
+    'PortalOC_Canceller', 
+    'PortalOC_Closer',
+    'PortalOC_StatusUpdater',
     
     // Utility Logs
     'Providers_Downloader',

@@ -2,9 +2,9 @@ const { spawn } = require('child_process');
 const { checkPayments } = require('./controller/SagePaymentController');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
-const { createPurchaseOrders } = require('./controller/PortalOC_Creation');
-const { cancellationPurchaseOrders } = require('./controller/PortalOC_Cancellation');
-const { closePurchaseOrders } = require('./controller/PortalOC_Close');
+const { createPurchaseOrders } = require('./controller/PortalOC_Creator');
+const { closePurchaseOrders } = require('./controller/PortalOC_Closer');
+const { processOrderChanges } = require('./controller/PortalOC_LifecycleManager');
 const { buildProvidersXML } = require('./controller/Providers_Downloader');
 const { sendMail } = require('./utils/EmailSender');
 const { logGenerator } = require('./utils/LogGenerator');
@@ -59,11 +59,10 @@ async function forResponse() {
             logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, 5000));
 
-            // TOFIX: Temporarily disable cancellation process to avoid conflicts until cancellation logic is improved to detected when it should be updated instead of blindly cancelled
-            // logGenerator(logFileName, 'info', `[START] Iniciando cancellationPurchaseOrders para el índice ${i}`);
-            // await cancellationPurchaseOrders(i);
-            // logGenerator(logFileName, 'info', `[COMPLETE] cancellationPurchaseOrders completado para el índice ${i}`);
-            // await new Promise(resolve => setTimeout(resolve, 5000));
+            logGenerator(logFileName, 'info', `[START] Iniciando processOrderChanges para el índice ${i}`);
+            await processOrderChanges(i);
+            logGenerator(logFileName, 'info', `[COMPLETE] processOrderChanges completado para el índice ${i}`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
 
             logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
             await closePurchaseOrders(i);

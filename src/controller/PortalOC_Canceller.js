@@ -28,7 +28,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function cancellationPurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const today = getCurrentDateCompact();
-    const logFileName = 'PortalOC_Cancellation';
+    const logFileName = 'PortalOC_Canceller';
     
     console.log(`[INICIO] Ejecutando proceso de cancelación de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha: ${today}`);
 
@@ -126,7 +126,7 @@ async function cancellationPurchaseOrders(index) {
 }
 
 // cancellationPurchaseOrders(0).catch(err=>{
-//     logGenerator('PortalOC_Cancellation', 'error', `[ERROR] Unhandled error: ${err.message}`);
+//     logGenerator('PortalOC_Canceller', 'error', `[ERROR] Unhandled error: ${err.message}`);
 // })
 
 module.exports = {

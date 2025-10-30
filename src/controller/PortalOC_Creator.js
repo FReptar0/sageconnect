@@ -47,7 +47,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
-  const logFileName = 'PortalOC_Creation';
+  const logFileName = 'PortalOC_Creator';
   
   console.log(`[INICIO] Ejecutando proceso de creación de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha: ${today}`);
   

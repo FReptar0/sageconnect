@@ -37,7 +37,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function main() {
     const [, , ocSage, status, idDatabase] = process.argv;
-    const logFileName = 'PortalOC_StatusUpdate';
+    const logFileName = 'PortalOC_StatusUpdater';
     
     console.log(`[INICIO] Ejecutando actualización de estado de orden de compra - OC: ${ocSage || 'N/A'} - Estado: ${status || 'N/A'} - Base: ${idDatabase || 'N/A'}`);
 

@@ -29,7 +29,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD
     const oneMonthAgo = getOneMonthAgoCompact();
-    const logFileName = 'PortalOC_Close';
+    const logFileName = 'PortalOC_Closer';
     
     console.log(`[INICIO] Ejecutando proceso de cierre de órdenes de compra - Tenant: ${tenantIds[index]} - Fecha desde: ${oneMonthAgo.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}`);
 
