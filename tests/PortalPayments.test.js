@@ -10,10 +10,40 @@ const database = DATABASES.split(',');
 const index = 0;
 
 async function testGeneratePaymentJson() {
-    const logFileName = 'TestUploadPayments';
-    // 1) Recuperar cabeceras de pago de Sage
-    const currentDate = 20250618 //new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const queryEncabezadosPago = `
+  const logFileName = 'TestUploadPayments';
+  // 0) Obtener parámetros CLI: --py <DOCNBR> o --date <YYYYMMDD>
+  const cliArgs = process.argv.slice(2);
+  let pyFilter = null;
+  let dateFilter = null;
+  for (let i = 0; i < cliArgs.length; i++) {
+    const a = cliArgs[i];
+    if (a === '--py' && cliArgs[i + 1]) {
+      pyFilter = cliArgs[i + 1];
+      i++;
+    } else if (a === '--date' && cliArgs[i + 1]) {
+      dateFilter = cliArgs[i + 1];
+      i++;
+    } else if (/^\d{8}$/.test(a) && !dateFilter && !pyFilter) {
+      // si se pasa un argumento suelto de 8 dígitos lo interpretamos como fecha YYYYMMDD
+      dateFilter = a;
+    } else if (!pyFilter && !/^\d{8}$/.test(a)) {
+      // si se pasa un argumento que no es fecha lo interpretamos como DOCNBR (py)
+      pyFilter = a;
+    }
+  }
+
+  // Si no se proporcionó fecha, tomamos la fecha de hoy en formato YYYYMMDD
+  if (!dateFilter && !pyFilter) {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    dateFilter = `${yyyy}${mm}${dd}`;
+  }
+  // Construir condición dinámica: si se indicó --py filtramos por P.DOCNBR exacto, si no usamos P.DATEBUS >= <fecha>
+  const extraCondition = pyFilter ? `AND P.DOCNBR = '${pyFilter}'` : `AND P.DATEBUS >= ${dateFilter}`;
+
+  const queryEncabezadosPago = `
 SELECT A.* FROM (
   SELECT
     P.CNTBTCH    AS LotePago,
@@ -46,7 +76,7 @@ SELECT A.* FROM (
     AND B.BATCHSTAT = 3
     AND P.ERRENTRY  = 0
     AND P.RMITTYPE  = 1
-    AND P.DATEBUS >= ${currentDate}
+    ${extraCondition}
     AND P.DOCNBR NOT IN (
       SELECT NoPagoSage
       FROM fesa.dbo.fesaPagosFocaltec
