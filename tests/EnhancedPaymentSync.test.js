@@ -338,6 +338,13 @@ class EnhancedPaymentTester {
             if (response.status === 200) {
                 const portalId = response.data && response.data.id ? response.data.id : null;
                 logGenerator(this.logFileName, 'info', `[${testId}] Payment sent to Portal successfully - Portal ID: ${portalId}`);
+
+                // Console output for portal response
+                console.log('\n📡 PORTAL RESPONSE:');
+                console.log('  Status:', response.status);
+                console.log('  Portal ID:', portalId);
+                console.log('  Full Response:', JSON.stringify(response.data, null, 2));
+
                 return {
                     success: true,
                     portalId,
@@ -345,6 +352,10 @@ class EnhancedPaymentTester {
                 };
             } else {
                 logGenerator(this.logFileName, 'error', `[${testId}] Portal API returned status ${response.status}`);
+                console.log('\n⚠️  PORTAL RESPONSE (Non-200):');
+                console.log('  Status:', response.status);
+                console.log('  Response:', JSON.stringify(response.data, null, 2));
+
                 return {
                     success: false,
                     message: `Portal API error: ${response.status}`,
@@ -353,6 +364,13 @@ class EnhancedPaymentTester {
             }
         } catch (error) {
             logGenerator(this.logFileName, 'error', `[${testId}] Error sending to Portal: ${error.message}`);
+            console.log('\n❌ PORTAL ERROR:');
+            console.log('  Error Message:', error.message);
+            if (error.response) {
+                console.log('  Response Status:', error.response.status);
+                console.log('  Response Data:', JSON.stringify(error.response.data, null, 2));
+            }
+
             return {
                 success: false,
                 message: `Portal send error: ${error.message}`,
@@ -573,7 +591,16 @@ async function main() {
         
         // Save report to file
         const fs = require('fs');
-        const reportPath = `./reports/payment_sync_test_${Date.now()}.json`;
+        const path = require('path');
+        const reportsDir = path.join(__dirname, '..', 'reports');
+
+        // Create reports directory if it doesn't exist
+        if (!fs.existsSync(reportsDir)) {
+            fs.mkdirSync(reportsDir, { recursive: true });
+            console.log(`📁 Created reports directory: ${reportsDir}`);
+        }
+
+        const reportPath = path.join(reportsDir, `payment_sync_test_${Date.now()}.json`);
         fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
         console.log(`📄 Test report saved to: ${reportPath}`);
         
