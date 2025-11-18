@@ -266,7 +266,7 @@ select
   ''                                           as [LINES_METADATA],
   ROW_NUMBER() OVER (PARTITION BY A.PONUMBER ORDER BY B.PORLREV) as [LINES_NUM],
   B.UNITCOST                                   as [LINES_PRICE],
-  B.SQOUTSTAND                                 as [LINES_QUANTITY],
+  B.SQORDERED                                 as [LINES_QUANTITY],
   ''                                           as [LINES_REQUISITION_LINE_ID],
   B.EXTENDED                                   as [LINES_SUBTOTAL],
   B.EXTENDED                                   as [LINES_TOTAL],
