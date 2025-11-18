@@ -72,6 +72,7 @@ async function uploadSpecificPurchaseOrders(poNumbers, database = null, tenantIn
     ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
     : '';
   
+    
   if (skipIdentifiers.length > 0) {
     console.log(`[INFO] Omitiendo ubicaciones: ${skipIdentifiers.join(', ')}`);
     logGenerator(logFileName, 'info', `[INFO] Ubicaciones omitidas: ${skipIdentifiers.join(', ')}`);
