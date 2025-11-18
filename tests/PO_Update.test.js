@@ -336,8 +336,6 @@ left outer join ${database}.dbo.ICLOC F
   on B.[LOCATION] = F.[LOCATION]
 where
   A.PONUMBER = '${poNumber}'
-  AND B.SQOUTSTAND > 0 
-  AND B.COMPLETION = 1
   ${skipCondition}
 order by A.PONUMBER, B.PORLREV;
 `;
@@ -348,7 +346,7 @@ order by A.PONUMBER, B.PORLREV;
     if (recordset.length === 0) {
       return { 
         success: false, 
-        error: `No data found for PO ${poNumber} with valid lines (SQOUTSTAND > 0)` 
+        error: `No data found for PO ${poNumber} in Sage database` 
       };
     }
 
