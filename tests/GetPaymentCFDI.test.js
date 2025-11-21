@@ -1,3 +1,4 @@
+// tests/GetPaymentCFDI.test.js - Unit tests for Payment CFDI (Type P) fetching
 const axios = require('axios');
 require('dotenv').config({ path: '.env.credentials.focaltec' });
 const { logGenerator } = require('../src/utils/LogGenerator');
@@ -86,11 +87,12 @@ async function getTypePTest(index) {
     }
 }
 
-(async () => {
-    const index = 0; // Cambiar según el tenant deseado
-    const result = await getTypePTest(index);
-    console.log('[RESULT] Resultado final:', JSON.stringify(result, null, 2));
-})();
+// Auto-execution commented out - use src/scripts/get-payment-cfdis.js for CLI execution
+// (async () => {
+//     const index = 0; // Cambiar según el tenant deseado
+//     const result = await getTypePTest(index);
+//     console.log('[RESULT] Resultado final:', JSON.stringify(result, null, 2));
+// })();
 
 const { describe, it, expect } = require('@jest/globals');
 

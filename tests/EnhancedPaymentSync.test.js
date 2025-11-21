@@ -43,7 +43,7 @@ class EnhancedPaymentTester {
     async testSpecificPayment(pyId, options = {}) {
         const testId = `TEST_${pyId}_${Date.now()}`;
         logGenerator(this.logFileName, 'info', `[${testId}] Starting specific payment test for PY: ${pyId}`);
-        
+
         try {
             // 1. Validate payment exists in Sage
             const sagePayment = await this.validateSagePayment(pyId, testId);
@@ -53,7 +53,7 @@ class EnhancedPaymentTester {
 
             // 2. Check if payment already exists in Portal
             const portalStatus = await this.checkPortalPaymentStatus(pyId, testId);
-            
+
             // 3. Check sync status in control table
             const syncStatus = await this.checkSyncControlStatus(pyId, testId);
 
@@ -174,10 +174,10 @@ class EnhancedPaymentTester {
                 FROM fesa.dbo.fesaPagosFocaltec 
                 WHERE NoPagoSage = '${pyId}'
             `;
-            
+
             const result = await runQuery(query);
             const exists = result.recordset.length > 0;
-            
+
             logGenerator(this.logFileName, 'info', `[${testId}] Sync control status: ${exists ? 'REGISTERED' : 'NOT_REGISTERED'}`);
             return {
                 exists,
@@ -197,8 +197,8 @@ class EnhancedPaymentTester {
             // Get invoice details for the payment
             const invoices = await this.getPaymentInvoices(sagePayment, testId);
             if (!invoices || invoices.length === 0) {
-                return { 
-                    success: false, 
+                return {
+                    success: false,
                     message: 'No invoices found for payment',
                     step: 'GET_INVOICES'
                 };
@@ -206,7 +206,7 @@ class EnhancedPaymentTester {
 
             // Build payment payload
             const payload = this.buildPaymentPayload(sagePayment, invoices);
-            
+
             logGenerator(this.logFileName, 'info', `[${testId}] Payment payload built: ${JSON.stringify(payload, null, 2)}`);
 
             if (this.dryRun) {
@@ -226,7 +226,7 @@ class EnhancedPaymentTester {
 
             // Update control table
             const controlResult = await this.updateControlTable(sagePayment, portalResult.portalId, testId);
-            
+
             return {
                 success: controlResult.success,
                 message: controlResult.success ? 'Payment synced successfully' : 'Portal sync succeeded but control table update failed',
@@ -384,16 +384,36 @@ class EnhancedPaymentTester {
      */
     async updateControlTable(sagePayment, portalId, testId) {
         try {
-            const insertSql = `
-                INSERT INTO fesa.dbo.fesaPagosFocaltec
-                (idCia, NoPagoSage, status, idFocaltec)
-                VALUES
-                ('${database[this.index]}', '${sagePayment.external_id}', 'SYNCED', ${portalId ? `'${portalId}'` : 'NULL'})
+            // Use IF EXISTS pattern for UPSERT - handles force-post scenarios
+            // where payment record might already exist in control table
+            const upsertSql = `
+                IF EXISTS (
+                    SELECT 1 FROM fesa.dbo.fesaPagosFocaltec 
+                    WHERE idCia = '${database[this.index]}' 
+                    AND NoPagoSage = '${sagePayment.external_id}'
+                )
+                BEGIN
+                    -- Record exists, UPDATE it
+                    UPDATE fesa.dbo.fesaPagosFocaltec
+                    SET status = 'SYNCED',
+                        idFocaltec = ${portalId ? `'${portalId}'` : 'NULL'},
+                        lastUpdate = GETDATE()
+                    WHERE idCia = '${database[this.index]}' 
+                    AND NoPagoSage = '${sagePayment.external_id}'
+                END
+                ELSE
+                BEGIN
+                    -- Record doesn't exist, INSERT it
+                    INSERT INTO fesa.dbo.fesaPagosFocaltec
+                    (idCia, NoPagoSage, status, idFocaltec)
+                    VALUES ('${database[this.index]}', '${sagePayment.external_id}', 'SYNCED', ${portalId ? `'${portalId}'` : 'NULL'})
+                END
             `;
 
-            const result = await runQuery(insertSql);
-            if (result.rowsAffected[0] > 0) {
-                logGenerator(this.logFileName, 'info', `[${testId}] Control table updated successfully`);
+            const result = await runQuery(upsertSql);
+            // rowsAffected should be > 0 for both INSERT and UPDATE
+            if (result.rowsAffected && result.rowsAffected[0] > 0) {
+                logGenerator(this.logFileName, 'info', `[${testId}] Control table updated successfully (upsert)`);
                 return { success: true };
             } else {
                 logGenerator(this.logFileName, 'error', `[${testId}] Control table update failed - no rows affected`);
@@ -416,10 +436,10 @@ class EnhancedPaymentTester {
             timestamp: new Date().toISOString(),
             data
         };
-        
+
         this.testResults.push(result);
         logGenerator(this.logFileName, 'info', `[${testId}] Test completed - Status: ${status} - Message: ${message}`);
-        
+
         return result;
     }
 
@@ -457,12 +477,12 @@ class EnhancedPaymentTester {
     async runFullSyncProcess(options = {}) {
         const testId = `FULL_SYNC_${Date.now()}`;
         logGenerator(this.logFileName, 'info', `[${testId}] Starting full sync process using existing controllers`);
-        
+
         try {
             // Step 1: Process CFDIs from Portal (updates Sage with UUIDs/timestamps)
             logGenerator(this.logFileName, 'info', `[${testId}] Running checkPayments to process CFDIs`);
             await checkPayments(this.index);
-            
+
             // Step 2: Upload payments to Portal (syncs Sage payments to Portal)
             logGenerator(this.logFileName, 'info', `[${testId}] Running uploadPayments to sync to Portal`);
             if (!this.dryRun) {
@@ -470,12 +490,12 @@ class EnhancedPaymentTester {
             } else {
                 logGenerator(this.logFileName, 'info', `[${testId}] DRY RUN - Skipping actual uploadPayments`);
             }
-            
+
             return this.recordTestResult(testId, 'PASSED', 'Full sync process completed', {
                 cfdiProcessed: true,
                 paymentsUploaded: !this.dryRun
             });
-            
+
         } catch (error) {
             logGenerator(this.logFileName, 'error', `[${testId}] Full sync process failed: ${error.message}`);
             return this.recordTestResult(testId, 'FAILED', `Full sync error: ${error.message}`, {
@@ -489,10 +509,10 @@ class EnhancedPaymentTester {
      */
     async runHybridSync(pyIds, options = {}) {
         logGenerator(this.logFileName, 'info', `Starting hybrid sync for ${pyIds.length} specific payments`);
-        
+
         // First run full sync process
         await this.runFullSyncProcess(options);
-        
+
         // Then test specific payments for validation
         for (const pyId of pyIds) {
             await this.testSpecificPayment(pyId, options);
@@ -506,7 +526,7 @@ class EnhancedPaymentTester {
      */
     async testPaymentBatch(pyIds, options = {}) {
         logGenerator(this.logFileName, 'info', `Starting batch test for ${pyIds.length} payments`);
-        
+
         for (const pyId of pyIds) {
             await this.testSpecificPayment(pyId, options);
         }
@@ -520,14 +540,14 @@ class EnhancedPaymentTester {
  */
 async function main() {
     const args = process.argv.slice(2);
-    
+
     // Parse index parameter
     let index = 0; // Default to first tenant
     const indexArg = args.find(arg => arg.startsWith('--index='));
     if (indexArg) {
         index = parseInt(indexArg.split('=')[1]) || 0;
     }
-    
+
     const options = {
         dryRun: args.includes('--dry-run'),
         forcePost: args.includes('--force-post'),
@@ -537,10 +557,10 @@ async function main() {
     // Check for operation mode
     const fullSync = args.includes('--full-sync');
     const hybridSync = args.includes('--hybrid-sync');
-    
+
     // Find PY payment IDs in arguments
     const pyIds = args.filter(arg => !arg.startsWith('--') && arg.match(/^PY/));
-    
+
     if (!fullSync && !hybridSync && pyIds.length === 0) {
         console.log('Usage Options:');
         console.log('  Individual: node EnhancedPaymentSync.test.js [PY_ID] [--dry-run] [--force-post] [--index=N]');
@@ -560,35 +580,35 @@ async function main() {
     }
 
     const tester = new EnhancedPaymentTester(options);
-    
+
     // Display tenant information
     console.log(`🏢 Using Tenant Index: ${index} (${tenantIds[index]} - ${database[index]})`);
-    
+
     if (options.dryRun) {
         console.log('🧪 Running in DRY RUN mode - no actual syncing will occur');
     }
-    
+
     if (options.forcePost) {
         console.log('🚀 Force post enabled - will attempt sync even if already registered');
     }
 
     try {
         let report;
-        
+
         if (fullSync) {
             console.log('🔄 Running full sync process using existing controllers...');
             await tester.runFullSyncProcess(options);
             report = tester.generateReport();
-            
+
         } else if (hybridSync && pyIds.length > 0) {
             console.log(`🔀 Running hybrid sync for ${pyIds.length} specific payments...`);
             report = await tester.runHybridSync(pyIds, options);
-            
+
         } else {
             console.log(`🎯 Testing ${pyIds.length} specific payments...`);
             report = await tester.testPaymentBatch(pyIds, options);
         }
-        
+
         // Save report to file
         const fs = require('fs');
         const path = require('path');
@@ -603,7 +623,7 @@ async function main() {
         const reportPath = path.join(reportsDir, `payment_sync_test_${Date.now()}.json`);
         fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
         console.log(`📄 Test report saved to: ${reportPath}`);
-        
+
     } catch (error) {
         console.error('❌ Test execution failed:', error.message);
         process.exit(1);

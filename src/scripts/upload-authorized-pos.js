@@ -1,5 +1,5 @@
-
-const axios = require('axios');
+// src/scripts/upload-authorized-pos.js
+// Script to upload authorized purchase orders from today to Portal de Proveedores
 const dotenv = require('dotenv');
 
 // carga las credenciales del portal de proveedores

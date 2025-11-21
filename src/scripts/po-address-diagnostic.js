@@ -1,4 +1,4 @@
-// tests/Address_Diagnostic.test.js
+// src/scripts/po-address-diagnostic.js
 
 const { runQuery } = require('../src/utils/SQLServerConnection');
 const { logGenerator } = require('../src/utils/LogGenerator');
@@ -49,10 +49,10 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
 
         // 2. Preparar filtro de skip (como en PortalOC_Creation.js)
         const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
-        const skipCondition = skipIdentifiers.length > 0 
-            ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
+        const skipCondition = skipIdentifiers.length > 0
+            ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
             : '';
-        
+
         console.log('\n2. CONFIGURACIÓN DE FILTROS DE UBICACIÓN');
         console.log('========================================');
         if (skipIdentifiers.length > 0) {
@@ -84,14 +84,14 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
             LEFT OUTER JOIN ${database}.dbo.ICLOC F ON B.[LOCATION] = F.[LOCATION]
             WHERE A.PONUMBER = '${poNumber}'
             ORDER BY RTRIM(B.[LOCATION])`;
-        
+
         const locationResult = await runQuery(locationQuery, database);
         console.table(locationResult.recordset);
 
         // 4. Ejecutar la consulta exacta del sistema (como PortalOC_Creation.js)
         console.log('\n4. CONSULTA EXACTA DEL SISTEMA (SIMULANDO PRODUCCIÓN)');
         console.log('====================================================');
-        
+
         const systemQuery = `
             SELECT 
                 'ACCEPTED' as ACCEPTANCE_STATUS,
@@ -141,7 +141,7 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         console.log('\n📊 Resultados de la consulta:');
 
         const systemResult = await runQuery(systemQuery, database);
-        
+
         if (systemResult.recordset.length === 0) {
             console.log('❌ La consulta no devolvió resultados. Posibles causas:');
             console.log('   - La OC fue filtrada por ADDRESS_IDENTIFIERS_SKIP');
@@ -156,10 +156,10 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         // 5. Simular agrupamiento y parseado
         console.log('\n5. SIMULACIÓN DE AGRUPAMIENTO Y PARSEADO');
         console.log('=======================================');
-        
+
         const grouped = groupOrdersByNumber(systemResult.recordset);
         console.log(`✅ Órdenes agrupadas: ${Object.keys(grouped).length}`);
-        
+
         Object.keys(grouped).forEach(poNum => {
             console.log(`   - ${poNum}: ${grouped[poNum].length} líneas`);
         });
@@ -170,10 +170,10 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         // 6. Analizar estructura de direcciones resultante
         console.log('\n6. ANÁLISIS DE DIRECCIONES RESULTANTES');
         console.log('====================================');
-        
+
         ordersToSend.forEach((po, index) => {
             console.log(`\n📦 Orden ${index + 1}: ${po.external_id}`);
-            
+
             if (!po.addresses || po.addresses.length === 0) {
                 console.log('❌ ERROR: No hay direcciones en la orden');
                 return;
@@ -191,13 +191,13 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
                     municipality: addr.municipality || '(VACÍO)',
                     type: addr.type || '(VACÍO)'
                 }]);
-                
+
                 // Identificar problemas potenciales
                 const issues = [];
                 if (!addr.street || addr.street.trim() === '') issues.push('street es requerido pero está vacío');
                 if (!addr.type) issues.push('type es requerido pero está vacío');
                 if (addr.zip_code && !/^\d{5}$/.test(addr.zip_code)) issues.push('zip_code debe ser 5 dígitos');
-                
+
                 if (issues.length > 0) {
                     console.log('   ⚠️  Problemas detectados:');
                     issues.forEach(issue => console.log(`      - ${issue}`));
@@ -210,10 +210,10 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         // 7. Validación Joi
         console.log('\n7. VALIDACIÓN JOI (SIMULACIÓN)');
         console.log('=============================');
-        
+
         ordersToSend.forEach((po, index) => {
             console.log(`\n🔍 Validando orden ${index + 1}: ${po.external_id}`);
-            
+
             try {
                 validateExternPurchaseOrder(po);
                 console.log('✅ Validación Joi exitosa');
@@ -232,7 +232,7 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
         // 8. Resumen y recomendaciones
         console.log('\n8. RESUMEN Y RECOMENDACIONES');
         console.log('============================');
-        
+
         if (systemResult.recordset.length === 0) {
             console.log('❌ PROBLEMA: La consulta no devuelve registros');
             console.log('   SOLUCIÓN: Verificar filtros ADDRESS_IDENTIFIERS_SKIP o existencia de la OC');
@@ -276,16 +276,16 @@ async function runAddressTests() {
 
     // Obtener parámetros de la línea de comandos
     const args = process.argv.slice(2);
-    
+
     if (args.length >= 1) {
         // Si se proporciona al menos un parámetro, usarlo como PO number
         const poNumber = args[0];
         const database = args[1] || 'COPDAT';
-        
+
         console.log(`Parámetros recibidos:`);
         console.log(`- PO Number: ${poNumber}`);
         console.log(`- Database: ${database}\n`);
-        
+
         await diagnosticPOAddress(poNumber, database);
     } else {
         console.log('❌ ERROR: Debes proporcionar el número de PO');
