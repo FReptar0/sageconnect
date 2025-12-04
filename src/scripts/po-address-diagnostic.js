@@ -1,10 +1,10 @@
 // src/scripts/po-address-diagnostic.js
 
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { logGenerator } = require('../src/utils/LogGenerator');
-const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
-const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
-const { validateExternPurchaseOrder } = require('../src/models/PurchaseOrder');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { logGenerator } = require('../utils/LogGenerator');
+const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
+const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
+const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 const dotenv = require('dotenv');
 
 // Load config like in PortalOC_Creation.js

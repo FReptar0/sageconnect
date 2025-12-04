@@ -30,12 +30,12 @@ const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
 const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
 
 // utilerías
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { getCurrentDateString } = require('../src/utils/TimezoneHelper');
-const { logGenerator } = require('../src/utils/LogGenerator');
-const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
-const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
-const { validateExternPurchaseOrder } = require('../src/models/PurchaseOrder');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { getCurrentDateString } = require('../utils/TimezoneHelper');
+const { logGenerator } = require('../utils/LogGenerator');
+const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
+const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
+const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -55,7 +55,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function testSpecificPurchaseOrders(poNumbers, database = null, tenantIndex = 0) {
   const logFileName = 'PO_Query';
   const dbToUse = database || databases[tenantIndex];
-  
+
   console.log(`[INICIO] ========================================`);
   console.log(`[INICIO] PRUEBA DE CONSULTA DE ÓRDENES ESPECÍFICAS`);
   console.log(`[INICIO] Fecha/Hora: ${new Date().toISOString()}`);
@@ -63,30 +63,30 @@ async function testSpecificPurchaseOrders(poNumbers, database = null, tenantInde
   console.log(`[INICIO] Database: ${dbToUse}`);
   console.log(`[INICIO] POs a probar: ${poNumbers.join(', ')}`);
   console.log(`[INICIO] ========================================`);
-  
+
   // Preparar filtro de ubicaciones a omitir
   const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
-  const skipCondition = skipIdentifiers.length > 0 
-    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
+  const skipCondition = skipIdentifiers.length > 0
+    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
     : '';
-  
+
   if (skipIdentifiers.length > 0) {
     console.log(`[INFO] Omitiendo ubicaciones: ${skipIdentifiers.join(', ')}`);
     logGenerator(logFileName, 'info', `[INFO] Ubicaciones omitidas: ${skipIdentifiers.join(', ')}`);
   }
-  
+
   logGenerator(logFileName, 'info', `========================================`);
   logGenerator(logFileName, 'info', `INICIO PRUEBA ESPECÍFICA - ${new Date().toISOString()}`);
   logGenerator(logFileName, 'info', `Tenant: ${tenantIds[tenantIndex]} | Database: ${dbToUse}`);
   logGenerator(logFileName, 'info', `POs objetivo: ${poNumbers.join(', ')}`);
   logGenerator(logFileName, 'info', `========================================`);
-  
+
   // 1) Ejecuta tu consulta a DATABASE para los POs específicos (sin filtro de fecha)
   console.log(`[QUERY] Preparando consulta para POs específicas...`);
   logGenerator(logFileName, 'info', `[QUERY] Preparando consulta para base: ${dbToUse}`);
-  
+
   const poFilter = poNumbers.map(po => `'${po}'`).join(',');
-  
+
   const sql = `
 select 
   'ACCEPTED' as ACCEPTANCE_STATUS,
@@ -231,7 +231,7 @@ order by A.PONUMBER, B.PORLREV;
     ({ recordset } = await runQuery(sql, dbToUse));
     console.log(`[INFO] Recuperadas ${recordset.length} filas de la base para POs específicas`);
     logGenerator(logFileName, 'info', `[INFO] Iniciando testSpecificPurchaseOrders. Total de registros recuperados: ${recordset.length}`);
-    
+
     if (recordset.length > 0) {
       console.log('\n[TEST] === PRIMEROS 3 REGISTROS RECUPERADOS ===');
       recordset.slice(0, 3).forEach((row, idx) => {
@@ -246,7 +246,7 @@ order by A.PONUMBER, B.PORLREV;
       });
       console.log('[TEST] === FIN REGISTROS ===\n');
     }
-    
+
   } catch (dbErr) {
     console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
     logGenerator(logFileName, 'error', `[ERROR] Error al ejecutar la consulta SQL: ${dbErr.message}`);
@@ -270,7 +270,7 @@ order by A.PONUMBER, B.PORLREV;
   Object.keys(grouped).forEach(poNumber => {
     console.log(`[TEST] - ${poNumber}: ${grouped[poNumber].length} líneas`);
   });
-  
+
   console.log('\n[TEST] === PARSEANDO A FORMATO DE ENVÍO ===');
   const ordersToSend = parseExternPurchaseOrders(grouped);
   console.log(`[TEST] Órdenes parseadas: ${ordersToSend.length}`);
@@ -284,7 +284,7 @@ order by A.PONUMBER, B.PORLREV;
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
     console.log(`\n[PROCESANDO] ======= PO ${i + 1}/${ordersToSend.length}: ${po.external_id} =======`);
-    
+
     // 4.1) Comprobar si ya existe en fesaOCFocaltec (SIN MODIFICAR)
     const checkSql = `
       SELECT idFocaltec, status
@@ -328,16 +328,16 @@ order by A.PONUMBER, B.PORLREV;
     console.log(`   -> Total: ${po.total}`);
     console.log(`   -> Líneas: ${po.lines?.length || 0}`);
     console.log(`   -> Dirección: ${po.addresses?.[0]?.street || 'N/A'}, ${po.addresses?.[0]?.city || 'N/A'}`);
-    
+
     if (po.lines && po.lines.length > 0) {
       console.log(`   -> Primera línea: ${po.lines[0].code} - ${po.lines[0].description}`);
       console.log(`   ->   Cantidad: ${po.lines[0].quantity} ${po.lines[0].unit_of_measure}`);
       console.log(`   ->   Precio: ${po.lines[0].price}`);
     }
-    
+
     console.log(`🚀 [SIMULATE] PO ${po.external_id} LISTA PARA ENVÍO (sin enviar en modo test)`);
   }
-  
+
   console.log(`\n[FIN] ==========================================`);
   console.log(`[FIN] Proceso de prueba completado para ${ordersToSend.length} órdenes`);
   console.log(`[FIN] Tenant: ${tenantIds[tenantIndex]}`);
@@ -354,7 +354,7 @@ async function runPOQuery() {
 
   // Obtener parámetros de la línea de comandos
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     console.log('❌ ERROR: Debes proporcionar al menos un número de PO');
     console.log('\\n📋 Uso:');
@@ -380,7 +380,7 @@ async function runPOQuery() {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     // Si empieza con PO, es un número de PO
     if (arg.startsWith('PO')) {
       poNumbers.push(arg);

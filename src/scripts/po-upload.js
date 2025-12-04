@@ -31,12 +31,12 @@ const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
 const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
 
 // utilerías
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { getCurrentDateString } = require('../src/utils/TimezoneHelper');
-const { logGenerator } = require('../src/utils/LogGenerator');
-const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
-const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
-const { validateExternPurchaseOrder } = require('../src/models/PurchaseOrder');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { getCurrentDateString } = require('../utils/TimezoneHelper');
+const { logGenerator } = require('../utils/LogGenerator');
+const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
+const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
+const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -57,7 +57,7 @@ async function uploadSpecificPurchaseOrders(poNumbers, database = null, tenantIn
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
   const logFileName = 'PO_Upload';
   const dbToUse = database || databases[tenantIndex];
-  
+
   console.log(`[INICIO] ========================================`);
   console.log(`[INICIO] SUBIDA DE ÓRDENES ESPECÍFICAS AL PORTAL`);
   console.log(`[INICIO] Fecha/Hora: ${new Date().toISOString()}`);
@@ -65,31 +65,31 @@ async function uploadSpecificPurchaseOrders(poNumbers, database = null, tenantIn
   console.log(`[INICIO] Database: ${dbToUse}`);
   console.log(`[INICIO] POs a procesar: ${poNumbers.join(', ')}`);
   console.log(`[INICIO] ========================================`);
-  
+
   // Preparar filtro de ubicaciones a omitir
   const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
-  const skipCondition = skipIdentifiers.length > 0 
-    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
+  const skipCondition = skipIdentifiers.length > 0
+    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
     : '';
-  
-    
+
+
   if (skipIdentifiers.length > 0) {
     console.log(`[INFO] Omitiendo ubicaciones: ${skipIdentifiers.join(', ')}`);
     logGenerator(logFileName, 'info', `[INFO] Ubicaciones omitidas: ${skipIdentifiers.join(', ')}`);
   }
-  
+
   logGenerator(logFileName, 'info', `========================================`);
   logGenerator(logFileName, 'info', `INICIO SUBIDA ESPECÍFICA - ${new Date().toISOString()}`);
   logGenerator(logFileName, 'info', `Tenant: ${tenantIds[tenantIndex]} | Database: ${dbToUse}`);
   logGenerator(logFileName, 'info', `POs objetivo: ${poNumbers.join(', ')}`);
   logGenerator(logFileName, 'info', `========================================`);
-  
+
   // 1) Ejecuta tu consulta a DATABASE para los POs específicos (sin filtro de fecha)
   console.log(`[QUERY] Preparando consulta para POs específicas...`);
   logGenerator(logFileName, 'info', `[QUERY] Preparando consulta para base: ${dbToUse}`);
-  
+
   const poFilter = poNumbers.map(po => `'${po}'`).join(',');
-  
+
   const sql = `
 select 
   'ACCEPTED' as ACCEPTANCE_STATUS,
@@ -259,7 +259,7 @@ order by A.PONUMBER, B.PORLREV;
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
     console.log(`\n[PROCESANDO] ======= PO ${i + 1}/${ordersToSend.length}: ${po.external_id} =======`);
-    
+
     // 4.1) Comprobar si ya existe en fesaOCFocaltec
     const checkSql = `
       SELECT idFocaltec, status
@@ -382,7 +382,7 @@ order by A.PONUMBER, B.PORLREV;
       logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
     }
   }
-  
+
   console.log(`\n[FIN] ==========================================`);
   console.log(`[FIN] Proceso completado para ${ordersToSend.length} órdenes`);
   console.log(`[FIN] Tenant: ${tenantIds[tenantIndex]}`);
@@ -398,7 +398,7 @@ async function runPOUpload() {
 
   // Obtener parámetros de la línea de comandos
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     console.log('❌ ERROR: Debes proporcionar al menos un número de PO');
     console.log('\n📋 Uso:');
@@ -422,7 +422,7 @@ async function runPOUpload() {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    
+
     // Si empieza con PO, es un número de PO
     if (arg.startsWith('PO')) {
       poNumbers.push(arg);

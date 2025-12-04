@@ -13,10 +13,10 @@ const {
 } = creds;
 
 // utilerías
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
-const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
-const { validateExternPurchaseOrder } = require('../src/models/PurchaseOrder');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
+const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
+const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // preparamos arrays de tenants/keys/etc. y sólo usamos el primero en este test
 const tenantIds = TENANT_ID.split(',');

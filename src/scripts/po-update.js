@@ -27,11 +27,11 @@ const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
 const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
 
 // Utilities
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { logGenerator } = require('../src/utils/LogGenerator');
-const { groupOrdersByNumber } = require('../src/utils/OC_GroupOrdersByNumber');
-const { parseExternPurchaseOrders } = require('../src/utils/parseExternPurchaseOrders');
-const { validateExternPurchaseOrder } = require('../src/models/PurchaseOrder');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { logGenerator } = require('../utils/LogGenerator');
+const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
+const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
+const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // Prepare arrays of tenants/keys/etc.
 const tenantIds = TENANT_ID.split(',');
@@ -52,7 +52,7 @@ const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
 async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 0, dryRun = false) {
   const logFileName = 'PO_Update';
   const dbToUse = database || databases[tenantIndex];
-  
+
   console.log(`[INICIO] ========================================`);
   console.log(`[INICIO] PRUEBA DE ACTUALIZACIÓN DE ORDEN ${poNumber}`);
   console.log(`[INICIO] Fecha/Hora: ${new Date().toISOString()}`);
@@ -60,7 +60,7 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
   console.log(`[INICIO] Database: ${dbToUse}`);
   console.log(`[INICIO] Modo: ${dryRun ? 'DRY RUN (sin enviar)' : 'ACTUALIZACIÓN REAL'}`);
   console.log(`[INICIO] ========================================`);
-  
+
   logGenerator(logFileName, 'info', `========================================`);
   logGenerator(logFileName, 'info', `INICIO ACTUALIZACIÓN - ${new Date().toISOString()}`);
   logGenerator(logFileName, 'info', `PO: ${poNumber} | Tenant: ${tenantIds[tenantIndex]} | Database: ${dbToUse}`);
@@ -71,13 +71,13 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
     // STEP 1: Search for the PO in FESA database
     console.log(`\n[STEP 1] === BÚSQUEDA EN FESA ===`);
     const fesaResult = await searchPOInFESA(poNumber, dbToUse);
-    
+
     if (!fesaResult.found) {
       console.log(`❌ [ERROR] PO ${poNumber} no encontrada en FESA o no está marcada como POSTED`);
       logGenerator(logFileName, 'error', `PO ${poNumber} no encontrada en FESA`);
       return { success: false, error: 'PO not found in FESA' };
     }
-    
+
     console.log(`✅ [SUCCESS] PO encontrada en FESA:`);
     console.log(`   -> ID Focaltec: ${fesaResult.idFocaltec}`);
     console.log(`   -> Status: ${fesaResult.status}`);
@@ -87,13 +87,13 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
     // STEP 2: Retrieve info from Sage with the query
     console.log(`\n[STEP 2] === RECUPERACIÓN DE DATOS SAGE ===`);
     const sageData = await retrieveFromSage(poNumber, dbToUse, tenantIndex);
-    
+
     if (!sageData.success) {
       console.log(`❌ [ERROR] ${sageData.error}`);
       logGenerator(logFileName, 'error', `Error recuperando datos de Sage: ${sageData.error}`);
       return { success: false, error: sageData.error };
     }
-    
+
     console.log(`✅ [SUCCESS] Datos recuperados de Sage:`);
     console.log(`   -> Total registros: ${sageData.recordCount}`);
     console.log(`   -> Líneas: ${sageData.parsedOrder.lines?.length || 0}`);
@@ -102,14 +102,14 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
 
     // STEP 3: Update PO in Portal (or simulate)
     console.log(`\n[STEP 3] === ${dryRun ? 'SIMULACIÓN DE' : ''} ACTUALIZACIÓN EN PORTAL ===`);
-    
+
     if (dryRun) {
       console.log(`🔍 [DRY RUN] Estructura que se enviaría al Portal:`);
       console.log(`   -> External ID: ${sageData.parsedOrder.external_id}`);
       console.log(`   -> Endpoint: ${urlBase(tenantIndex)}/purchase-orders/${fesaResult.idFocaltec}`);
       console.log(`   -> Método: PUT`);
       console.log(`   -> Líneas a enviar: ${sageData.parsedOrder.lines?.length || 0}`);
-      
+
       if (sageData.parsedOrder.lines && sageData.parsedOrder.lines.length > 0) {
         console.log(`   -> Ejemplo línea 1:`);
         console.log(`      - Código: ${sageData.parsedOrder.lines[0].code}`);
@@ -117,26 +117,26 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
         console.log(`      - Cantidad: ${sageData.parsedOrder.lines[0].quantity}`);
         console.log(`      - Precio: ${sageData.parsedOrder.lines[0].price}`);
       }
-      
+
       console.log(`✅ [DRY RUN] Actualización simulada completada`);
       logGenerator(logFileName, 'info', `DRY RUN completado para PO ${poNumber}`);
       return { success: true, mode: 'dry-run', idFocaltec: fesaResult.idFocaltec };
-      
+
     } else {
       const updateResult = await updatePOInPortal(fesaResult.idFocaltec, sageData.parsedOrder, tenantIndex);
-      
+
       if (updateResult.success) {
         console.log(`✅ [SUCCESS] PO actualizada en Portal:`);
         console.log(`   -> Status: ${updateResult.status}`);
         console.log(`   -> Response: ${updateResult.data ? 'Datos recibidos' : 'Sin datos'}`);
-        
+
         // Update timestamp in FESA
         await updateFESATimestamp(poNumber, dbToUse);
         console.log(`✅ [SUCCESS] Timestamp actualizado en FESA`);
-        
+
         logGenerator(logFileName, 'info', `Actualización exitosa para PO ${poNumber}`);
         return { success: true, mode: 'update', status: updateResult.status };
-        
+
       } else {
         console.log(`❌ [ERROR] Error actualizando PO en Portal: ${updateResult.error}`);
         logGenerator(logFileName, 'error', `Error actualizando PO ${poNumber}: ${updateResult.error}`);
@@ -176,7 +176,7 @@ async function searchPOInFESA(poNumber, database) {
 
   try {
     const { recordset } = await runQuery(sql, 'FESA');
-    
+
     if (recordset.length > 0) {
       const record = recordset[0];
       return {
@@ -188,9 +188,9 @@ async function searchPOInFESA(poNumber, database) {
         responseAPI: record.responseAPI
       };
     }
-    
+
     return { found: false };
-    
+
   } catch (error) {
     throw new Error(`Error searching FESA: ${error.message}`);
   }
@@ -206,8 +206,8 @@ async function searchPOInFESA(poNumber, database) {
 async function retrieveFromSage(poNumber, database, tenantIndex) {
   // Prepare skip condition for locations
   const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
-  const skipCondition = skipIdentifiers.length > 0 
-    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})` 
+  const skipCondition = skipIdentifiers.length > 0
+    ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
     : '';
 
   const sql = `
@@ -342,27 +342,27 @@ order by A.PONUMBER, B.PORLREV;
 
   try {
     const { recordset } = await runQuery(sql, database);
-    
+
     if (recordset.length === 0) {
-      return { 
-        success: false, 
-        error: `No data found for PO ${poNumber} in Sage database` 
+      return {
+        success: false,
+        error: `No data found for PO ${poNumber} in Sage database`
       };
     }
 
     // Group and parse the data
     const grouped = groupOrdersByNumber(recordset);
     const ordersToSend = parseExternPurchaseOrders(grouped);
-    
+
     if (ordersToSend.length === 0) {
-      return { 
-        success: false, 
-        error: `No valid orders generated after parsing for PO ${poNumber}` 
+      return {
+        success: false,
+        error: `No valid orders generated after parsing for PO ${poNumber}`
       };
     }
 
     const parsedOrder = ordersToSend[0];
-    
+
     // Clean placeholders
     if (parsedOrder.cfdi_payment_method === '') delete parsedOrder.cfdi_payment_method;
     if (parsedOrder.requisition_number === 0) delete parsedOrder.requisition_number;
@@ -371,22 +371,22 @@ order by A.PONUMBER, B.PORLREV;
     try {
       validateExternPurchaseOrder(parsedOrder);
     } catch (valErr) {
-      return { 
-        success: false, 
-        error: `Validation failed: ${valErr.details.map(d => d.message).join('; ')}` 
+      return {
+        success: false,
+        error: `Validation failed: ${valErr.details.map(d => d.message).join('; ')}`
       };
     }
 
-    return { 
-      success: true, 
-      recordCount: recordset.length, 
-      parsedOrder: parsedOrder 
+    return {
+      success: true,
+      recordCount: recordset.length,
+      parsedOrder: parsedOrder
     };
 
   } catch (error) {
-    return { 
-      success: false, 
-      error: `Database error: ${error.message}` 
+    return {
+      success: false,
+      error: `Database error: ${error.message}`
     };
   }
 }
@@ -400,13 +400,13 @@ order by A.PONUMBER, B.PORLREV;
  */
 async function updatePOInPortal(idFocaltec, orderPayload, tenantIndex) {
   const endpoint = `${urlBase(tenantIndex)}/purchase-orders/${idFocaltec}`;
-  
+
   try {
     console.log(`🚀 [UPDATE] Enviando actualización al Portal...`);
     console.log(`   -> Endpoint: ${endpoint}`);
     console.log(`   -> ID Focaltec: ${idFocaltec}`);
     console.log(`   -> Líneas: ${orderPayload.lines?.length || 0}`);
-    
+
     const response = await axios.put(
       endpoint,
       orderPayload,
@@ -470,7 +470,7 @@ async function runPOUpdate() {
 
   // Get parameters from command line
   const args = process.argv.slice(2);
-  
+
   if (args.length === 0) {
     console.log('❌ ERROR: Debes proporcionar al menos un número de PO');
     console.log('\n📋 Uso:');
@@ -500,7 +500,7 @@ async function runPOUpdate() {
   // Parse additional parameters
   for (let i = 1; i < args.length; i++) {
     const arg = args[i];
-    
+
     if (arg === '--dry-run') {
       dryRun = true;
     } else if (/^\d+$/.test(arg)) {
@@ -524,7 +524,7 @@ async function runPOUpdate() {
 
   try {
     const result = await testPurchaseOrderUpdate(poNumber, database, tenantIndex, dryRun);
-    
+
     if (result.success) {
       console.log('\n✅ PROCESO COMPLETADO EXITOSAMENTE');
       if (result.mode === 'dry-run') {
@@ -535,7 +535,7 @@ async function runPOUpdate() {
     } else {
       console.log(`\n❌ PROCESO FALLÓ: ${result.error}`);
     }
-    
+
   } catch (error) {
     console.error('\n❌ ERROR EN EL PROCESO:', error.message);
     logGenerator('PO_Update', 'error', `Error en proceso principal: ${error.message}`);

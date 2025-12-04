@@ -1,5 +1,5 @@
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { logGenerator } = require('../src/utils/LogGenerator');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { logGenerator } = require('../utils/LogGenerator');
 const dotenv = require('dotenv');
 
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
@@ -93,55 +93,55 @@ SELECT A.* FROM (
     )
 ) AS A
 `;
-    let hdrs;
-    try {
-        ({ recordset: hdrs } = await runQuery(queryEncabezadosPago, database[index]));
-    } catch (err) {
-        console.error('Error al traer cabeceras:', err);
-        return;
+  let hdrs;
+  try {
+    ({ recordset: hdrs } = await runQuery(queryEncabezadosPago, database[index]));
+  } catch (err) {
+    console.error('Error al traer cabeceras:', err);
+    return;
+  }
+  console.log(`🔍 ${hdrs.length} cabeceras recuperadas`);
+
+  // 2) Filtrar en JS registros sin PROVIDERID
+  const before = hdrs.length;
+  hdrs = hdrs.filter(r => {
+    if (!r.PROVIDERID?.trim()) {
+      logGenerator(logFileName, 'warn',
+        `Omitiendo lote ${r.LotePago}/${r.AsientoPago}: provider_external_id="${r.provider_external_id}" sin PROVIDERID`);
+      return false;
     }
-    console.log(`🔍 ${hdrs.length} cabeceras recuperadas`);
+    return true;
+  });
+  console.log(`ℹ️  Omitidos ${before - hdrs.length} pagos sin PROVIDERID`);
 
-    // 2) Filtrar en JS registros sin PROVIDERID
-    const before = hdrs.length;
-    hdrs = hdrs.filter(r => {
-        if (!r.PROVIDERID?.trim()) {
-            logGenerator(logFileName, 'warn',
-                `Omitiendo lote ${r.LotePago}/${r.AsientoPago}: provider_external_id="${r.provider_external_id}" sin PROVIDERID`);
-            return false;
-        }
-        return true;
-    });
-    console.log(`ℹ️  Omitidos ${before - hdrs.length} pagos sin PROVIDERID`);
+  if (!hdrs.length) {
+    console.log('✅ No quedan cabeceras tras filtrar PROVIDERID');
+    return;
+  }
 
-    if (!hdrs.length) {
-        console.log('✅ No quedan cabeceras tras filtrar PROVIDERID');
-        return;
-    }
+  // 3) Filtrar pagos ya registrados
+  const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
+  let regs;
+  try {
+    ({ recordset: regs } = await runQuery(queryPagosRegistrados));
+  } catch (err) {
+    console.error('Error al traer pagos registrados:', err);
+    regs = [];
+  }
+  const seen = new Set(regs.map(r => r.NoPagoSage));
+  const before2 = hdrs.length;
+  hdrs = hdrs.filter(r => !seen.has(r.external_id));
+  console.log(`ℹ️  Omitidos ${before2 - hdrs.length} pagos ya procesados`);
 
-    // 3) Filtrar pagos ya registrados
-    const queryPagosRegistrados = `SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec`;
-    let regs;
-    try {
-        ({ recordset: regs } = await runQuery(queryPagosRegistrados));
-    } catch (err) {
-        console.error('Error al traer pagos registrados:', err);
-        regs = [];
-    }
-    const seen = new Set(regs.map(r => r.NoPagoSage));
-    const before2 = hdrs.length;
-    hdrs = hdrs.filter(r => !seen.has(r.external_id));
-    console.log(`ℹ️  Omitidos ${before2 - hdrs.length} pagos ya procesados`);
+  if (!hdrs.length) {
+    console.log('✅ Todos los pagos ya estaban procesados');
+    return;
+  }
 
-    if (!hdrs.length) {
-        console.log('✅ Todos los pagos ya estaban procesados');
-        return;
-    }
-
-    // 4) Generar JSON para cada pago
-    for (const hdr of hdrs) {
-        // 4.1) Obtener facturas del lote/asiento
-        const qInv = `
+  // 4) Generar JSON para cada pago
+  for (const hdr of hdrs) {
+    // 4.1) Obtener facturas del lote/asiento
+    const qInv = `
 SELECT
   DP.CNTBTCH        AS LotePago,
   DP.CNTRMIT        AS AsientoPago,
@@ -178,59 +178,59 @@ WHERE DP.BATCHTYPE = 'PY'
   AND DP.CNTRMIT   = ${hdr.AsientoPago}
   AND DP.DOCTYPE   = 1
 `;
-        let invs;
-        try {
-            ({ recordset: invs } = await runQuery(qInv, database[index]));
-        } catch (err) {
-            console.error(`Error al traer facturas L${hdr.LotePago}/A${hdr.AsientoPago}:`, err);
-            invs = [];
-        }
-        if (!invs.length) {
-            console.log(`⚠️  Sin facturas para L${hdr.LotePago}/A${hdr.AsientoPago}`);
-            continue;
-        }
-
-        // 4.2) Construir cfdis con lógica de exchange_rate
-        const cfdis = invs.map(inv => {
-            const sameCurrency = inv.invoice_currency === hdr.bk_currency;
-            return {
-                amount: inv.invoice_amount,
-                currency: inv.invoice_currency,
-                exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
-                payment_amount: inv.payment_amount,
-                payment_currency: hdr.bk_currency,
-                uuid: inv.UUID
-            };
-        });
-
-        const allFull = invs.every(inv => inv.FULL_PAID === 1 || inv.FULL_PAID === '1');
-        const payStatus = allFull ? 'PAID' : 'PARTIAL';
-        const markExisting = allFull;
-
-        const d = hdr.payment_date.toString();
-        const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
-
-        const payload = {
-            bank_account_id: hdr.bank_account_id,
-            cfdis,
-            comments: hdr.comments,
-            currency: hdr.bk_currency,
-            external_id: hdr.external_id,
-            ignore_amounts: false,
-            mark_existing_cfdi_as_payed: markExisting,
-            open: false,
-            operation_type: hdr.operation_type,
-            payment_date,
-            provider_external_id: hdr.provider_external_id,
-            reference: hdr.reference,
-            total_amount: hdr.total_amount
-        };
-
-        console.log(`\n📦 Payload para pago ${hdr.external_id} (status ${payStatus}):`);
-        console.log(JSON.stringify(payload, null, 2));
+    let invs;
+    try {
+      ({ recordset: invs } = await runQuery(qInv, database[index]));
+    } catch (err) {
+      console.error(`Error al traer facturas L${hdr.LotePago}/A${hdr.AsientoPago}:`, err);
+      invs = [];
     }
+    if (!invs.length) {
+      console.log(`⚠️  Sin facturas para L${hdr.LotePago}/A${hdr.AsientoPago}`);
+      continue;
+    }
+
+    // 4.2) Construir cfdis con lógica de exchange_rate
+    const cfdis = invs.map(inv => {
+      const sameCurrency = inv.invoice_currency === hdr.bk_currency;
+      return {
+        amount: inv.invoice_amount,
+        currency: inv.invoice_currency,
+        exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
+        payment_amount: inv.payment_amount,
+        payment_currency: hdr.bk_currency,
+        uuid: inv.UUID
+      };
+    });
+
+    const allFull = invs.every(inv => inv.FULL_PAID === 1 || inv.FULL_PAID === '1');
+    const payStatus = allFull ? 'PAID' : 'PARTIAL';
+    const markExisting = allFull;
+
+    const d = hdr.payment_date.toString();
+    const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
+
+    const payload = {
+      bank_account_id: hdr.bank_account_id,
+      cfdis,
+      comments: hdr.comments,
+      currency: hdr.bk_currency,
+      external_id: hdr.external_id,
+      ignore_amounts: false,
+      mark_existing_cfdi_as_payed: markExisting,
+      open: false,
+      operation_type: hdr.operation_type,
+      payment_date,
+      provider_external_id: hdr.provider_external_id,
+      reference: hdr.reference,
+      total_amount: hdr.total_amount
+    };
+
+    console.log(`\n📦 Payload para pago ${hdr.external_id} (status ${payStatus}):`);
+    console.log(JSON.stringify(payload, null, 2));
+  }
 }
 
 testGeneratePaymentJson().catch(err => {
-    console.error('❌ Error en testGeneratePaymentJson:', err);
+  console.error('❌ Error en testGeneratePaymentJson:', err);
 });

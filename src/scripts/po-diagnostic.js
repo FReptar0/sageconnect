@@ -1,7 +1,7 @@
 // tests/PO_Diagnostic.test.js
 
-const { runQuery } = require('../src/utils/SQLServerConnection');
-const { logGenerator } = require('../src/utils/LogGenerator');
+const { runQuery } = require('../utils/SQLServerConnection');
+const { logGenerator } = require('../utils/LogGenerator');
 
 /**
  * Diagnóstico completo para verificar por qué una OC no está siendo procesada
@@ -29,10 +29,10 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
                 END as Estado
             FROM ${database}.dbo.POPORH1 
             WHERE PONUMBER = '${poNumber}'`;
-        
+
         const existsResult = await runQuery(existsQuery);
         console.table(existsResult.recordset);
-        
+
         if (existsResult.recordset[0].Existe === 0) {
             console.log('❌ ERROR: La OC no existe en POPORH1. Verifica el número de OC.');
             return;
@@ -52,7 +52,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             LEFT OUTER JOIN ${database}.dbo.POPORHO C2
                 ON H.PORHSEQ = C2.PORHSEQ AND C2.OPTFIELD = 'USOCFDI'
             WHERE H.PONUMBER = '${poNumber}'`;
-        
+
         const optionalResult = await runQuery(optionalFieldsQuery);
         console.table(optionalResult.recordset);
 
@@ -71,7 +71,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             FROM Autorizaciones_electronicas.dbo.Autoriza_OC 
             WHERE PONumber = '${poNumber}' 
                 AND Empresa = '${empresa}'`;
-        
+
         const authResult = await runQuery(authQuery);
         if (authResult.recordset.length === 0) {
             console.log('❌ No se encontró registro en Autoriza_OC');
@@ -97,7 +97,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             WHERE Empresa = '${empresa}' 
                 AND PONumber = '${poNumber}'
             GROUP BY PONumber`;
-        
+
         const authDateResult = await runQuery(authDateQuery);
         if (authDateResult.recordset.length === 0) {
             console.log('❌ No se encontraron detalles de autorización');
@@ -123,7 +123,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
             FROM dbo.fesaOCFocaltec
             WHERE ocSage = '${poNumber}'
             ORDER BY createdAt DESC`;
-        
+
         const processedResult = await runQuery(processedQuery);
         if (processedResult.recordset.length === 0) {
             console.log('✅ No ha sido procesada anteriormente');
@@ -154,18 +154,18 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
                     WHERE Empresa = '${empresa}'
                         AND PONumber = A.PONUMBER
                 ) = CAST(GETDATE() AS DATE)`;
-        
+
         const finalResult = await runQuery(finalQuery);
         console.table(finalResult.recordset);
 
         // 8. Resumen y recomendaciones
         console.log('\n8. RESUMEN Y RECOMENDACIONES');
         console.log('============================');
-        
+
         const isAuthorized = authResult.recordset.length > 0 && authResult.recordset[0].Autorizada === 1;
-        const isAuthorizedToday = authDateResult.recordset.length > 0 && 
+        const isAuthorizedToday = authDateResult.recordset.length > 0 &&
             authDateResult.recordset[0].Estado === 'AUTORIZADA HOY';
-        const isProcessed = processedResult.recordset.length > 0 && 
+        const isProcessed = processedResult.recordset.length > 0 &&
             processedResult.recordset[0].status === 'POSTED';
 
         if (!isAuthorized) {
@@ -210,11 +210,11 @@ async function getAuthorizedPOsToday(empresa = 'COPDAT') {
                 AND B.Autorizada = 1
             GROUP BY A.PONumber
             ORDER BY A.PONumber`;
-        
+
         const result = await runQuery(query);
         console.log(`Total de OCs autorizadas hoy: ${result.recordset.length}`);
         console.table(result.recordset);
-        
+
         return result.recordset;
     } catch (error) {
         console.error('Error obteniendo OCs autorizadas:', error.message);
@@ -229,18 +229,18 @@ async function runTests() {
 
     // Obtener parámetros de la línea de comandos
     const args = process.argv.slice(2);
-    
+
     if (args.length >= 1) {
         // Si se proporciona al menos un parámetro, usarlo como PO number
         const poNumber = args[0];
         const database = args[1] || 'COPDAT';
         const empresa = args[2] || 'COPDAT';
-        
+
         console.log(`Parámetros recibidos:`);
         console.log(`- PO Number: ${poNumber}`);
         console.log(`- Database: ${database}`);
         console.log(`- Empresa: ${empresa}\n`);
-        
+
         await diagnosticPO(poNumber, database, empresa);
     } else {
         // Prueba específica para PO0075624 por defecto
