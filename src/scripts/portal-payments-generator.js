@@ -1,9 +1,15 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const axios = require('axios');
 const dotenv = require('dotenv');
 
 const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const { DATABASES } = credentials;
+const { DATABASES, TENANT_ID, API_KEY, API_SECRET, URL } = credentials;
+
+// preparamos arrays de credenciales
+const tenantIds = TENANT_ID.split(',');
+const apiKeys = API_KEY.split(',');
+const apiSecrets = API_SECRET.split(',');
 
 // preparamos array de bases de datos (usamos índice 0 para pruebas)
 const database = DATABASES.split(',');
@@ -11,10 +17,12 @@ const index = 0;
 
 async function testGeneratePaymentJson() {
   const logFileName = 'TestUploadPayments';
-  // 0) Obtener parámetros CLI: --py <DOCNBR> o --date <YYYYMMDD>
+  // 0) Obtener parámetros CLI: --py <DOCNBR> o --date <YYYYMMDD> o --post (para enviar al portal)
   const cliArgs = process.argv.slice(2);
   let pyFilter = null;
   let dateFilter = null;
+  let shouldPost = false;
+
   for (let i = 0; i < cliArgs.length; i++) {
     const a = cliArgs[i];
     if (a === '--py' && cliArgs[i + 1]) {
@@ -23,6 +31,8 @@ async function testGeneratePaymentJson() {
     } else if (a === '--date' && cliArgs[i + 1]) {
       dateFilter = cliArgs[i + 1];
       i++;
+    } else if (a === '--post') {
+      shouldPost = true;
     } else if (/^\d{8}$/.test(a) && !dateFilter && !pyFilter) {
       // si se pasa un argumento suelto de 8 dígitos lo interpretamos como fecha YYYYMMDD
       dateFilter = a;
@@ -30,6 +40,12 @@ async function testGeneratePaymentJson() {
       // si se pasa un argumento que no es fecha lo interpretamos como DOCNBR (py)
       pyFilter = a;
     }
+  }
+
+  if (shouldPost) {
+    console.log('🚀 Modo POST activado - Los pagos serán enviados al portal');
+  } else {
+    console.log('📋 Modo preview - Solo se mostrará el JSON (usa --post para enviar)');
   }
 
   // Si no se proporcionó fecha, tomamos la fecha de hoy en formato YYYYMMDD
@@ -228,6 +244,79 @@ WHERE DP.BATCHTYPE = 'PY'
 
     console.log(`\n📦 Payload para pago ${hdr.external_id} (status ${payStatus}):`);
     console.log(JSON.stringify(payload, null, 2));
+
+    // Si se pasó el flag --post, enviar al portal
+    if (shouldPost) {
+      console.log(`\n🚀 Enviando pago ${hdr.external_id} al portal...`);
+      const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
+
+      try {
+        const resp = await axios.post(endpoint, payload, {
+          headers: {
+            'PDPTenantKey': apiKeys[index],
+            'PDPTenantSecret': apiSecrets[index],
+            'Content-Type': 'application/json'
+          }
+        });
+
+        if (resp.status === 200) {
+          const idPortal = resp.data && resp.data.id ? resp.data.id : undefined;
+          console.log(`✅ Pago ${hdr.external_id} enviado con éxito (200)`);
+          if (idPortal) {
+            console.log(`   ID asignado por portal: ${idPortal}`);
+          }
+
+          logGenerator(
+            logFileName,
+            'success',
+            `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[index]}, ID portal: ${idPortal ?? 'N/A'}`
+          );
+
+          // Registrar en control table
+          const insertSql = `
+                    INSERT INTO fesa.dbo.fesaPagosFocaltec
+                        (idCia, NoPagoSage, status, idFocaltec)
+                    VALUES
+                        ('${database[index]}',
+                         '${hdr.external_id}',
+                         '${payStatus}',
+                         ${idPortal ? `'${idPortal}'` : 'NULL'}
+                        )
+                `;
+
+          const result = await runQuery(insertSql).catch(err => {
+            logGenerator(logFileName, 'error', `Insert control table failed: ${err.message}`);
+            console.error(`❌ Falló INSERT control table: ${err.message}`);
+            return { rowsAffected: [0] };
+          });
+
+          if (result.rowsAffected[0]) {
+            console.log(`✅ Control table actualizado para pago ${hdr.external_id}`);
+          } else {
+            console.warn(`⚠️  No se insertó control para pago ${hdr.external_id}`);
+          }
+        } else {
+          console.error(`❌ Error enviando pago ${hdr.external_id}: ${resp.status}`);
+          console.error('   Detalle:', resp.data);
+          logGenerator(
+            logFileName,
+            'error',
+            `Error al enviar pago ${hdr.external_id}: ${resp.status} ${JSON.stringify(resp.data)}`
+          );
+        }
+      } catch (err) {
+        console.error(`❌ Error POST para pago ${hdr.external_id}:`, err.message);
+        if (err.response) {
+          console.error('   Status:', err.response.status);
+          console.error('   Data:', err.response.data);
+        }
+        logGenerator(
+          logFileName,
+          'error',
+          `Error POST payment ${hdr.external_id}: ${err.message}`
+        );
+      }
+    }
   }
 }
 
