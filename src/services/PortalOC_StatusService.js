@@ -131,7 +131,7 @@ class PortalOCStatusService {
     async getFocaltecId(ocSage, idDatabase) {
         const sql = `
             SELECT RTRIM(idFocaltec) AS idFocaltec
-            FROM dbo.fesaOCFocaltec
+            FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = '${ocSage}'
               AND idDatabase = '${idDatabase}'
               AND idFocaltec IS NOT NULL

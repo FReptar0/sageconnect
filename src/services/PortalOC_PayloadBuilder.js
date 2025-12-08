@@ -246,7 +246,7 @@ class PortalOCPayloadBuilder {
         
         const whereCondition = `
           AND NOT EXISTS (
-            SELECT 1 FROM dbo.fesaOCFocaltec
+            SELECT 1 FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = A.PONUMBER
               AND idDatabase = '${this.databases[dbIndex]}'
               AND status <> 'ERROR'

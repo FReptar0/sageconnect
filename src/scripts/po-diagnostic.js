@@ -120,7 +120,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
                     WHEN status = 'ERROR' THEN 'ERROR EN PROCESAMIENTO'
                     ELSE 'ESTADO: ' + status
                 END as Estado
-            FROM dbo.fesaOCFocaltec
+            FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = '${poNumber}'
             ORDER BY createdAt DESC`;
 

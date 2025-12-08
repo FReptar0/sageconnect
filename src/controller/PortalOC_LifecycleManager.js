@@ -233,7 +233,7 @@ class PortalOCLifecycleManager {
     async getFocaltecId(ocSage, tenantIndex) {
         const sql = `
             SELECT RTRIM(idFocaltec) AS idFocaltec
-            FROM dbo.fesaOCFocaltec
+            FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = '${ocSage}'
               AND idDatabase = '${databases[tenantIndex]}'
               AND idFocaltec IS NOT NULL

@@ -167,7 +167,7 @@ async function searchPOInFESA(poNumber, database) {
       lastUpdate,
       responseAPI,
       idDatabase
-    FROM dbo.fesaOCFocaltec
+    FROM fesa.dbo.fesaOCFocaltec
     WHERE ocSage = '${poNumber}'
       AND idDatabase = '${database}'
       AND idFocaltec IS NOT NULL

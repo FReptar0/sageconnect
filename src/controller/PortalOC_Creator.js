@@ -231,7 +231,7 @@ order by A.PONUMBER, B.PORLREV;
     // 4.1) Comprobar si ya existe en fesaOCFocaltec
     const checkSql = `
       SELECT idFocaltec
-      FROM dbo.fesaOCFocaltec
+      FROM fesa.dbo.fesaOCFocaltec
       WHERE ocSage    = '${po.external_id}'
         AND idDatabase= '${databases[index]}'
         AND idFocaltec IS NOT NULL

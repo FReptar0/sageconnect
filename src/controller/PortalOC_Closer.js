@@ -73,7 +73,7 @@ async function closePurchaseOrders(index) {
         // 2.1) Verificar en fesaOCFocaltec
         const checkSql = `
       SELECT RTRIM(idFocaltec) AS idFocaltec
-        FROM dbo.fesaOCFocaltec
+        FROM fesa.dbo.fesaOCFocaltec
        WHERE ocSage     = '${ponumber}'
          AND idDatabase = '${databases[index]}'
          AND idFocaltec IS NOT NULL

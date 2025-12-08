@@ -59,7 +59,7 @@ async function main() {
         // 1) Buscar control record válido
         const checkSql = `
       SELECT RTRIM(idFocaltec) AS idFocaltec
-      FROM dbo.fesaOCFocaltec
+      FROM fesa.dbo.fesaOCFocaltec
       WHERE ocSage     = '${ocSage}'
         AND idDatabase = '${idDatabase}'
         AND idFocaltec IS NOT NULL
