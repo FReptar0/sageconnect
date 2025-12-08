@@ -38,12 +38,12 @@ class PortalOCPayloadBuilder {
             : '';
 
         // Adjust quantity field based on cancellations
-        // Use OQORDERED (Outstanding Quantity) which already accounts for:
+        // Use OQOUTSTAND (Outstanding Quantity) which already accounts for:
         // - Cancelled quantities (OQCANCELED)
         // - Received quantities (QTYRECVED)
-        // Formula: OQORDERED = SQORDERED - QTYRECVED - OQCANCELED
+        // This is the official SAGE 300 field for pending quantity
         const quantityField = adjustForCancellations 
-            ? 'B.OQORDERED' 
+            ? 'B.OQOUTSTAND' 
             : 'B.SQORDERED';
 
         const sql = `
