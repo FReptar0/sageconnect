@@ -35,12 +35,19 @@ async function closePurchaseOrders(index) {
 
     const sql = `SELECT DISTINCT RTRIM(A.PONUMBER) AS PONUMBER
       FROM POPORH1 A
-      LEFT OUTER JOIN PORCPH1 B ON A.PORHSEQ = B.PORHSEQ AND A.LASTRECEIP = B.RCPNUMBER
-     WHERE (SELECT SUM(B.OQCANCELED) FROM POPORL B WHERE B.PORHSEQ = A.PORHSEQ) = 0
-       AND A.ISCOMPLETE = 1
+     WHERE A.ISCOMPLETE = 1
        AND A.DTCOMPLETE >= '${oneMonthAgo}'
-       AND B.ISINVOICED = 1
-       AND B.ISCOMPLETE = 1`;
+       AND NOT EXISTS (
+           SELECT 1 
+           FROM PORCPH1 C 
+           WHERE C.PORHSEQ = A.PORHSEQ 
+             AND (C.ISINVOICED = 0 OR C.ISCOMPLETE = 0)
+       )
+       AND EXISTS (
+           SELECT 1 
+           FROM PORCPH1 D 
+           WHERE D.PORHSEQ = A.PORHSEQ
+       )`;
 
     let recordset;
     try {
