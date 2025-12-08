@@ -38,8 +38,12 @@ class PortalOCPayloadBuilder {
             : '';
 
         // Adjust quantity field based on cancellations
+        // Use OQORDERED (Outstanding Quantity) which already accounts for:
+        // - Cancelled quantities (OQCANCELED)
+        // - Received quantities (QTYRECVED)
+        // Formula: OQORDERED = SQORDERED - QTYRECVED - OQCANCELED
         const quantityField = adjustForCancellations 
-            ? '(B.SQORDERED - B.OQCANCELED)' 
+            ? 'B.OQORDERED' 
             : 'B.SQORDERED';
 
         const sql = `
