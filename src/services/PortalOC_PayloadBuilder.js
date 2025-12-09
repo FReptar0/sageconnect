@@ -223,8 +223,9 @@ class PortalOCPayloadBuilder {
                 po.total = po.lines.reduce((sum, line) => sum + line.total, 0);
             }
 
-            // Remove empty CFDI fields that the API doesn't accept
+            // Remove empty fields that the API doesn't accept
             if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
+            if (po.requisition_number === 0) delete po.requisition_number;
 
             // Validate the purchase order
             try {
