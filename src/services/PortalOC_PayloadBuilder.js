@@ -218,23 +218,26 @@ class PortalOCPayloadBuilder {
                     continue;
                 }
 
-            // Recalculate totals based on remaining lines
-            po.subtotal = po.lines.reduce((sum, line) => sum + line.subtotal, 0);
-            po.total = po.lines.reduce((sum, line) => sum + line.total, 0);
-        }
+                // Recalculate totals based on remaining lines
+                po.subtotal = po.lines.reduce((sum, line) => sum + line.subtotal, 0);
+                po.total = po.lines.reduce((sum, line) => sum + line.total, 0);
+            }
 
-        // Validate the purchase order
-        try {
-            validateExternPurchaseOrder(po);
-            validatedOrders.push(po);
-        } catch (validationError) {
-            const errorMessages = validationError.details 
-                ? validationError.details.map(d => d.message).join(', ')
-                : validationError.message;
-            logGenerator('PortalOC_PayloadBuilder', 'error', 
-                `[VALIDATION] Order ${po.external_id} failed validation: ${errorMessages}`);
-        }
-    }        return validatedOrders;
+            // Remove empty CFDI fields that the API doesn't accept
+            if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
+
+            // Validate the purchase order
+            try {
+                validateExternPurchaseOrder(po);
+                validatedOrders.push(po);
+            } catch (validationError) {
+                const errorMessages = validationError.details 
+                    ? validationError.details.map(d => d.message).join(', ')
+                    : validationError.message;
+                logGenerator('PortalOC_PayloadBuilder', 'error', 
+                    `[VALIDATION] Order ${po.external_id} failed validation: ${errorMessages}`);
+            }
+        }        return validatedOrders;
     }
 
     /**
