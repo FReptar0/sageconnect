@@ -216,7 +216,7 @@ order by A.PONUMBER, B.DETAILNUM;
       // Insert ERROR en fesaOCFocaltec
       const respAPI = valErr.details.map(d => d.message).join('; ');
       const sqlErr = `
-        INSERT INTO dbo.fesaOCFocaltec
+        INSERT INTO fesa.dbo.fesaOCFocaltec
           (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
         VALUES
           ('',
@@ -255,7 +255,7 @@ order by A.PONUMBER, B.DETAILNUM;
       // 4.5) Insert POSTED en fesaOCFocaltec
       const idFocaltec = resp.data.id;
       const sqlOk = `
-        INSERT INTO dbo.fesaOCFocaltec
+        INSERT INTO fesa.dbo.fesaOCFocaltec
           (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
         VALUES
           ('${idFocaltec}',
@@ -284,7 +284,7 @@ order by A.PONUMBER, B.DETAILNUM;
 
       // 4.6) Insert ERROR en fesaOCFocaltec
       const sqlErr = `
-        INSERT INTO dbo.fesaOCFocaltec
+        INSERT INTO fesa.dbo.fesaOCFocaltec
           (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
         VALUES
           (NULL,

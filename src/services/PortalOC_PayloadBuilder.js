@@ -268,7 +268,7 @@ class PortalOCPayloadBuilder {
           AND (SELECT SUM(B2.OQCANCELED) FROM ${this.databases[dbIndex]}.dbo.POPORL B2 WHERE B2.PORHSEQ = A.PORHSEQ) < 
               (SELECT SUM(B2.SQORDERED) FROM ${this.databases[dbIndex]}.dbo.POPORL B2 WHERE B2.PORHSEQ = A.PORHSEQ)
           AND EXISTS (
-            SELECT 1 FROM dbo.fesaOCFocaltec
+            SELECT 1 FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = A.PONUMBER
               AND idDatabase = '${this.databases[dbIndex]}'
               AND status = 'POSTED'
@@ -290,7 +290,7 @@ class PortalOCPayloadBuilder {
               (SELECT SUM(B2.SQORDERED) FROM ${this.databases[dbIndex]}.dbo.POPORL B2 WHERE B2.PORHSEQ = A.PORHSEQ)
           AND (SELECT SUM(B2.SQORDERED) FROM ${this.databases[dbIndex]}.dbo.POPORL B2 WHERE B2.PORHSEQ = A.PORHSEQ) > 0
           AND EXISTS (
-            SELECT 1 FROM dbo.fesaOCFocaltec
+            SELECT 1 FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = A.PONUMBER
               AND idDatabase = '${this.databases[dbIndex]}'
               AND status = 'POSTED'

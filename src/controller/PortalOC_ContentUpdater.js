@@ -218,7 +218,7 @@ class PortalOCContentUpdater {
      */
     async updateFesaTimestamp(ocSage, tenantIndex) {
         const sql = `
-            UPDATE dbo.fesaOCFocaltec
+            UPDATE fesa.dbo.fesaOCFocaltec
             SET lastUpdate = GETDATE()
             WHERE ocSage = '${ocSage}'
               AND idDatabase = '${databases[tenantIndex]}'

@@ -102,7 +102,7 @@ async function main() {
 
         // 3) Actualizar la tabla de control en FESA
         const updateSql = `
-      UPDATE dbo.fesaOCFocaltec
+      UPDATE fesa.dbo.fesaOCFocaltec
          SET status     = '${status}',
              lastUpdate = GETDATE()
        WHERE ocSage     = '${ocSage}'

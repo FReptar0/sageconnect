@@ -160,7 +160,7 @@ class PortalOCStatusService {
      */
     async updateFesaStatus(ocSage, status, idDatabase) {
         const sql = `
-            UPDATE dbo.fesaOCFocaltec
+            UPDATE fesa.dbo.fesaOCFocaltec
             SET status = '${status}',
                 lastUpdate = GETDATE()
             WHERE ocSage = '${ocSage}'

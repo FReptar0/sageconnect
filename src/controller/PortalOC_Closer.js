@@ -132,7 +132,7 @@ async function closePurchaseOrders(index) {
 
         // 2.3) Actualizar FESA a CLOSED
         const updateSql = `
-      UPDATE dbo.fesaOCFocaltec
+      UPDATE fesa.dbo.fesaOCFocaltec
          SET status     = 'CLOSED',
              lastUpdate = GETDATE()
        WHERE ocSage     = '${ponumber}'

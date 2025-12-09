@@ -107,7 +107,7 @@ async function cancellationPurchaseOrders(index) {
 
         // 2.3) Actualizar FESA a CANCELLED
         const updateSql = `
-      UPDATE dbo.fesaOCFocaltec
+      UPDATE fesa.dbo.fesaOCFocaltec
          SET status     = 'CANCELLED',
              lastUpdate = GETDATE()
        WHERE ocSage     = '${ponumber}'

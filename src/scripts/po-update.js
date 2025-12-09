@@ -448,7 +448,7 @@ async function updatePOInPortal(idFocaltec, orderPayload, tenantIndex) {
  */
 async function updateFESATimestamp(poNumber, database) {
   const sql = `
-    UPDATE dbo.fesaOCFocaltec
+    UPDATE fesa.dbo.fesaOCFocaltec
     SET lastUpdate = GETDATE()
     WHERE ocSage = '${poNumber}'
       AND idDatabase = '${database}'
