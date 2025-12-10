@@ -45,8 +45,12 @@ async function checkPayments(index) {
     }
 
     for (let i = 0; i < resultPayments.length; i++) {
+        const paymentId = resultPayments[i].metadata?.payment_info?.payments?.[0]?.external_id || 'N/A';
+        const receptorRfc = resultPayments[i].cfdi?.receptor?.rfc || 'N/A';
+        const uuid = resultPayments[i].cfdi?.timbre?.uuid || 'N/A';
+        
         console.log(`[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} para index=${index}`);
-        logGenerator(logFileName, 'info', `[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} para index=${index}. Detalles del pago: ${JSON.stringify(resultPayments[i])}`);
+        logGenerator(logFileName, 'info', `[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} - Payment ID: ${paymentId}, RFC: ${receptorRfc}, UUID: ${uuid}`);
 
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
         const idCiaResult = await runQuery(idCiaQuery)
@@ -250,7 +254,7 @@ async function checkPayments(index) {
     }
 
     if (emails.length > 0) {
-        logGenerator(logFileName, 'info', `[INFO] Enviando ${emails.length} correos agrupados para index=${index}. Detalles de los correos: ${JSON.stringify(emails)}`);
+        logGenerator(logFileName, 'info', `[INFO] Enviando ${emails.length} correos de error para index=${index}`);
         console.log(`[INFO] Enviando ${emails.length} correos agrupados para index=${index}`);
         await sendGroupedEmails(emails, logFileName);
         logGenerator(logFileName, 'info', `[INFO] Correos enviados exitosamente para index=${index}`);
