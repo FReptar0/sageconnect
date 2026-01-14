@@ -26,12 +26,12 @@ async function getTypeP(index) {
     const logFileName = 'GetTypesCFDI';
     logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo P (PAYMENT_CFDI) para index=${index}`);
     let dateFrom = getOneMonthAgoString();
-
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?from=${dateFrom}-01` +
+            `?from=${dateFrom}-01&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=PAYMENT_CFDI`,
@@ -129,12 +129,12 @@ async function getTypeI(index) {
     const logFileName = 'GetTypesCFDI';
     logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo I (INVOICE) PENDING_TO_PAY para index=${index}`);
     let dateFrom = getOneMonthAgoString();
-
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?from=${dateFrom}-01` +
+            `?from=${dateFrom}-01&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -208,12 +208,12 @@ async function getTypeIToSend(index) {
     const logFileName = 'GetTypesCFDI';
     logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo I (INVOICE) TO_SEND para index=${index}`);
     let dateFrom = getOneMonthAgoString();
-
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?from=${dateFrom}-01` +
+            `?from=${dateFrom}-01&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -317,12 +317,12 @@ async function getTypeE(index) {
     const logFileName = 'GetTypesCFDI';
     logGenerator(logFileName, 'info', `[START] Iniciando procesamiento de CFDI tipo E (CREDIT_NOTE) para index=${index}`);
     let dateFrom = getOneMonthAgoString();
-
+    let dateUntil = getCurrentDateString();
 
     try {
         const response = await axios.get(
             urlBase(index) +
-            `?from=${dateFrom}-01` +
+            `?from=${dateFrom}-01&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=CREDIT_NOTE`,
