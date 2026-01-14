@@ -4,9 +4,6 @@ const { getOneMonthAgoString, getCurrentDateString } = require('./TimezoneHelper
 const { runQuery } = require('./SQLServerConnection');
 const { logGenerator } = require('./LogGenerator');
 
-// Variable global para el inicio del año en curso
-const CURRENT_YEAR_START = `${new Date().getFullYear()}-01-01`;
-
 const url = process.env.URL;
 const tenantIds = []
 const apiKeys = []
@@ -34,8 +31,7 @@ async function getTypeP(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${CURRENT_YEAR_START}` +
+            `?from=${dateFrom}&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=PAYMENT_CFDI`,
@@ -138,8 +134,7 @@ async function getTypeI(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${CURRENT_YEAR_START}` +
+            `?from=${dateFrom}&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -218,8 +213,7 @@ async function getTypeIToSend(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${CURRENT_YEAR_START}` +
+            `?from=${dateFrom}&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=INVOICE` +
@@ -328,8 +322,7 @@ async function getTypeE(index) {
     try {
         const response = await axios.get(
             urlBase(index) +
-            //`?to=${dateUntil}` + TODO: Revertir este cambio después de reportarlo a Focaltec
-            `?from=${CURRENT_YEAR_START}` +
+            `?from=${dateFrom}&to=${dateUntil}` +
             `&documentTypes=CFDI` +
             `&offset=0&pageSize=0` +
             `&cfdiType=CREDIT_NOTE`,
