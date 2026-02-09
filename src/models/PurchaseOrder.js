@@ -97,10 +97,29 @@ const externPurchaseOrderSchema = Joi.object({
     requested_by_contact: Joi.string().required(),
 
     cfdi_payment_form: Joi.string()
-        .valid('F01', 'F02', 'F03', 'F04', 'F05', 'F06', 'F08',
-            'F12', 'F13', 'F14', 'F15', 'F17', 'F23', 'F24',
-            'F25', 'F26', 'F27', 'F28', 'F29', 'F30', 'F99')
-        .allow('', null),
+        .allow('', null)
+        .custom((value, helpers) => {
+            // Valores válidos según el catálogo SAT de formas de pago
+            const validForms = ['F01', 'F02', 'F03', 'F04', 'F05', 'F06', 'F08',
+                'F12', 'F13', 'F14', 'F15', 'F17', 'F23', 'F24',
+                'F25', 'F26', 'F27', 'F28', 'F29', 'F30', 'F99'];
+            
+            // Valores vacíos o nulos -> null
+            if (!value || value === '' || value === 'F' || value === 'Fnull') {
+                return null;
+            }
+            
+            const trimmed = String(value).trim();
+            
+            // Si es válido, retornarlo
+            if (validForms.includes(trimmed)) {
+                return trimmed;
+            }
+            
+            // Valor inválido según catálogo SAT -> convertir a null
+            console.warn(`[WARN] cfdi_payment_form "${trimmed}" no es válido según catálogo SAT, se usará null`);
+            return null;
+        }),
     cfdi_payment_method: Joi.string().valid('PPD', 'PUE').allow('', null),
     cfdi_use: Joi.string()
         .valid('G01', 'G02', 'G03', 'I01', 'I02', 'I03', 'I04',
