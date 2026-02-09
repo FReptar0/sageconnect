@@ -280,11 +280,12 @@ order by A.PONUMBER, B.PORLREV;
     if (po.cfdi_payment_method === '') delete po.cfdi_payment_method;
     if (po.requisition_number === 0) delete po.requisition_number;
 
-    // 4.3) Validar con Joi
+    // 4.3) Validar con Joi (usar el valor transformado retornado)
+    let validatedPO;
     try {
-      validateExternPurchaseOrder(po);
-      console.log(`✅ [VALID] PO ${po.external_id} pasó validación Joi`);
-      logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} pasó validación Joi`);
+      validatedPO = validateExternPurchaseOrder(po);
+      console.log(`✅ [VALID] PO ${validatedPO.external_id} pasó validación Joi`);
+      logGenerator(logFileName, 'info', `[OK] PO ${validatedPO.external_id} pasó validación Joi`);
     } catch (valErr) {
       console.error(`❌ [ERROR] Joi validation failed for PO ${po.external_id}:`);
       valErr.details.forEach(d => console.error(`   -> ${d.message}`));
@@ -309,13 +310,13 @@ order by A.PONUMBER, B.PORLREV;
       continue;
     }
 
-    // 4.4) Enviar al portal
+    // 4.4) Enviar al portal (usar validatedPO que tiene los valores transformados por Joi)
     const endpoint = `${urlBase(tenantIndex)}/purchase-orders`;
     try {
       console.log(`🚀 [UPLOAD] Enviando al Portal de Proveedores...`);
       const resp = await axios.post(
         endpoint,
-        po,
+        validatedPO,
         {
           headers: {
             'PDPTenantKey': apiKeys[tenantIndex],
