@@ -237,21 +237,28 @@ async function modeScan(DB, tenantIndex, months) {
     console.log(`  ${missingCount} portal CFDIs need UUID repair across ${repairProviderIds.length} providers.`);
 
     // --- STEP 4: Resolve ALL provider_ids → Sage vendor IDs ---
-    console.log('[STEP 3] Resolving portal provider IDs to Sage vendor IDs...');
+    console.log('[STEP 3] Resolving portal provider IDs to Sage vendor IDs (via portal API)...');
     const providerToVendor = {};
     for (const pid of allProviderIds) {
         try {
-            const result = await runQuery(
-                `SELECT RTRIM(VENDORID) AS VENDORID FROM APVENO WHERE OPTFIELD='PROVIDERID' AND RTRIM([VALUE])='${pid}'`,
-                DB
+            const provResp = await axios.get(
+                `${URL}/api/1.0/extern/tenants/${tenantIds[tenantIndex]}/providers/${pid}`,
+                {
+                    headers: {
+                        'PDPTenantKey': apiKeys[tenantIndex],
+                        'PDPTenantSecret': apiSecrets[tenantIndex]
+                    }
+                }
             );
-            if (result.recordset.length > 0) {
-                providerToVendor[pid] = result.recordset[0].VENDORID;
+            const externalId = provResp.data?.external_id;
+            if (externalId && externalId.trim()) {
+                providerToVendor[pid] = externalId.trim();
+                console.log(`  Provider ${pid} -> external_id: ${externalId.trim()}`);
             } else {
-                console.log(`  [WARN] Provider ${pid} not found in Sage (no VENDORID match)`);
+                console.log(`  [WARN] Provider ${pid} has no external_id in portal`);
             }
         } catch (err) {
-            console.error(`  [ERROR] Vendor lookup failed for provider ${pid}: ${err.message}`);
+            console.error(`  [ERROR] Portal provider lookup failed for ${pid}: ${err.message}`);
         }
     }
     console.log(`  Resolved ${Object.keys(providerToVendor).length} of ${allProviderIds.size} providers to Sage vendors.`);
