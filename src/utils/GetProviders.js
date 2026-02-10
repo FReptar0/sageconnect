@@ -67,4 +67,38 @@ async function getProviders(index) {
     }
 }
 
-module.exports = { getProviders };
+/**
+ * Busca un proveedor en el portal por RFC.
+ * @param {number} index - Índice del tenant.
+ * @param {string} rfc - RFC del proveedor a buscar.
+ * @returns {Promise<Object|null>} - Datos del proveedor o null si no se encontró.
+ */
+async function getProviderByRfc(index, rfc) {
+    const logFileName = 'GetProviders';
+    try {
+        const response = await axios.get(
+            urlBase(index) + `?rfc=${encodeURIComponent(rfc)}&pageSize=-1`,
+            {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index]
+                }
+            }
+        );
+
+        const items = response.data.items || [];
+        if (items.length === 0) {
+            console.log(`[INFO] No provider found with RFC: ${rfc}`);
+            logGenerator(logFileName, 'info', `No provider found with RFC: ${rfc}`);
+            return null;
+        }
+
+        return items[0];
+    } catch (error) {
+        console.error(`[ERROR] Error fetching provider by RFC ${rfc}:`, error.message);
+        logGenerator(logFileName, 'error', `Error fetching provider by RFC ${rfc}: ${error.message}`);
+        return null;
+    }
+}
+
+module.exports = { getProviders, getProviderByRfc };

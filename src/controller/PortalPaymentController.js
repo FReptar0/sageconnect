@@ -1,6 +1,7 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
+const { resolveProviderIdByRfc } = require('../services/ProviderIdResolver');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
@@ -132,21 +133,30 @@ SELECT A.* FROM (
             });
         }
 
-        // 2) Filtrar registros sin PROVIDERID
+        // 2) Auto-resolver PROVIDERID faltante vía portal (por RFC) y filtrar
+        const withoutPid = payments.recordset.filter(r => !r.PROVIDERID || r.PROVIDERID.trim() === '');
+        for (const r of withoutPid) {
+            const rfc = r.RFC ? r.RFC.trim() : '';
+            if (rfc) {
+                console.log(`[INFO] PROVIDERID vacío para vendor ${r.provider_external_id} (pago ${r.external_id}). Buscando en portal por RFC: ${rfc}...`);
+                await resolveProviderIdByRfc(r.provider_external_id, rfc, index, database[index]);
+            } else {
+                console.warn(`[WARN] Vendor ${r.provider_external_id} sin PROVIDERID y sin RFC. No se puede resolver.`);
+                logGenerator(logFileName, 'warn', `Vendor ${r.provider_external_id} sin PROVIDERID y sin RFC.`);
+            }
+        }
+        // Siempre omitir los pagos sin PROVIDERID en este ciclo; el siguiente ciclo los tomará ya con PROVIDERID
         const beforeCount = payments.recordset.length;
         payments.recordset = payments.recordset.filter(r => {
             if (!r.PROVIDERID || r.PROVIDERID.trim() === '') {
-                logGenerator(
-                    'PortalPaymentController',
-                    'warn',
-                    `Proveedor ${r.provider_external_id} no tiene PROVIDERID seteado.`
-                );
-                console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío`);
+                console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío (se procesará en el siguiente ciclo si fue resuelto)`);
                 return false;
             }
             return true;
         });
-        console.log(`[INFO] Se omitieron ${beforeCount - payments.recordset.length} pagos sin PROVIDERID.`);
+        if (beforeCount - payments.recordset.length > 0) {
+            console.log(`[INFO] Se omitieron ${beforeCount - payments.recordset.length} pagos sin PROVIDERID (se resolverán en el siguiente ciclo).`);
+        }
 
         // 3) Filtrar por control table (todos los NoPagoSage ya existentes)
         const queryPagosRegistrados = `
