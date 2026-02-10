@@ -96,6 +96,10 @@ function saveState(state) {
     state.summary.uploaded = payments.filter(p => ['uploaded', 'done'].includes(p.status)).length;
     state.summary.failed = payments.filter(p => ['repair_failed', 'upload_failed', 'no_match'].includes(p.status)).length;
 
+    const dir = path.dirname(STATE_FILE);
+    if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
 }
 
