@@ -2,6 +2,7 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const { resolveProviderIdByRfc } = require('../services/ProviderIdResolver');
+const { resolveUuidByFolio } = require('../services/UuidResolver');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
@@ -192,6 +193,8 @@ SELECT A.* FROM (
             DP.CNTBTCH        AS LotePago,
             DP.CNTRMIT        AS AsientoPago,
             RTRIM(DP.IDINVC)  AS invoice_external_id,
+            H.CNTBTCH         AS inv_batch,
+            H.CNTITEM         AS inv_entry,
             H.AMTGROSDST      AS invoice_amount,
             CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
             H.EXCHRATEHC      AS invoice_exchange_rate,
@@ -235,6 +238,20 @@ SELECT A.* FROM (
 
             if (!invoices.recordset.length) {
                 console.log(`  [INFO] No hay facturas pagadas para Lote ${hdr.LotePago} / Asiento ${hdr.AsientoPago}.`);
+                continue;
+            }
+
+            // 4.1.1) Auto-resolver UUIDs faltantes vía portal y omitir pago si persisten
+            const missingUuid = invoices.recordset.filter(inv => !inv.UUID || inv.UUID.trim() === '');
+            if (missingUuid.length > 0) {
+                console.log(`  [INFO] ${missingUuid.length} factura(s) sin UUID para pago ${hdr.external_id}. Intentando resolver...`);
+                const providerId = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
+                for (const inv of missingUuid) {
+                    await resolveUuidByFolio(inv.invoice_external_id, inv.inv_batch, inv.inv_entry, providerId, index, database[index]);
+                }
+                // Omitir este pago en este ciclo; el siguiente ciclo lo tomará con los UUIDs ya escritos
+                console.warn(`  [WARN] Omite pago ${hdr.external_id} por UUID(s) faltante(s) (se procesará en el siguiente ciclo si fueron resueltos)`);
+                logGenerator(logFileName, 'warn', `Pago ${hdr.external_id} omitido: ${missingUuid.length} factura(s) sin UUID. Se intentó resolver vía portal.`);
                 continue;
             }
 
