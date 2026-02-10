@@ -207,40 +207,39 @@ async function modeScan(DB, tenantIndex, months) {
         console.error(`  [WARN] Failed to fetch known UUIDs: ${err.message}. Proceeding without filter.`);
     }
 
-    // --- STEP 3: Group portal CFDIs by provider_id, filter to those missing from APIBHO ---
-    const cfdisByProvider = {};
+    // --- STEP 3: Split portal CFDIs into two groups ---
+    //   - needsRepair: UUID NOT in APIBHO (needs UUID written + payment uploaded)
+    //   - uuidPresent: UUID already in APIBHO (just needs payment uploaded)
+    const needsRepairByProvider = {};
+    const uuidPresentByProvider = {};
     let alreadyKnownCount = 0;
+    const allProviderIds = new Set();
 
     for (const cfdi of portalCfdis) {
         const uuid = cfdi.cfdi?.timbre?.uuid;
         const providerId = cfdi.metadata?.provider_id;
         if (!uuid || !providerId) continue;
+        allProviderIds.add(providerId);
 
         if (knownUuids.has(uuid.toUpperCase())) {
             alreadyKnownCount++;
-            continue; // UUID already in APIBHO, no repair needed
+            if (!uuidPresentByProvider[providerId]) uuidPresentByProvider[providerId] = [];
+            uuidPresentByProvider[providerId].push(cfdi);
+        } else {
+            if (!needsRepairByProvider[providerId]) needsRepairByProvider[providerId] = [];
+            needsRepairByProvider[providerId].push(cfdi);
         }
-
-        if (!cfdisByProvider[providerId]) cfdisByProvider[providerId] = [];
-        cfdisByProvider[providerId].push(cfdi);
     }
 
-    const providerIds = Object.keys(cfdisByProvider);
-    const missingCount = providerIds.reduce((sum, pid) => sum + cfdisByProvider[pid].length, 0);
-    console.log(`  ${alreadyKnownCount} portal CFDIs already have UUID in APIBHO (skipped).`);
-    console.log(`  ${missingCount} portal CFDIs need UUID repair across ${providerIds.length} providers.`);
+    const repairProviderIds = Object.keys(needsRepairByProvider);
+    const missingCount = repairProviderIds.reduce((sum, pid) => sum + needsRepairByProvider[pid].length, 0);
+    console.log(`  ${alreadyKnownCount} portal CFDIs have UUID in APIBHO (may need payment upload).`);
+    console.log(`  ${missingCount} portal CFDIs need UUID repair across ${repairProviderIds.length} providers.`);
 
-    if (missingCount === 0) {
-        console.log('\n  All portal PENDING_TO_PAY invoices already have UUIDs in APIBHO.');
-        state.lastScanDate = new Date().toISOString();
-        saveState(state);
-        return;
-    }
-
-    // --- STEP 4: Resolve provider_id → Sage vendor ID ---
+    // --- STEP 4: Resolve ALL provider_ids → Sage vendor IDs ---
     console.log('[STEP 3] Resolving portal provider IDs to Sage vendor IDs...');
     const providerToVendor = {};
-    for (const pid of providerIds) {
+    for (const pid of allProviderIds) {
         try {
             const result = await runQuery(
                 `SELECT RTRIM(VENDORID) AS VENDORID FROM APVENO WHERE OPTFIELD='PROVIDERID' AND RTRIM([VALUE])='${pid}'`,
@@ -255,19 +254,39 @@ async function modeScan(DB, tenantIndex, months) {
             console.error(`  [ERROR] Vendor lookup failed for provider ${pid}: ${err.message}`);
         }
     }
-    console.log(`  Resolved ${Object.keys(providerToVendor).length} of ${providerIds.length} providers to Sage vendors.`);
+    console.log(`  Resolved ${Object.keys(providerToVendor).length} of ${allProviderIds.size} providers to Sage vendors.`);
 
-    // --- STEP 5: For each vendor, find PY payments and match invoices ---
-    console.log('[STEP 4] Finding PY payments for matched vendors...\n');
+    // --- STEP 5: Diagnostic dump of unmatched portal CFDIs (needsRepair) ---
+    if (missingCount > 0) {
+        console.log(`\n[STEP 4a] Diagnostic: ${missingCount} portal CFDIs missing from APIBHO:`);
+        for (const [providerId, cfdis] of Object.entries(needsRepairByProvider)) {
+            const vendorId = providerToVendor[providerId] || '(NOT RESOLVED)';
+            for (const cfdi of cfdis) {
+                const uuid = cfdi.cfdi?.timbre?.uuid || 'N/A';
+                const folio = cfdi.cfdi?.folio || 'N/A';
+                const serie = cfdi.cfdi?.serie || '';
+                const total = cfdi.cfdi?.total || 'N/A';
+                const currency = cfdi.cfdi?.moneda || 'N/A';
+                const rfcEmisor = cfdi.cfdi?.emisor?.rfc || 'N/A';
+                console.log(`  - UUID: ${uuid}`);
+                console.log(`    Folio: ${serie ? serie + ' ' : ''}${folio} | Total: ${total} ${currency} | RFC Emisor: ${rfcEmisor}`);
+                console.log(`    Provider ID: ${providerId} | Sage Vendor: ${vendorId}`);
+            }
+        }
+    }
+
+    // --- STEP 6: For needsRepair vendors, match portal CFDIs to Sage invoices ---
+    console.log(`\n[STEP 4b] Matching portal CFDIs (missing UUID) to Sage invoices...`);
 
     let newCount = 0;
     let skippedCount = 0;
     let matchedCfdiCount = 0;
 
     for (const [providerId, vendorId] of Object.entries(providerToVendor)) {
-        const portalCfdisForVendor = cfdisByProvider[providerId] || [];
+        const portalCfdisForVendor = needsRepairByProvider[providerId] || [];
+        if (portalCfdisForVendor.length === 0) continue;
 
-        // Get all invoices for this vendor (to match against portal CFDIs)
+        // Get all invoices for this vendor
         let sageInvoices;
         try {
             const result = await runQuery(`
@@ -297,8 +316,7 @@ async function modeScan(DB, tenantIndex, months) {
             continue;
         }
 
-        // Match each portal CFDI to a Sage invoice
-        const cfdiToInvoice = {}; // portal cfdi.id → { sageInvoice, score, uuid }
+        const cfdiToInvoice = {};
 
         for (const portalCfdi of portalCfdisForVendor) {
             const uuid = portalCfdi.cfdi?.timbre?.uuid;
@@ -306,9 +324,7 @@ async function modeScan(DB, tenantIndex, months) {
             let bestScore = 0;
 
             for (const sageInv of sageInvoices) {
-                // Only match invoices that are missing UUID
                 if (sageInv.UUID_APIBHO && sageInv.UUID_APIBHO.trim() !== '') continue;
-
                 const score = scoreMatch(portalCfdi, sageInv);
                 if (score > bestScore) {
                     bestScore = score;
@@ -328,6 +344,9 @@ async function modeScan(DB, tenantIndex, months) {
                     total: portalCfdi.cfdi?.total || 0
                 };
                 matchedCfdiCount++;
+            } else {
+                const folio = portalCfdi.cfdi?.folio || 'N/A';
+                console.log(`  [NO MATCH] Portal folio=${folio} uuid=${uuid} bestScore=${bestScore} (vendor ${vendorId} has ${sageInvoices.filter(s => !s.UUID_APIBHO || !s.UUID_APIBHO.trim()).length} invoices without UUID)`);
             }
         }
 
@@ -335,52 +354,66 @@ async function modeScan(DB, tenantIndex, months) {
 
         // Find PY payments that reference the matched Sage invoices
         const matchedIdinvcs = Object.values(cfdiToInvoice).map(m => m.sageInvoice.IDINVC);
+        const pyPayments = await findPyPaymentsForInvoices(DB, vendorId, matchedIdinvcs);
+        if (pyPayments.length === 0) continue;
 
-        let pyPayments;
+        // Build state entries for these PY payments (needs repair)
+        for (const py of pyPayments) {
+            const result = await buildPaymentStateEntry(DB, py, providerId, vendorId, state, cfdiToInvoice, 'pending');
+            if (result === 'new') newCount++;
+            else if (result === 'skipped') skippedCount++;
+        }
+    }
+
+    // --- STEP 7: For uuidPresent vendors, find PY payments not yet uploaded ---
+    console.log(`\n[STEP 5] Finding PY payments with UUIDs present but never uploaded to portal...`);
+
+    let uploadReadyCount = 0;
+
+    for (const [providerId, vendorId] of Object.entries(providerToVendor)) {
+        const presentCfdis = uuidPresentByProvider[providerId] || [];
+        if (presentCfdis.length === 0) continue;
+
+        // Get the UUIDs from portal that are already in APIBHO
+        const portalUuids = presentCfdis.map(c => c.cfdi?.timbre?.uuid).filter(Boolean);
+        if (portalUuids.length === 0) continue;
+
+        // Find Sage invoices that have these UUIDs
+        const uuidList = portalUuids.map(u => `'${u.toUpperCase()}'`).join(',');
+        let matchedInvoices;
         try {
-            const idinvcList = matchedIdinvcs.map(id => `'${id}'`).join(',');
             const result = await runQuery(`
-                SELECT DISTINCT
-                    RTRIM(R.DOCNBR)   AS external_id,
-                    R.CNTBTCH         AS LotePago,
-                    R.CNTENTR         AS AsientoPago,
-                    RTRIM(R.IDVEND)   AS vendor,
-                    R.AMTRMIT         AS total_amount
-                FROM APTCP DP
-                JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
-                JOIN APBTA B ON B.PAYMTYPE = R.BTCHTYPE AND B.CNTBTCH = R.CNTBTCH
-                WHERE DP.BATCHTYPE = 'PY'
-                  AND B.BATCHSTAT = 3
-                  AND R.ERRENTRY = 0
-                  AND R.RMITTYPE = 1
-                  AND DP.DOCTYPE = 1
-                  AND RTRIM(DP.IDVEND) = '${vendorId}'
-                  AND RTRIM(DP.IDINVC) IN (${idinvcList})
-                  AND R.DOCNBR NOT IN (
-                      SELECT NoPagoSage
-                      FROM fesa.dbo.fesaPagosFocaltec
-                      WHERE idCia = R.AUDTORG AND NoPagoSage = R.DOCNBR
-                  )
+                SELECT DISTINCT RTRIM(H.IDINVC) AS IDINVC
+                FROM APIBH H
+                JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3
+                JOIN APIBHO O ON H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM
+                WHERE H.IDVEND = '${vendorId}'
+                  AND H.ERRENTRY = 0
+                  AND O.OPTFIELD = 'FOLIOCFD'
+                  AND UPPER(RTRIM(O.[VALUE])) IN (${uuidList})
             `, DB);
-            pyPayments = result.recordset;
+            matchedInvoices = result.recordset.map(r => r.IDINVC);
         } catch (err) {
-            console.error(`  [ERROR] Failed to query PY payments for vendor ${vendorId}: ${err.message}`);
+            console.error(`  [ERROR] Failed to find invoices by UUID for vendor ${vendorId}: ${err.message}`);
             continue;
         }
 
+        if (matchedInvoices.length === 0) continue;
+
+        // Find PY payments for these invoices, not in control table
+        const pyPayments = await findPyPaymentsForInvoices(DB, vendorId, matchedInvoices);
         if (pyPayments.length === 0) continue;
 
-        // For each PY, get all its invoices and build the state entry
+        // Build state entries (these are upload-ready, all UUIDs present)
         for (const py of pyPayments) {
             const docNbr = py.external_id.trim();
 
-            // Skip if already tracked with non-pending status
             if (state.payments[docNbr] && state.payments[docNbr].status !== 'pending') {
                 skippedCount++;
                 continue;
             }
 
-            // Get ALL invoices for this PY (not just matched ones)
+            // Get all invoices for this PY
             let pyInvoices;
             try {
                 const result = await runQuery(`
@@ -395,28 +428,22 @@ async function modeScan(DB, tenantIndex, months) {
                         ISNULL(
                             (SELECT RTRIM([VALUE])
                              FROM APIBHO
-                             WHERE CNTBTCH = H.CNTBTCH
-                               AND CNTITEM = H.CNTITEM
-                               AND OPTFIELD = 'FOLIOCFD'
+                             WHERE CNTBTCH = H.CNTBTCH AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'
                             ), ''
                         ) AS UUID_APIBHO,
                         (SELECT COUNT(*)
                          FROM APIBHO
-                         WHERE CNTBTCH = H.CNTBTCH
-                           AND CNTITEM = H.CNTITEM
-                           AND OPTFIELD = 'FOLIOCFD'
+                         WHERE CNTBTCH = H.CNTBTCH AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'
                         ) AS FOLIOCFD_ROW_EXISTS
                     FROM APTCP DP
                     JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
                     JOIN APIBH H ON DP.IDVEND = H.IDVEND
-                            AND DP.IDINVC = H.IDINVC
-                            AND H.ERRENTRY = 0
-                    JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH
-                            AND C.BTCHSTTS = 3
+                            AND DP.IDINVC = H.IDINVC AND H.ERRENTRY = 0
+                    JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3
                     WHERE DP.BATCHTYPE = 'PY'
-                        AND DP.CNTBTCH   = ${py.LotePago}
-                        AND DP.CNTRMIT   = ${py.AsientoPago}
-                        AND DP.DOCTYPE   = 1
+                        AND DP.CNTBTCH = ${py.LotePago}
+                        AND DP.CNTRMIT = ${py.AsientoPago}
+                        AND DP.DOCTYPE = 1
                 `, DB);
                 pyInvoices = result.recordset;
             } catch (err) {
@@ -426,55 +453,37 @@ async function modeScan(DB, tenantIndex, months) {
 
             if (pyInvoices.length === 0) continue;
 
-            // Build invoice entries, pre-matching from portal data
-            const invoiceEntries = pyInvoices.map(inv => {
-                const hasUuid = inv.UUID_APIBHO && inv.UUID_APIBHO.trim() !== '';
+            // Check if ALL invoices have UUIDs
+            const allHaveUuid = pyInvoices.every(inv => inv.UUID_APIBHO && inv.UUID_APIBHO.trim() !== '');
 
-                // Find matching portal CFDI for this invoice (if UUID is missing)
-                let matchedUuid = null;
-                let matchScore = null;
-                let matchConfidence = null;
-                let portalCfdiId = null;
-
-                if (!hasUuid) {
-                    // Look through our matched CFDIs for this invoice
-                    for (const match of Object.values(cfdiToInvoice)) {
-                        if (match.sageInvoice.IDINVC === inv.invoice_external_id.trim()) {
-                            matchedUuid = match.uuid;
-                            matchScore = match.score;
-                            matchConfidence = match.confidence;
-                            portalCfdiId = match.portalCfdiId;
-                            break;
-                        }
-                    }
-                }
-
-                return {
-                    idinvc: inv.invoice_external_id,
-                    invBatch: inv.inv_batch,
-                    invEntry: inv.inv_entry,
-                    amount: inv.invoice_amount,
-                    currency: inv.invoice_currency,
-                    exchangeRate: inv.invoice_exchange_rate,
-                    paymentAmount: inv.payment_amount,
-                    uuidStatus: hasUuid ? 'present' :
-                        (inv.FOLIOCFD_ROW_EXISTS === 0 ? 'no_row' : 'empty'),
-                    currentUuid: inv.UUID_APIBHO || '',
-                    matchedUuid,
-                    matchScore,
-                    matchConfidence,
-                    portalCfdiId,
-                    matchDetails: []
-                };
-            });
+            const invoiceEntries = pyInvoices.map(inv => ({
+                idinvc: inv.invoice_external_id,
+                invBatch: inv.inv_batch,
+                invEntry: inv.inv_entry,
+                amount: inv.invoice_amount,
+                currency: inv.invoice_currency,
+                exchangeRate: inv.invoice_exchange_rate,
+                paymentAmount: inv.payment_amount,
+                uuidStatus: (inv.UUID_APIBHO && inv.UUID_APIBHO.trim() !== '') ? 'present' :
+                    (inv.FOLIOCFD_ROW_EXISTS === 0 ? 'no_row' : 'empty'),
+                currentUuid: inv.UUID_APIBHO || '',
+                matchedUuid: null,
+                matchScore: null,
+                matchConfidence: null,
+                portalCfdiId: null,
+                matchDetails: []
+            }));
 
             const isNew = !state.payments[docNbr];
+
+            // If all UUIDs present, mark as uuid_repaired (ready for upload)
+            // If some missing, mark as pending (needs repair first)
             state.payments[docNbr] = {
                 vendor: vendorId,
                 providerExternalId: providerId,
-                status: 'pending',
+                status: allHaveUuid ? 'uuid_repaired' : 'pending',
                 invoices: invoiceEntries,
-                repairDate: null,
+                repairDate: allHaveUuid ? new Date().toISOString() : null,
                 uploadDate: null,
                 uploadResult: null,
                 portalPaymentId: null,
@@ -482,11 +491,14 @@ async function modeScan(DB, tenantIndex, months) {
             };
 
             if (isNew) {
-                newCount++;
-                const matched = invoiceEntries.filter(i => i.matchedUuid).length;
-                const missing = invoiceEntries.filter(i => i.uuidStatus !== 'present' && !i.matchedUuid).length;
-                const present = invoiceEntries.filter(i => i.uuidStatus === 'present').length;
-                console.log(`  [NEW] ${docNbr} (vendor: ${vendorId}, invoices: ${invoiceEntries.length}, matched: ${matched}, present: ${present}, unmatched: ${missing})`);
+                if (allHaveUuid) {
+                    uploadReadyCount++;
+                    console.log(`  [UPLOAD-READY] ${docNbr} (vendor: ${vendorId}, ${invoiceEntries.length} invoices, all UUIDs present)`);
+                } else {
+                    newCount++;
+                    const missing = invoiceEntries.filter(i => i.uuidStatus !== 'present').length;
+                    console.log(`  [NEW] ${docNbr} (vendor: ${vendorId}, ${invoiceEntries.length} invoices, ${missing} missing UUID)`);
+                }
             }
         }
     }
@@ -495,20 +507,165 @@ async function modeScan(DB, tenantIndex, months) {
     saveState(state);
 
     const pending = Object.values(state.payments).filter(p => p.status === 'pending').length;
+    const readyForUpload = Object.values(state.payments).filter(p => p.status === 'uuid_repaired').length;
 
     console.log(`\n--- SCAN COMPLETE ---`);
     console.log(`  Portal PENDING_TO_PAY CFDIs:     ${portalCfdis.length}`);
-    console.log(`  Already in APIBHO (skipped):     ${alreadyKnownCount}`);
-    console.log(`  Missing from APIBHO:             ${missingCount}`);
-    console.log(`  Providers resolved to Sage:      ${Object.keys(providerToVendor).length} / ${providerIds.length}`);
-    console.log(`  Portal CFDIs matched to Sage:    ${matchedCfdiCount}`);
-    console.log(`  New PY payments tracked:         ${newCount}`);
+    console.log(`  UUID in APIBHO (need upload):    ${alreadyKnownCount}`);
+    console.log(`  UUID missing (need repair):      ${missingCount}`);
+    console.log(`  Providers resolved to Sage:      ${Object.keys(providerToVendor).length} / ${allProviderIds.size}`);
+    console.log(`  Portal CFDIs matched (repair):   ${matchedCfdiCount}`);
+    console.log(`  New PY payments (need repair):   ${newCount}`);
+    console.log(`  PY payments (upload-ready):      ${uploadReadyCount}`);
     console.log(`  Skipped (already processed):     ${skippedCount}`);
-    console.log(`  Total pending in state file:     ${pending}`);
+    console.log(`  Total pending (need repair):     ${pending}`);
+    console.log(`  Total ready for upload:          ${readyForUpload}`);
     console.log(`  State file: ${STATE_FILE}`);
     logGenerator(LOG_FILE, 'info',
-        `SCAN complete: ${portalCfdis.length} portal CFDIs, ${missingCount} missing UUID, ${matchedCfdiCount} matched, ${newCount} new PYs, ${pending} pending`
+        `SCAN complete: ${portalCfdis.length} portal CFDIs, ${missingCount} missing UUID, ${matchedCfdiCount} matched, ${newCount} need repair, ${uploadReadyCount} upload-ready`
     );
+}
+
+// --- Helper: Find PY payments for a set of invoice IDs ---
+async function findPyPaymentsForInvoices(DB, vendorId, idinvcs) {
+    try {
+        const idinvcList = idinvcs.map(id => `'${id}'`).join(',');
+        const result = await runQuery(`
+            SELECT DISTINCT
+                RTRIM(R.DOCNBR)   AS external_id,
+                R.CNTBTCH         AS LotePago,
+                R.CNTENTR         AS AsientoPago,
+                RTRIM(R.IDVEND)   AS vendor,
+                R.AMTRMIT         AS total_amount
+            FROM APTCP DP
+            JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
+            JOIN APBTA B ON B.PAYMTYPE = R.BTCHTYPE AND B.CNTBTCH = R.CNTBTCH
+            WHERE DP.BATCHTYPE = 'PY'
+              AND B.BATCHSTAT = 3
+              AND R.ERRENTRY = 0
+              AND R.RMITTYPE = 1
+              AND DP.DOCTYPE = 1
+              AND RTRIM(DP.IDVEND) = '${vendorId}'
+              AND RTRIM(DP.IDINVC) IN (${idinvcList})
+              AND R.DOCNBR NOT IN (
+                  SELECT NoPagoSage
+                  FROM fesa.dbo.fesaPagosFocaltec
+                  WHERE idCia = R.AUDTORG AND NoPagoSage = R.DOCNBR
+              )
+        `, DB);
+        return result.recordset;
+    } catch (err) {
+        console.error(`  [ERROR] Failed to query PY payments for vendor ${vendorId}: ${err.message}`);
+        return [];
+    }
+}
+
+// --- Helper: Build state entry for a PY payment (used for needsRepair path) ---
+async function buildPaymentStateEntry(DB, py, providerId, vendorId, state, cfdiToInvoice, defaultStatus) {
+    const docNbr = py.external_id.trim();
+
+    if (state.payments[docNbr] && state.payments[docNbr].status !== 'pending') {
+        return 'skipped';
+    }
+
+    let pyInvoices;
+    try {
+        const result = await runQuery(`
+            SELECT DISTINCT
+                RTRIM(DP.IDINVC)  AS invoice_external_id,
+                H.CNTBTCH         AS inv_batch,
+                H.CNTITEM         AS inv_entry,
+                H.AMTGROSDST      AS invoice_amount,
+                CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
+                H.EXCHRATEHC      AS invoice_exchange_rate,
+                DP.AMTPAYM        AS payment_amount,
+                ISNULL(
+                    (SELECT RTRIM([VALUE])
+                     FROM APIBHO
+                     WHERE CNTBTCH = H.CNTBTCH AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'
+                    ), ''
+                ) AS UUID_APIBHO,
+                (SELECT COUNT(*)
+                 FROM APIBHO
+                 WHERE CNTBTCH = H.CNTBTCH AND CNTITEM = H.CNTITEM AND OPTFIELD = 'FOLIOCFD'
+                ) AS FOLIOCFD_ROW_EXISTS
+            FROM APTCP DP
+            JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
+            JOIN APIBH H ON DP.IDVEND = H.IDVEND
+                    AND DP.IDINVC = H.IDINVC AND H.ERRENTRY = 0
+            JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3
+            WHERE DP.BATCHTYPE = 'PY'
+                AND DP.CNTBTCH = ${py.LotePago}
+                AND DP.CNTRMIT = ${py.AsientoPago}
+                AND DP.DOCTYPE = 1
+        `, DB);
+        pyInvoices = result.recordset;
+    } catch (err) {
+        console.error(`  [ERROR] Failed to query invoices for ${docNbr}: ${err.message}`);
+        return 'error';
+    }
+
+    if (pyInvoices.length === 0) return 'empty';
+
+    const invoiceEntries = pyInvoices.map(inv => {
+        const hasUuid = inv.UUID_APIBHO && inv.UUID_APIBHO.trim() !== '';
+        let matchedUuid = null;
+        let matchScore = null;
+        let matchConfidence = null;
+        let portalCfdiId = null;
+
+        if (!hasUuid && cfdiToInvoice) {
+            for (const match of Object.values(cfdiToInvoice)) {
+                if (match.sageInvoice.IDINVC === inv.invoice_external_id.trim()) {
+                    matchedUuid = match.uuid;
+                    matchScore = match.score;
+                    matchConfidence = match.confidence;
+                    portalCfdiId = match.portalCfdiId;
+                    break;
+                }
+            }
+        }
+
+        return {
+            idinvc: inv.invoice_external_id,
+            invBatch: inv.inv_batch,
+            invEntry: inv.inv_entry,
+            amount: inv.invoice_amount,
+            currency: inv.invoice_currency,
+            exchangeRate: inv.invoice_exchange_rate,
+            paymentAmount: inv.payment_amount,
+            uuidStatus: hasUuid ? 'present' :
+                (inv.FOLIOCFD_ROW_EXISTS === 0 ? 'no_row' : 'empty'),
+            currentUuid: inv.UUID_APIBHO || '',
+            matchedUuid,
+            matchScore,
+            matchConfidence,
+            portalCfdiId,
+            matchDetails: []
+        };
+    });
+
+    const isNew = !state.payments[docNbr];
+    state.payments[docNbr] = {
+        vendor: vendorId,
+        providerExternalId: providerId,
+        status: defaultStatus,
+        invoices: invoiceEntries,
+        repairDate: null,
+        uploadDate: null,
+        uploadResult: null,
+        portalPaymentId: null,
+        error: null
+    };
+
+    if (isNew) {
+        const matched = invoiceEntries.filter(i => i.matchedUuid).length;
+        const missing = invoiceEntries.filter(i => i.uuidStatus !== 'present' && !i.matchedUuid).length;
+        const present = invoiceEntries.filter(i => i.uuidStatus === 'present').length;
+        console.log(`  [NEW] ${docNbr} (vendor: ${vendorId}, invoices: ${invoiceEntries.length}, matched: ${matched}, present: ${present}, unmatched: ${missing})`);
+        return 'new';
+    }
+    return 'existing';
 }
 
 // ============================================================================
