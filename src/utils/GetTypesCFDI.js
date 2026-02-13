@@ -441,10 +441,50 @@ async function getCfdisByProvider(index, providerId) {
     }
 }
 
+/**
+ * Fetches ALL PENDING_TO_PAY invoices from the portal without any Sage-side
+ * filtering or date constraints. Returns every invoice the portal considers unpaid.
+ * @param {number} index - Tenant index.
+ * @returns {Promise<Array>} - Raw portal items array.
+ */
+async function getPendingToPayInvoices(index) {
+    const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Fetching ALL PENDING_TO_PAY invoices (no date filter, no Sage filter) for index=${index}`);
+
+    try {
+        const response = await axios.get(
+            urlBase(index) +
+            `?documentTypes=CFDI` +
+            `&offset=0&pageSize=0` +
+            `&cfdiType=INVOICE` +
+            `&stage=PENDING_TO_PAY`,
+            {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index]
+                }
+            }
+        );
+
+        if (response.data.total === 0) {
+            console.log('[INFO] No PENDING_TO_PAY invoices found in portal');
+            return [];
+        }
+
+        console.log(`[INFO] Portal returned ${response.data.items.length} PENDING_TO_PAY invoices`);
+        return response.data.items || [];
+    } catch (error) {
+        console.error(`[ERROR] getPendingToPayInvoices: ${error.message}`);
+        logGenerator(logFileName, 'error', `getPendingToPayInvoices failed: ${error.message}`);
+        return [];
+    }
+}
+
 module.exports = {
     getTypeP,
     getTypeI,
     getTypeIToSend,
     getTypeE,
-    getCfdisByProvider
+    getCfdisByProvider,
+    getPendingToPayInvoices
 }
