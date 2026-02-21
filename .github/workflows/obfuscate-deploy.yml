@@ -1,0 +1,65 @@
+name: Obfuscate & Push to Distribution Repo
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:  # Permite ejecución manual desde GitHub UI
+
+env:
+  TARGET_REPO: FReptar0/sageconnect-dist  # Cambiar al nombre real de tu repo destino
+  NODE_VERSION: '18'
+
+jobs:
+  obfuscate-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Para obtener historial de commits
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run obfuscation build
+        run: node scripts/obfuscate.js
+
+      - name: Get commit info
+        id: commit_info
+        run: |
+          echo "message=$(git log -1 --pretty=%B | head -1)" >> $GITHUB_OUTPUT
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "branch=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Push to distribution repo
+        env:
+          # Configurar un Personal Access Token (PAT) con permisos de repo
+          # Guardarlo en Settings → Secrets → OBFUSCATED_REPO_TOKEN
+          GH_TOKEN: ${{ secrets.OBFUSCATED_REPO_TOKEN }}
+        run: |
+          cd dist
+
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "build(obfuscated): ${{ steps.commit_info.outputs.message }} (${{ steps.commit_info.outputs.sha }})"
+
+          git remote add origin https://x-access-token:${GH_TOKEN}@github.com/${{ env.TARGET_REPO }}.git
+          git push --force origin HEAD:${{ steps.commit_info.outputs.branch }}
+
+          echo "✅ Pushed obfuscated code to ${{ env.TARGET_REPO }} (branch: ${{ steps.commit_info.outputs.branch }})"
