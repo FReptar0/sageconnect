@@ -9,7 +9,9 @@
     "dev": "nodemon src/index.js",
     "web-only": "node src/index.js --web-only",
     "dev:web-only": "nodemon src/index.js --web-only",
-    "background-only": "node src/background.js"
+    "background-only": "node src/background.js",
+    "obfuscate": "node scripts/obfuscate.js",
+    "obfuscate:push": "node scripts/obfuscate.js --push"
   },
   "author": "FReptar0",
   "license": "ISC",
@@ -30,6 +32,7 @@
     "@babel/core": "^7.26.0",
     "@babel/preset-env": "^7.26.0",
     "babel-jest": "^29.7.0",
+    "javascript-obfuscator": "^5.3.0",
     "jest": "^29.7.0",
     "nodemon": "^3.1.7"
   }
