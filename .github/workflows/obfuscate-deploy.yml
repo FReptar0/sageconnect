@@ -2,9 +2,6 @@ name: Obfuscate & Push to Distribution Repo
 
 on:
   push:
-    branches:
-      - master
-      - main
     paths:
       - 'src/**'
       - 'public/**'
