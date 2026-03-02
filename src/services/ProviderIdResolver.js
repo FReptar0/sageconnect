@@ -1,24 +1,28 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
-const { getProviderByRfc } = require('../utils/GetProviders');
+const { getProviderByExternalId } = require('../utils/GetProviders');
 
 const LOG_FILE = 'ProviderIdResolver';
 
 /**
- * Busca el proveedor en Portal de Proveedores por RFC y escribe su ID en APVENO.
+ * Busca el proveedor en Portal de Proveedores por external_id y escribe su ID en APVENO.
  * @param {string} vendorId - VENDORID de Sage (ej: "534-0039")
- * @param {string} rfc - RFC del proveedor
+ * @param {string} providerExternalId - External ID del proveedor en ERP
  * @param {number} index - Índice del tenant
  * @param {string} db - Base de datos de Sage
  * @returns {Promise<boolean>} - true si se escribió el PROVIDERID
  */
-async function resolveProviderIdByRfc(vendorId, rfc, index, db) {
+async function resolveProviderIdByExternalId(vendorId, providerExternalId, index, db) {
     try {
-        const provider = await getProviderByRfc(index, rfc);
+        const provider = await getProviderByExternalId(index, providerExternalId);
         if (!provider || !provider.id) {
-            console.warn(`  [WARN] No se encontró proveedor en portal con RFC: ${rfc}`);
-            logGenerator(LOG_FILE, 'warn', `No se encontró proveedor en portal con RFC: ${rfc} (vendor: ${vendorId})`);
+            console.warn(`  [WARN] No se encontró proveedor único en portal con externalId: ${providerExternalId}`);
+            logGenerator(
+                LOG_FILE,
+                'warn',
+                `No se encontró proveedor único en portal con externalId: ${providerExternalId} (vendor: ${vendorId})`
+            );
             return false;
         }
 
@@ -67,14 +71,20 @@ async function resolveProviderIdByRfc(vendorId, rfc, index, db) {
             `, db);
         }
 
-        console.log(`  [AUTO-FIX] PROVIDERID '${providerId}' escrito en APVENO para vendor ${vendorId} (RFC: ${rfc})`);
-        logGenerator(LOG_FILE, 'info', `PROVIDERID '${providerId}' escrito en APVENO para vendor ${vendorId} (RFC: ${rfc})`);
+        console.log(
+            `  [AUTO-FIX] PROVIDERID '${providerId}' escrito en APVENO para vendor ${vendorId} (externalId: ${providerExternalId})`
+        );
+        logGenerator(
+            LOG_FILE,
+            'info',
+            `PROVIDERID '${providerId}' escrito en APVENO para vendor ${vendorId} (externalId: ${providerExternalId})`
+        );
         return true;
     } catch (err) {
-        console.error(`  [ERROR] resolveProviderIdByRfc falló para ${vendorId}: ${err.message}`);
-        logGenerator(LOG_FILE, 'error', `resolveProviderIdByRfc falló para ${vendorId}: ${err.message}`);
+        console.error(`  [ERROR] resolveProviderIdByExternalId falló para ${vendorId}: ${err.message}`);
+        logGenerator(LOG_FILE, 'error', `resolveProviderIdByExternalId falló para ${vendorId}: ${err.message}`);
         return false;
     }
 }
 
-module.exports = { resolveProviderIdByRfc };
+module.exports = { resolveProviderIdByExternalId };

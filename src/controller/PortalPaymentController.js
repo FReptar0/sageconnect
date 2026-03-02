@@ -1,7 +1,7 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
-const { resolveProviderIdByRfc } = require('../services/ProviderIdResolver');
+const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const { resolveUuidByFolio } = require('../services/UuidResolver');
 const axios = require('axios');
 const notifier = require('node-notifier');
@@ -47,14 +47,6 @@ SELECT A.* FROM (
         P.AMTRMIT    AS total_amount,
         'TRANSFER'   AS operation_type,
         P.RATEEXCHHC AS TipoCambioPago,
-    ISNULL(
-    (SELECT [VALUE]
-        FROM APVENO
-        WHERE OPTFIELD = 'RFC'
-        AND VENDORID = P.IDVEND
-    ),
-    ''
-    ) AS RFC,
     ISNULL(
         (SELECT [VALUE]
         FROM APVENO
@@ -134,16 +126,19 @@ SELECT A.* FROM (
             });
         }
 
-        // 2) Auto-resolver PROVIDERID faltante vía portal (por RFC) y filtrar
+        // 2) Auto-resolver PROVIDERID faltante vía portal (por external_id de ERP) y filtrar
         const withoutPid = payments.recordset.filter(r => !r.PROVIDERID || r.PROVIDERID.trim() === '');
         for (const r of withoutPid) {
-            const rfc = r.RFC ? r.RFC.trim() : '';
-            if (rfc) {
-                console.log(`[INFO] PROVIDERID vacío para vendor ${r.provider_external_id} (pago ${r.external_id}). Buscando en portal por RFC: ${rfc}...`);
-                await resolveProviderIdByRfc(r.provider_external_id, rfc, index, database[index]);
+            const providerExternalId = r.provider_external_id ? r.provider_external_id.trim() : '';
+            if (providerExternalId) {
+                console.log(
+                    `[INFO] PROVIDERID vacío para vendor ${providerExternalId} (pago ${r.external_id}). ` +
+                    `Buscando en portal por externalId...`
+                );
+                await resolveProviderIdByExternalId(r.provider_external_id, providerExternalId, index, database[index]);
             } else {
-                console.warn(`[WARN] Vendor ${r.provider_external_id} sin PROVIDERID y sin RFC. No se puede resolver.`);
-                logGenerator(logFileName, 'warn', `Vendor ${r.provider_external_id} sin PROVIDERID y sin RFC.`);
+                console.warn(`[WARN] Vendor sin provider_external_id y sin PROVIDERID. No se puede resolver.`);
+                logGenerator(logFileName, 'warn', 'Vendor sin provider_external_id y sin PROVIDERID.');
             }
         }
         // Siempre omitir los pagos sin PROVIDERID en este ciclo; el siguiente ciclo los tomará ya con PROVIDERID

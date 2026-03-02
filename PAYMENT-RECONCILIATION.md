@@ -198,7 +198,7 @@ Cuando un vendor en Sage no tiene el campo opcional `PROVIDERID` en la tabla `AP
 4. Agregar o actualizar el campo `PROVIDERID` con el ID del proveedor en el portal.
 
 Para encontrar el PROVIDERID correcto del portal:
-- Buscar en el portal por RFC del vendor.
+- Buscar en el portal por `external_id` del vendor (ID ERP).
 - El `provider_id` del portal es el valor que debe ir en `PROVIDERID`.
 
 ### Opcion B: Insertar via SQL (si tienes acceso directo)
