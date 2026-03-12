@@ -391,7 +391,8 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
         const { hdr, invoices } = entry;
         const invCount = invoices.length;
         const amount = typeof hdr.total_amount === 'number' ? hdr.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 }) : hdr.total_amount;
-        console.log(`  ${hdr.external_id}  | vendor: ${hdr.provider_external_id} | $${amount} ${hdr.bk_currency} | ${invCount} invoice${invCount > 1 ? 's' : ''} | all UUIDs matched`);
+        const tag = autoResolvedSet.has(hdr.external_id) ? ' [AUTO-FIX]' : '';
+        console.log(`  ${hdr.external_id}${tag}  | vendor: ${hdr.provider_external_id} | $${amount} ${hdr.bk_currency} | ${invCount} invoice${invCount > 1 ? 's' : ''} | all UUIDs matched`);
     }
 
     // --- MISSING PROVIDERID ---
@@ -421,14 +422,42 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
         console.log(`  ${hdr.external_id}  | vendor: ${hdr.provider_external_id} | ${notFound.length}/${invoices.length} UUIDs not found as PENDING_TO_PAY (may already be paid)`);
     }
 
+    // --- PROVIDER MISMATCH ---
+    console.log(`\n--- PROVIDER MISMATCH (${categories.provider_mismatch.length}) ---`);
+    for (const entry of categories.provider_mismatch) {
+        const { hdr, mismatchDetails } = entry;
+        const amount = typeof hdr.total_amount === 'number'
+            ? hdr.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })
+            : hdr.total_amount;
+        console.log(`  ${hdr.external_id}  | vendor: ${hdr.provider_external_id} | $${amount} ${hdr.bk_currency}`);
+        for (const d of mismatchDetails) {
+            console.log(`    - ${d.invoice_external_id}: portal=${d.portal_provider_id} vs sage=${d.sage_providerid}`);
+        }
+    }
+
     // --- SUMMARY ---
-    const totalProcessed = categories.ready.length + categories.no_providerid.length + categories.no_uuid.length + categories.not_in_portal.length;
+    const totalProcessed = categories.ready.length + categories.no_providerid.length
+        + categories.no_uuid.length + categories.not_in_portal.length
+        + categories.provider_mismatch.length;
     console.log('\n=== SUMMARY ===');
     console.log(`  Ready to upload:    ${categories.ready.length}`);
     console.log(`  Missing PROVIDERID: ${categories.no_providerid.length}`);
     console.log(`  Missing UUID:       ${categories.no_uuid.length}`);
     console.log(`  Not in portal:      ${categories.not_in_portal.length}`);
+    console.log(`  Provider mismatch:  ${categories.provider_mismatch.length}`);
+    console.log(`  Auto-resolved:      ${autoResolvedCount}`);
     console.log(`  TOTAL:              ${totalProcessed}`);
+
+    if (categories.provider_mismatch.length > 0) {
+        logGenerator(logFileName, 'warn',
+            `Reconciliation summary: ${categories.provider_mismatch.length} payments with provider mismatch`
+        );
+    }
+    if (autoResolvedCount > 0) {
+        logGenerator(logFileName, 'info',
+            `Reconciliation summary: ${autoResolvedCount} payments auto-resolved`
+        );
+    }
 
     if (!shouldUpload) {
         if (categories.ready.length > 0) {
