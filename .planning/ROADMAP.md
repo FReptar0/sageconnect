@@ -10,7 +10,7 @@ This roadmap fixes two distinct gaps in `payment-reconciliation.js`: first, the 
 - Integer phases (1, 2): Planned milestone work
 - Decimal phases (1.1, etc.): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: Reconciliation Classification** - Auto-resolve missing PROVIDERID and validate provider_id match before marking payments READY
+- [x] **Phase 1: Reconciliation Classification** - Auto-resolve missing PROVIDERID and validate provider_id match before marking payments READY
 - [ ] **Phase 2: Batch Upload Robustness** - Verify batch results completeness and prevent empty batch requests
 
 ## Phase Details
@@ -28,7 +28,7 @@ This roadmap fixes two distinct gaps in `payment-reconciliation.js`: first, the 
 
 Plans:
 - [x] 01-01-PLAN.md — Extract classifyPayments function and create failing TDD tests
-- [ ] 01-02-PLAN.md — Implement auto-resolution, mismatch validation, and report updates
+- [x] 01-02-PLAN.md — Implement auto-resolution, mismatch validation, and report updates
 
 ### Phase 2: Batch Upload Robustness
 **Goal**: The batch upload path handles edge cases safely: no empty batch requests are sent, and every payment sent is accounted for in the response
@@ -50,5 +50,5 @@ Phases execute in numeric order: 1 -> 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Reconciliation Classification | 1/2 | In Progress | - |
+| 1. Reconciliation Classification | 2/2 | Complete | 2026-03-12 |
 | 2. Batch Upload Robustness | 0/? | Not started | - |

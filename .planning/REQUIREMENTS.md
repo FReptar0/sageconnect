@@ -7,13 +7,13 @@
 
 ### Validación de Proveedor
 
-- [ ] **PROV-01**: El script de conciliación valida que `metadata.provider_id` del CFDI en portal coincida con `PROVIDERID` de Sage antes de clasificar un pago como READY TO UPLOAD
-- [ ] **PROV-02**: Pagos con mismatch de `provider_id` se clasifican en nueva categoría PROVIDER MISMATCH con detalle del ID esperado vs encontrado
+- [x] **PROV-01**: El script de conciliación valida que `metadata.provider_id` del CFDI en portal coincida con `PROVIDERID` de Sage antes de clasificar un pago como READY TO UPLOAD
+- [x] **PROV-02**: Pagos con mismatch de `provider_id` se clasifican en nueva categoría PROVIDER MISMATCH con detalle del ID esperado vs encontrado
 
 ### Auto-resolución
 
-- [ ] **RSOL-01**: El script de conciliación auto-resuelve PROVIDERID faltante usando `getProviderByExternalId` con el `provider_external_id` del pago (campo `IDVEND` de Sage)
-- [ ] **RSOL-02**: Si la auto-resolución encuentra match único, el pago se reclasifica de MISSING PROVIDERID a READY TO UPLOAD en el mismo ciclo
+- [x] **RSOL-01**: El script de conciliación auto-resuelve PROVIDERID faltante usando `getProviderByExternalId` con el `provider_external_id` del pago (campo `IDVEND` de Sage)
+- [x] **RSOL-02**: Si la auto-resolución encuentra match único, el pago se reclasifica de MISSING PROVIDERID a READY TO UPLOAD en el mismo ciclo
 
 ### Robustez de Batch Upload
 
@@ -40,10 +40,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | Phase 1 | Pending |
-| PROV-02 | Phase 1 | Pending |
-| RSOL-01 | Phase 1 | Pending |
-| RSOL-02 | Phase 1 | Pending |
+| PROV-01 | Phase 1 | Complete |
+| PROV-02 | Phase 1 | Complete |
+| RSOL-01 | Phase 1 | Complete |
+| RSOL-02 | Phase 1 | Complete |
 | BTCH-01 | Phase 2 | Pending |
 | BTCH-02 | Phase 2 | Pending |
 
