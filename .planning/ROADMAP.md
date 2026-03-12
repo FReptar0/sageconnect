@@ -38,10 +38,11 @@ Plans:
   1. When `--upload` flag is used and `categories.ready` is empty, no batch API request is made and the user sees a clear message that there are no payments to upload
   2. After a batch upload, every `external_id` sent in the request has a corresponding entry in the `results` array; any payment missing from results is reported as MISSING RESULT with its external_id
   3. Existing `--upload` behavior for non-empty batches continues to work correctly (no regression in the happy path)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — Extract uploadBatch function and create failing TDD tests for BTCH-01/BTCH-02
+- [ ] 02-02-PLAN.md — Implement empty guard, missing result detection, and updated summary format
 
 ## Progress
 
@@ -51,4 +52,4 @@ Phases execute in numeric order: 1 -> 2
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Reconciliation Classification | 2/2 | Complete    | 2026-03-12 |
-| 2. Batch Upload Robustness | 0/? | Not started | - |
+| 2. Batch Upload Robustness | 0/2 | In Progress | - |
