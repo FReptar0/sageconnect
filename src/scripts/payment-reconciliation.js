@@ -68,17 +68,59 @@ async function classifyPayments(deduped, portalUuidMap, index, db) {
     const autoResolvedSet = new Set();
 
     for (const hdr of deduped) {
-        const providerid = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
+        let effectiveProviderId = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
         const rfc = hdr.RFC ? hdr.RFC.trim() : '';
 
-        // Check PROVIDERID first
-        if (!providerid) {
-            categories.no_providerid.push({
-                hdr,
-                rfc,
-                reason: 'no PROVIDERID in APVENO'
-            });
-            continue;
+        // Check PROVIDERID first -- attempt auto-resolution if missing (RSOL-01, RSOL-02)
+        if (!effectiveProviderId) {
+            const vendorId = hdr.provider_external_id ? hdr.provider_external_id.trim() : '';
+            if (!vendorId) {
+                categories.no_providerid.push({
+                    hdr,
+                    rfc,
+                    reason: 'no PROVIDERID and no IDVEND to resolve'
+                });
+                continue;
+            }
+
+            // Attempt auto-resolution: first get the provider to capture the ID
+            console.log(`  [INFO] Attempting auto-resolve PROVIDERID for vendor ${vendorId} (payment ${hdr.external_id})...`);
+            const provider = await getProviderByExternalId(index, vendorId);
+
+            if (provider && provider.id) {
+                // Write to Sage DB via resolver
+                const writeOk = await resolveProviderIdByExternalId(
+                    vendorId, vendorId, index, db
+                );
+                if (writeOk) {
+                    effectiveProviderId = provider.id;
+                    autoResolvedCount++;
+                    autoResolvedSet.add(hdr.external_id);
+                    logGenerator(logFileName, 'info',
+                        `Auto-resolved PROVIDERID for ${hdr.external_id}: ${provider.id}`
+                    );
+                } else {
+                    categories.no_providerid.push({
+                        hdr,
+                        rfc,
+                        reason: `auto-resolution DB write failed for externalId: ${vendorId}`
+                    });
+                    logGenerator(logFileName, 'warn',
+                        `Auto-resolution DB write failed for ${hdr.external_id}, externalId: ${vendorId}`
+                    );
+                    continue;
+                }
+            } else {
+                categories.no_providerid.push({
+                    hdr,
+                    rfc,
+                    reason: `auto-resolution failed for externalId: ${vendorId}`
+                });
+                logGenerator(logFileName, 'warn',
+                    `Auto-resolution failed for ${hdr.external_id}, externalId: ${vendorId}`
+                );
+                continue;
+            }
         }
 
         // Fetch invoices for this payment
@@ -155,6 +197,36 @@ WHERE DP.BATCHTYPE = 'PY'
                 hdr,
                 invoices: invoices.recordset
             });
+            continue;
+        }
+
+        // Check provider_id match for all invoices (PROV-01, PROV-02)
+        const mismatchDetails = [];
+        const sageProviderId = effectiveProviderId.toLowerCase();
+
+        for (const inv of invoices.recordset) {
+            const uuid = inv.UUID.trim().toUpperCase();
+            const portalItem = portalUuidMap.get(uuid);
+            const portalProviderId = (portalItem?.provider_id || '').trim().toLowerCase();
+
+            if (!portalProviderId || portalProviderId !== sageProviderId) {
+                mismatchDetails.push({
+                    invoice_external_id: inv.invoice_external_id,
+                    portal_provider_id: portalItem?.provider_id || '(empty)',
+                    sage_providerid: effectiveProviderId
+                });
+            }
+        }
+
+        if (mismatchDetails.length > 0) {
+            categories.provider_mismatch.push({
+                hdr,
+                invoices: invoices.recordset,
+                mismatchDetails
+            });
+            logGenerator(logFileName, 'warn',
+                `Provider mismatch for ${hdr.external_id}: ${mismatchDetails.length} invoice(s) with mismatched provider_id`
+            );
             continue;
         }
 
