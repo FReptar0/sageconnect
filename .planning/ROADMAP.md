@@ -24,11 +24,11 @@ This roadmap fixes two distinct gaps in `payment-reconciliation.js`: first, the 
   2. A payment where `metadata.provider_id` from the portal CFDI does not match the Sage PROVIDERID is classified as PROVIDER MISMATCH (not READY TO UPLOAD), with the expected vs found IDs reported
   3. A payment where `metadata.provider_id` matches the Sage PROVIDERID continues to be classified as READY TO UPLOAD (no regression)
   4. A payment where PROVIDERID cannot be auto-resolved (no match or multiple matches) remains classified as MISSING PROVIDERID with appropriate messaging
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
+- [ ] 01-01-PLAN.md — Extract classifyPayments function and create failing TDD tests
+- [ ] 01-02-PLAN.md — Implement auto-resolution, mismatch validation, and report updates
 
 ### Phase 2: Batch Upload Robustness
 **Goal**: The batch upload path handles edge cases safely: no empty batch requests are sent, and every payment sent is accounted for in the response
@@ -50,5 +50,5 @@ Phases execute in numeric order: 1 -> 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Reconciliation Classification | 0/? | Not started | - |
+| 1. Reconciliation Classification | 0/2 | Not started | - |
 | 2. Batch Upload Robustness | 0/? | Not started | - |
