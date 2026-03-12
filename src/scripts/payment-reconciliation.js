@@ -267,6 +267,13 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
         return;
     }
 
+    // UPLOAD mode: empty guard (BTCH-02)
+    if (categories.ready.length === 0) {
+        console.log('\nNo payments ready to upload.');
+        logGenerator(logFileName, 'info', 'Upload skipped: no payments ready to upload');
+        return;
+    }
+
     // -----------------------------------------------------------------------
     // Step 6: Batch upload ready payments
     // -----------------------------------------------------------------------
@@ -314,6 +321,8 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
 
     let successCount = 0;
     let errorCount = 0;
+    let missingCount = 0;
+    const respondedIds = new Set();
 
     try {
         const resp = await axios.post(endpoint, { payments: paymentPayloads }, {
@@ -328,13 +337,17 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
         console.log(`  [OK] Batch response received: ${results.length} result(s)`);
 
         for (const result of results) {
-            const matchEntry = toUpload.find(e => e.hdr.external_id === result.item?.external_id);
-            const externalId = result.item?.external_id || 'unknown';
+            const externalId = result.item?.external_id;
+            if (externalId) {
+                respondedIds.add(externalId);
+            }
+            const displayId = externalId || 'unknown';
+            const matchEntry = toUpload.find(e => e.hdr.external_id === displayId);
 
             if (result.error_code === 0) {
                 const idPortal = result.id || undefined;
-                console.log(`  [OK] ${externalId} sent successfully | portal ID: ${idPortal ?? 'N/A'}`);
-                logGenerator(logFileName, 'info', `Reconciliation upload OK: ${externalId}, portal ID: ${idPortal ?? 'N/A'}`);
+                console.log(`  [OK] ${displayId} sent successfully | portal ID: ${idPortal ?? 'N/A'}`);
+                logGenerator(logFileName, 'info', `Reconciliation upload OK: ${displayId}, portal ID: ${idPortal ?? 'N/A'}`);
 
                 // Determine PAID vs PARTIAL status
                 const allFull = matchEntry
@@ -348,27 +361,40 @@ INSERT INTO fesa.dbo.fesaPagosFocaltec
     (idCia, NoPagoSage, status, idFocaltec)
 VALUES
     ('${database[index]}',
-     '${externalId}',
+     '${displayId}',
      '${statusTag}',
      ${idPortal ? `'${idPortal}'` : 'NULL'})
 `;
                 const insertResult = await runQuery(insertSql)
                     .catch(err => {
-                        logGenerator(logFileName, 'error', `Insert control table failed for ${externalId}: ${err.message}`);
-                        console.error(`  [ERROR] Control table insert failed for ${externalId}: ${err.message}`);
+                        logGenerator(logFileName, 'error', `Insert control table failed for ${displayId}: ${err.message}`);
+                        console.error(`  [ERROR] Control table insert failed for ${displayId}: ${err.message}`);
                         return { rowsAffected: [0] };
                     });
 
                 if (insertResult.rowsAffected[0]) {
-                    console.log(`  [OK] Control table updated for ${externalId} (status: ${statusTag})`);
+                    console.log(`  [OK] Control table updated for ${displayId} (status: ${statusTag})`);
                 } else {
-                    console.warn(`  [WARN] Control table NOT updated for ${externalId}`);
+                    console.warn(`  [WARN] Control table NOT updated for ${displayId}`);
                 }
                 successCount++;
             } else {
-                console.error(`  [ERROR] ${externalId} failed: error_code=${result.error_code}, message=${result.error_message}`);
-                logGenerator(logFileName, 'error', `Batch upload failed ${externalId}: code=${result.error_code} msg=${result.error_message}`);
+                console.error(`  [ERROR] ${displayId} failed: error_code=${result.error_code}, message=${result.error_message}`);
+                logGenerator(logFileName, 'error', `Batch upload failed ${displayId}: code=${result.error_code} msg=${result.error_message}`);
                 errorCount++;
+            }
+        }
+
+        // Detect missing results -- payments sent but not in API response (BTCH-01)
+        if (results.length > 0) {
+            for (const entry of toUpload) {
+                if (!respondedIds.has(entry.hdr.external_id)) {
+                    console.warn(`  [WARN] ${entry.hdr.external_id} MISSING RESULT -- not in API response`);
+                    logGenerator(logFileName, 'warn',
+                        `Batch upload missing result: ${entry.hdr.external_id} not in API response`
+                    );
+                    missingCount++;
+                }
             }
         }
     } catch (err) {
@@ -380,8 +406,12 @@ VALUES
     }
 
     console.log(`\n=== UPLOAD COMPLETE ===`);
+    console.log(`  Sent:    ${toUpload.length}`);
     console.log(`  Success: ${successCount}`);
     console.log(`  Errors:  ${errorCount}`);
+    if (missingCount > 0) {
+        console.log(`  Missing: ${missingCount}`);
+    }
     if (categories.ready.length > batchLimit) {
         console.log(`  Remaining: ${categories.ready.length - batchLimit} (run again to process next batch)`);
     }
