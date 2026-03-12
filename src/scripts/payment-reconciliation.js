@@ -241,6 +241,153 @@ WHERE DP.BATCHTYPE = 'PY'
 }
 
 // ---------------------------------------------------------------------------
+// Upload
+// ---------------------------------------------------------------------------
+
+/**
+ * Uploads classified "ready" payments in batch to the portal API.
+ * Extracted from main() for independent testability.
+ * @param {Object} categories - Classified payment categories (from classifyPayments).
+ * @param {Object} options - Upload configuration.
+ * @param {boolean} options.shouldUpload - Whether to actually upload (--upload flag).
+ * @param {number} options.batchLimit - Maximum payments per batch.
+ * @param {number} options.index - Tenant index.
+ * @param {string} options.logFileName - Log file identifier.
+ * @param {string[]} options.tenantIds - Tenant ID array.
+ * @param {string[]} options.apiKeys - API key array.
+ * @param {string[]} options.apiSecrets - API secret array.
+ * @param {string[]} options.database - Database name array.
+ * @param {string} options.URL - Portal base URL.
+ */
+async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFileName, tenantIds, apiKeys, apiSecrets, database, URL }) {
+    if (!shouldUpload) {
+        if (categories.ready.length > 0) {
+            console.log(`\nUse --upload to send the ${categories.ready.length} ready payments to the portal.`);
+        }
+        return;
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 6: Batch upload ready payments
+    // -----------------------------------------------------------------------
+    const toUpload = categories.ready.slice(0, batchLimit);
+    console.log(`\n=== UPLOADING ${toUpload.length} of ${categories.ready.length} ready payments (batch limit: ${batchLimit}) ===`);
+
+    // Build all payment payloads
+    const paymentPayloads = toUpload.map(entry => {
+        const { hdr, invoices } = entry;
+
+        const cfdis = invoices.map(inv => {
+            const sameCurrency = inv.invoice_currency === hdr.bk_currency;
+            const UUID_Capitalized = inv.UUID ? inv.UUID.trim().toUpperCase() : '';
+            return {
+                amount: inv.payment_amount,
+                currency: inv.invoice_currency,
+                exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
+                payment_amount: inv.payment_amount,
+                payment_currency: hdr.bk_currency,
+                uuid: UUID_Capitalized
+            };
+        });
+
+        const d = hdr.payment_date.toString();
+        const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
+
+        return {
+            bank_account_id: hdr.bank_account_id,
+            cfdis,
+            comments: hdr.comments,
+            currency: hdr.bk_currency,
+            external_id: hdr.external_id,
+            ignore_amounts: false,
+            operation_type: hdr.operation_type,
+            payment_date,
+            provider_external_id: hdr.provider_external_id,
+            reference: hdr.reference,
+            total_amount: hdr.total_amount
+        };
+    });
+
+    // Send single batch POST
+    const endpoint = `${URL}/api/1.0/batch/tenants/${tenantIds[index]}/payments`;
+    console.log(`\n  [POST] Sending ${paymentPayloads.length} payments in batch to portal...`);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    try {
+        const resp = await axios.post(endpoint, { payments: paymentPayloads }, {
+            headers: {
+                'PDPTenantKey': apiKeys[index],
+                'PDPTenantSecret': apiSecrets[index],
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const results = resp.data && resp.data.results ? resp.data.results : [];
+        console.log(`  [OK] Batch response received: ${results.length} result(s)`);
+
+        for (const result of results) {
+            const matchEntry = toUpload.find(e => e.hdr.external_id === result.item?.external_id);
+            const externalId = result.item?.external_id || 'unknown';
+
+            if (result.error_code === 0) {
+                const idPortal = result.id || undefined;
+                console.log(`  [OK] ${externalId} sent successfully | portal ID: ${idPortal ?? 'N/A'}`);
+                logGenerator(logFileName, 'info', `Reconciliation upload OK: ${externalId}, portal ID: ${idPortal ?? 'N/A'}`);
+
+                // Determine PAID vs PARTIAL status
+                const allFull = matchEntry
+                    ? matchEntry.invoices.every(inv => inv.FULL_PAID === 1 || inv.FULL_PAID === '1')
+                    : false;
+                const statusTag = allFull ? 'PAID' : 'PARTIAL';
+
+                // Insert into control table
+                const insertSql = `
+INSERT INTO fesa.dbo.fesaPagosFocaltec
+    (idCia, NoPagoSage, status, idFocaltec)
+VALUES
+    ('${database[index]}',
+     '${externalId}',
+     '${statusTag}',
+     ${idPortal ? `'${idPortal}'` : 'NULL'})
+`;
+                const insertResult = await runQuery(insertSql)
+                    .catch(err => {
+                        logGenerator(logFileName, 'error', `Insert control table failed for ${externalId}: ${err.message}`);
+                        console.error(`  [ERROR] Control table insert failed for ${externalId}: ${err.message}`);
+                        return { rowsAffected: [0] };
+                    });
+
+                if (insertResult.rowsAffected[0]) {
+                    console.log(`  [OK] Control table updated for ${externalId} (status: ${statusTag})`);
+                } else {
+                    console.warn(`  [WARN] Control table NOT updated for ${externalId}`);
+                }
+                successCount++;
+            } else {
+                console.error(`  [ERROR] ${externalId} failed: error_code=${result.error_code}, message=${result.error_message}`);
+                logGenerator(logFileName, 'error', `Batch upload failed ${externalId}: code=${result.error_code} msg=${result.error_message}`);
+                errorCount++;
+            }
+        }
+    } catch (err) {
+        const status = err.response ? err.response.status : 'N/A';
+        const data = err.response ? JSON.stringify(err.response.data) : err.message;
+        console.error(`  [ERROR] Batch upload failed: HTTP ${status} - ${data}`);
+        logGenerator(logFileName, 'error', `Batch upload error: ${status} ${data}`);
+        errorCount = toUpload.length;
+    }
+
+    console.log(`\n=== UPLOAD COMPLETE ===`);
+    console.log(`  Success: ${successCount}`);
+    console.log(`  Errors:  ${errorCount}`);
+    if (categories.ready.length > batchLimit) {
+        console.log(`  Remaining: ${categories.ready.length - batchLimit} (run again to process next batch)`);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -459,131 +606,10 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
         );
     }
 
-    if (!shouldUpload) {
-        if (categories.ready.length > 0) {
-            console.log(`\nUse --upload to send the ${categories.ready.length} ready payments to the portal.`);
-        }
-        return;
-    }
-
-    // -----------------------------------------------------------------------
-    // Step 6: Batch upload ready payments
-    // -----------------------------------------------------------------------
-    const toUpload = categories.ready.slice(0, batchLimit);
-    console.log(`\n=== UPLOADING ${toUpload.length} of ${categories.ready.length} ready payments (batch limit: ${batchLimit}) ===`);
-
-    // Build all payment payloads
-    const paymentPayloads = toUpload.map(entry => {
-        const { hdr, invoices } = entry;
-
-        const cfdis = invoices.map(inv => {
-            const sameCurrency = inv.invoice_currency === hdr.bk_currency;
-            const UUID_Capitalized = inv.UUID ? inv.UUID.trim().toUpperCase() : '';
-            return {
-                amount: inv.payment_amount,
-                currency: inv.invoice_currency,
-                exchange_rate: sameCurrency ? 1 : inv.invoice_exchange_rate,
-                payment_amount: inv.payment_amount,
-                payment_currency: hdr.bk_currency,
-                uuid: UUID_Capitalized
-            };
-        });
-
-        const d = hdr.payment_date.toString();
-        const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
-
-        return {
-            bank_account_id: hdr.bank_account_id,
-            cfdis,
-            comments: hdr.comments,
-            currency: hdr.bk_currency,
-            external_id: hdr.external_id,
-            ignore_amounts: false,
-            operation_type: hdr.operation_type,
-            payment_date,
-            provider_external_id: hdr.provider_external_id,
-            reference: hdr.reference,
-            total_amount: hdr.total_amount
-        };
+    await uploadBatch(categories, {
+        shouldUpload, batchLimit, index, logFileName,
+        tenantIds, apiKeys, apiSecrets, database, URL
     });
-
-    // Send single batch POST
-    const endpoint = `${URL}/api/1.0/batch/tenants/${tenantIds[index]}/payments`;
-    console.log(`\n  [POST] Sending ${paymentPayloads.length} payments in batch to portal...`);
-
-    let successCount = 0;
-    let errorCount = 0;
-
-    try {
-        const resp = await axios.post(endpoint, { payments: paymentPayloads }, {
-            headers: {
-                'PDPTenantKey': apiKeys[index],
-                'PDPTenantSecret': apiSecrets[index],
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const results = resp.data && resp.data.results ? resp.data.results : [];
-        console.log(`  [OK] Batch response received: ${results.length} result(s)`);
-
-        for (const result of results) {
-            const matchEntry = toUpload.find(e => e.hdr.external_id === result.item?.external_id);
-            const externalId = result.item?.external_id || 'unknown';
-
-            if (result.error_code === 0) {
-                const idPortal = result.id || undefined;
-                console.log(`  [OK] ${externalId} sent successfully | portal ID: ${idPortal ?? 'N/A'}`);
-                logGenerator(logFileName, 'info', `Reconciliation upload OK: ${externalId}, portal ID: ${idPortal ?? 'N/A'}`);
-
-                // Determine PAID vs PARTIAL status
-                const allFull = matchEntry
-                    ? matchEntry.invoices.every(inv => inv.FULL_PAID === 1 || inv.FULL_PAID === '1')
-                    : false;
-                const statusTag = allFull ? 'PAID' : 'PARTIAL';
-
-                // Insert into control table
-                const insertSql = `
-INSERT INTO fesa.dbo.fesaPagosFocaltec
-    (idCia, NoPagoSage, status, idFocaltec)
-VALUES
-    ('${database[index]}',
-     '${externalId}',
-     '${statusTag}',
-     ${idPortal ? `'${idPortal}'` : 'NULL'})
-`;
-                const insertResult = await runQuery(insertSql)
-                    .catch(err => {
-                        logGenerator(logFileName, 'error', `Insert control table failed for ${externalId}: ${err.message}`);
-                        console.error(`  [ERROR] Control table insert failed for ${externalId}: ${err.message}`);
-                        return { rowsAffected: [0] };
-                    });
-
-                if (insertResult.rowsAffected[0]) {
-                    console.log(`  [OK] Control table updated for ${externalId} (status: ${statusTag})`);
-                } else {
-                    console.warn(`  [WARN] Control table NOT updated for ${externalId}`);
-                }
-                successCount++;
-            } else {
-                console.error(`  [ERROR] ${externalId} failed: error_code=${result.error_code}, message=${result.error_message}`);
-                logGenerator(logFileName, 'error', `Batch upload failed ${externalId}: code=${result.error_code} msg=${result.error_message}`);
-                errorCount++;
-            }
-        }
-    } catch (err) {
-        const status = err.response ? err.response.status : 'N/A';
-        const data = err.response ? JSON.stringify(err.response.data) : err.message;
-        console.error(`  [ERROR] Batch upload failed: HTTP ${status} - ${data}`);
-        logGenerator(logFileName, 'error', `Batch upload error: ${status} ${data}`);
-        errorCount = toUpload.length;
-    }
-
-    console.log(`\n=== UPLOAD COMPLETE ===`);
-    console.log(`  Success: ${successCount}`);
-    console.log(`  Errors:  ${errorCount}`);
-    if (categories.ready.length > batchLimit) {
-        console.log(`  Remaining: ${categories.ready.length - batchLimit} (run again to process next batch)`);
-    }
 }
 
 // Run only when executed directly (not when required for testing)
@@ -595,4 +621,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { classifyPayments };
+module.exports = { classifyPayments, uploadBatch };
