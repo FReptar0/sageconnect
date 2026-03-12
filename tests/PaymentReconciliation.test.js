@@ -49,10 +49,11 @@ jest.mock('axios');
 // Require modules after mocks
 // ---------------------------------------------------------------------------
 
-const { classifyPayments } = require('../src/scripts/payment-reconciliation');
+const { classifyPayments, uploadBatch } = require('../src/scripts/payment-reconciliation');
 const { runQuery } = require('../src/utils/SQLServerConnection');
 const { getProviderByExternalId } = require('../src/utils/GetProviders');
 const { resolveProviderIdByExternalId } = require('../src/services/ProviderIdResolver');
+const axios = require('axios');
 
 // ---------------------------------------------------------------------------
 // Test fixture helpers
@@ -360,5 +361,352 @@ describe('PROV-02: PROVIDER MISMATCH category with detail', () => {
         expect(result.categories.provider_mismatch).toHaveLength(1);
         const entry = result.categories.provider_mismatch[0];
         expect(entry.mismatchDetails).toHaveLength(2);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2 fixture helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a default upload options object for uploadBatch().
+ * @param {Object} overrides - Fields to override.
+ * @returns {Object} Upload config object.
+ */
+function makeUploadOptions(overrides = {}) {
+    return {
+        shouldUpload: true,
+        batchLimit: 20,
+        index: 0,
+        logFileName: 'PaymentReconciliation',
+        tenantIds: ['tenant1'],
+        apiKeys: ['key1'],
+        apiSecrets: ['secret1'],
+        database: ['TESTDB'],
+        URL: 'http://localhost',
+        ...overrides
+    };
+}
+
+/**
+ * Creates a categories object matching classifyPayments output.
+ * @param {Array} readyEntries - Array of ready entry objects.
+ * @returns {Object} Categories object.
+ */
+function makeCategories(readyEntries = []) {
+    return {
+        ready: readyEntries,
+        no_providerid: [],
+        no_uuid: [],
+        not_in_portal: [],
+        provider_mismatch: []
+    };
+}
+
+/**
+ * Creates a ready entry (classifyPayments output structure).
+ * @param {Object} overrides - { hdr: {}, invoices: [], extra: {} }.
+ * @returns {Object} Ready entry with hdr and invoices.
+ */
+function makeReadyEntry(overrides = {}) {
+    return {
+        hdr: makePaymentHdr(overrides.hdr || {}),
+        invoices: overrides.invoices || [makeInvoice()],
+        ...(overrides.extra || {})
+    };
+}
+
+// ---------------------------------------------------------------------------
+// BTCH-02: Empty batch guard
+// ---------------------------------------------------------------------------
+
+describe('BTCH-02: Empty batch guard', () => {
+    test('should not call axios.post when categories.ready is empty and shouldUpload is true', async () => {
+        const categories = makeCategories([]);
+        const options = makeUploadOptions({ shouldUpload: true });
+
+        await uploadBatch(categories, options);
+
+        expect(axios.post).not.toHaveBeenCalled();
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/No payments ready to upload/)
+        );
+    });
+
+    test('should log info via logGenerator when empty batch is skipped', async () => {
+        const { logGenerator } = require('../src/utils/LogGenerator');
+        const categories = makeCategories([]);
+        const options = makeUploadOptions({ shouldUpload: true });
+
+        await uploadBatch(categories, options);
+
+        expect(logGenerator).toHaveBeenCalledWith(
+            'PaymentReconciliation',
+            'info',
+            expect.stringMatching(/no payments ready/i)
+        );
+    });
+
+    test('should not show upload hint in report mode when categories.ready is empty', async () => {
+        const categories = makeCategories([]);
+        const options = makeUploadOptions({ shouldUpload: false });
+
+        await uploadBatch(categories, options);
+
+        const logCalls = consoleLogSpy.mock.calls.map(c => c[0]);
+        const hintCalls = logCalls.filter(msg =>
+            typeof msg === 'string' && msg.match(/Use --upload/)
+        );
+        expect(hintCalls).toHaveLength(0);
+    });
+
+    test('should show upload hint in report mode when categories.ready has entries', async () => {
+        const categories = makeCategories([makeReadyEntry()]);
+        const options = makeUploadOptions({ shouldUpload: false });
+
+        await uploadBatch(categories, options);
+
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/Use --upload to send the 1 ready payments/)
+        );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// BTCH-01: Missing result detection
+// ---------------------------------------------------------------------------
+
+describe('BTCH-01: Missing result detection', () => {
+    test('should report no missing when all results present', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-003' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } },
+                    { error_code: 0, id: 'portal-2', item: { external_id: 'PY-002' } },
+                    { error_code: 0, id: 'portal-3', item: { external_id: 'PY-003' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        const warnCalls = consoleWarnSpy.mock.calls.map(c => c.join(' '));
+        const missingWarns = warnCalls.filter(msg => msg.match(/MISSING RESULT/));
+        expect(missingWarns).toHaveLength(0);
+    });
+
+    test('should detect and warn when one result is missing from API response', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-003' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        // API returns results for PY-001 and PY-003 only (PY-002 missing)
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } },
+                    { error_code: 0, id: 'portal-3', item: { external_id: 'PY-003' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/PY-002.*MISSING RESULT/)
+        );
+    });
+
+    test('should log missing result via logGenerator', async () => {
+        const { logGenerator } = require('../src/utils/LogGenerator');
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        // API returns result for PY-001 only
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        expect(logGenerator).toHaveBeenCalledWith(
+            'PaymentReconciliation',
+            'warn',
+            expect.stringMatching(/PY-002.*not in API response/i)
+        );
+    });
+
+    test('should detect multiple missing results', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-003' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        // API returns result for PY-001 only (PY-002 and PY-003 missing)
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        const warnCalls = consoleWarnSpy.mock.calls.map(c => c.join(' '));
+        const missingWarns = warnCalls.filter(msg => msg.match(/MISSING RESULT/));
+        expect(missingWarns).toHaveLength(2);
+    });
+
+    test('should not run missing scan when batch POST throws (full failure)', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        axios.post.mockRejectedValue(new Error('Network error'));
+
+        await uploadBatch(categories, options);
+
+        const warnCalls = consoleWarnSpy.mock.calls.map(c => c.join(' '));
+        const missingWarns = warnCalls.filter(msg => msg.match(/MISSING RESULT/));
+        expect(missingWarns).toHaveLength(0);
+    });
+
+    test('should handle result.item being null/undefined', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        // API returns 1 result with item: null
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: null }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        // PY-001 should be reported as MISSING RESULT since item is null
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/PY-001.*MISSING RESULT/)
+        );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// BTCH-01: Updated summary format
+// ---------------------------------------------------------------------------
+
+describe('BTCH-01: Updated summary format', () => {
+    test('should show Sent line in upload summary', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } },
+                    { error_code: 0, id: 'portal-2', item: { external_id: 'PY-002' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/Sent:\s+2/)
+        );
+    });
+
+    test('should show Missing line only when missingCount > 0', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        // Only PY-001 returns, PY-002 is missing
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            expect.stringMatching(/Missing:\s+1/)
+        );
+    });
+
+    test('should NOT show Missing line when missingCount is 0', async () => {
+        const entries = [
+            makeReadyEntry({ hdr: { external_id: 'PY-001' } }),
+            makeReadyEntry({ hdr: { external_id: 'PY-002' } })
+        ];
+        const categories = makeCategories(entries);
+        const options = makeUploadOptions();
+
+        axios.post.mockResolvedValue({
+            data: {
+                results: [
+                    { error_code: 0, id: 'portal-1', item: { external_id: 'PY-001' } },
+                    { error_code: 0, id: 'portal-2', item: { external_id: 'PY-002' } }
+                ]
+            }
+        });
+        runQuery.mockResolvedValue({ rowsAffected: [1] });
+
+        await uploadBatch(categories, options);
+
+        const logCalls = consoleLogSpy.mock.calls.map(c => c[0]);
+        const missingCalls = logCalls.filter(msg =>
+            typeof msg === 'string' && msg.match(/Missing:/)
+        );
+        expect(missingCalls).toHaveLength(0);
     });
 });
