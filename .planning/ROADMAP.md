@@ -27,7 +27,7 @@ This roadmap fixes two distinct gaps in `payment-reconciliation.js`: first, the 
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Extract classifyPayments function and create failing TDD tests
+- [x] 01-01-PLAN.md — Extract classifyPayments function and create failing TDD tests
 - [ ] 01-02-PLAN.md — Implement auto-resolution, mismatch validation, and report updates
 
 ### Phase 2: Batch Upload Robustness
@@ -50,5 +50,5 @@ Phases execute in numeric order: 1 -> 2
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Reconciliation Classification | 0/2 | Not started | - |
+| 1. Reconciliation Classification | 1/2 | In Progress | - |
 | 2. Batch Upload Robustness | 0/? | Not started | - |
