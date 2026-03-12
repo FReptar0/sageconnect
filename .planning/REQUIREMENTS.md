@@ -40,18 +40,18 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PROV-01 | - | Pending |
-| PROV-02 | - | Pending |
-| RSOL-01 | - | Pending |
-| RSOL-02 | - | Pending |
-| BTCH-01 | - | Pending |
-| BTCH-02 | - | Pending |
+| PROV-01 | Phase 1 | Pending |
+| PROV-02 | Phase 1 | Pending |
+| RSOL-01 | Phase 1 | Pending |
+| RSOL-02 | Phase 1 | Pending |
+| BTCH-01 | Phase 2 | Pending |
+| BTCH-02 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 6 total
-- Mapped to phases: 0
-- Unmapped: 6 ⚠️
+- Mapped to phases: 6
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-12*
-*Last updated: 2026-03-12 after initial definition*
+*Last updated: 2026-03-12 after roadmap creation*
