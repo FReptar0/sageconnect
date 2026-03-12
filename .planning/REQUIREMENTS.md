@@ -17,8 +17,8 @@
 
 ### Robustez de Batch Upload
 
-- [ ] **BTCH-01**: El script verifica que cada `external_id` enviado en el batch tenga un resultado correspondiente en `results`; pagos sin resultado se reportan como MISSING RESULT
-- [ ] **BTCH-02**: El script no envía request batch cuando `categories.ready.length === 0` con flag `--upload`
+- [x] **BTCH-01**: El script verifica que cada `external_id` enviado en el batch tenga un resultado correspondiente en `results`; pagos sin resultado se reportan como MISSING RESULT
+- [x] **BTCH-02**: El script no envía request batch cuando `categories.ready.length === 0` con flag `--upload`
 
 ## v2 Requirements
 
@@ -44,8 +44,8 @@
 | PROV-02 | Phase 1 | Complete |
 | RSOL-01 | Phase 1 | Complete |
 | RSOL-02 | Phase 1 | Complete |
-| BTCH-01 | Phase 2 | Pending |
-| BTCH-02 | Phase 2 | Pending |
+| BTCH-01 | Phase 2 | Complete |
+| BTCH-02 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 6 total
