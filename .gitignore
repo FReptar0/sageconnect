@@ -46,6 +46,7 @@ C:\Logs\*/
 *.xml
 *.json
 !package*.json
+!.planning/**
 !jest.config.js
 !babel.config.js
 *.cfdi
