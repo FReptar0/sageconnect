@@ -2,6 +2,8 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const { getPendingToPayInvoices } = require('../utils/GetTypesCFDI');
+const { getProviderByExternalId } = require('../utils/GetProviders');
+const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const axios = require('axios');
 const dotenv = require('dotenv');
 
@@ -40,6 +42,131 @@ for (let i = 0; i < cliArgs.length; i++) {
 }
 
 const logFileName = 'PaymentReconciliation';
+
+// ---------------------------------------------------------------------------
+// Classification
+// ---------------------------------------------------------------------------
+
+/**
+ * Classifies deduplicated Sage PY payments into categories.
+ * @param {Array} deduped - Deduplicated payment header rows from Sage.
+ * @param {Map} portalUuidMap - Map of UUID -> portal item info (folio, serie, total, currency, provider_id).
+ * @param {number} index - Tenant index.
+ * @param {string} db - Sage database name.
+ * @returns {Promise<{categories: Object, autoResolvedCount: number, autoResolvedSet: Set}>}
+ */
+async function classifyPayments(deduped, portalUuidMap, index, db) {
+    const categories = {
+        ready: [],
+        no_providerid: [],
+        no_uuid: [],
+        not_in_portal: [],
+        provider_mismatch: []
+    };
+
+    let autoResolvedCount = 0;
+    const autoResolvedSet = new Set();
+
+    for (const hdr of deduped) {
+        const providerid = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
+        const rfc = hdr.RFC ? hdr.RFC.trim() : '';
+
+        // Check PROVIDERID first
+        if (!providerid) {
+            categories.no_providerid.push({
+                hdr,
+                rfc,
+                reason: 'no PROVIDERID in APVENO'
+            });
+            continue;
+        }
+
+        // Fetch invoices for this payment
+        const queryFacturasPagadas = `
+SELECT DISTINCT
+    DP.CNTBTCH        AS LotePago,
+    DP.CNTRMIT        AS AsientoPago,
+    RTRIM(DP.IDINVC)  AS invoice_external_id,
+    H.CNTBTCH         AS inv_batch,
+    H.CNTITEM         AS inv_entry,
+    H.AMTGROSDST      AS invoice_amount,
+    CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
+    H.EXCHRATEHC      AS invoice_exchange_rate,
+    DP.AMTPAYM        AS payment_amount,
+    ISNULL(
+        (SELECT SWPAID
+         FROM APOBL
+         WHERE IDINVC = DP.IDINVC
+           AND IDVEND = DP.IDVEND),
+        0
+    ) AS FULL_PAID,
+    ISNULL(
+        (SELECT RTRIM([VALUE])
+         FROM APIBHO
+         WHERE CNTBTCH = H.CNTBTCH
+           AND CNTITEM = H.CNTITEM
+           AND OPTFIELD = 'FOLIOCFD'),
+        ''
+    ) AS UUID,
+    R.RATEEXCHHC AS exchange_rate
+FROM APTCP DP
+JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
+JOIN APIBH H ON DP.IDVEND = H.IDVEND
+            AND DP.IDINVC = H.IDINVC
+            AND H.ERRENTRY = 0
+JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH
+            AND C.BTCHSTTS = 3
+WHERE DP.BATCHTYPE = 'PY'
+    AND DP.CNTBTCH   = ${hdr.LotePago}
+    AND DP.CNTRMIT   = ${hdr.AsientoPago}
+    AND DP.DOCTYPE   = 1`;
+
+        const invoices = await runQuery(queryFacturasPagadas, db)
+            .catch(err => {
+                logGenerator(logFileName, 'error', `Error queryFacturasPagadas for ${hdr.external_id}: ${err.message}`);
+                console.error(`  Error fetching invoices for ${hdr.external_id}:`, err.message);
+                return { recordset: [] };
+            });
+
+        if (!invoices.recordset.length) {
+            continue;
+        }
+
+        // Check for missing UUIDs
+        const missingUuid = invoices.recordset.filter(inv => !inv.UUID || inv.UUID.trim() === '');
+        if (missingUuid.length > 0) {
+            categories.no_uuid.push({
+                hdr,
+                invoices: invoices.recordset,
+                missingCount: missingUuid.length,
+                totalCount: invoices.recordset.length
+            });
+            continue;
+        }
+
+        // All invoices have UUIDs — check if they exist in portal PENDING_TO_PAY
+        const allInPortal = invoices.recordset.every(inv => {
+            const uuid = inv.UUID.trim().toUpperCase();
+            return portalUuidMap.has(uuid);
+        });
+
+        if (!allInPortal) {
+            categories.not_in_portal.push({
+                hdr,
+                invoices: invoices.recordset
+            });
+            continue;
+        }
+
+        // All good — ready to upload
+        categories.ready.push({
+            hdr,
+            invoices: invoices.recordset
+        });
+    }
+
+    return { categories, autoResolvedCount, autoResolvedSet };
+}
 
 // ---------------------------------------------------------------------------
 // Main
@@ -177,110 +304,7 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
     // -----------------------------------------------------------------------
     console.log('\n[Step 3-4] Fetching invoices and categorizing...');
 
-    const categories = {
-        ready: [],
-        no_providerid: [],
-        no_uuid: [],
-        not_in_portal: []
-    };
-
-    for (const hdr of deduped) {
-        const providerid = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
-        const rfc = hdr.RFC ? hdr.RFC.trim() : '';
-
-        // Check PROVIDERID first
-        if (!providerid) {
-            categories.no_providerid.push({
-                hdr,
-                rfc,
-                reason: 'no PROVIDERID in APVENO'
-            });
-            continue;
-        }
-
-        // Fetch invoices for this payment
-        const queryFacturasPagadas = `
-SELECT DISTINCT
-    DP.CNTBTCH        AS LotePago,
-    DP.CNTRMIT        AS AsientoPago,
-    RTRIM(DP.IDINVC)  AS invoice_external_id,
-    H.CNTBTCH         AS inv_batch,
-    H.CNTITEM         AS inv_entry,
-    H.AMTGROSDST      AS invoice_amount,
-    CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
-    H.EXCHRATEHC      AS invoice_exchange_rate,
-    DP.AMTPAYM        AS payment_amount,
-    ISNULL(
-        (SELECT SWPAID
-         FROM APOBL
-         WHERE IDINVC = DP.IDINVC
-           AND IDVEND = DP.IDVEND),
-        0
-    ) AS FULL_PAID,
-    ISNULL(
-        (SELECT RTRIM([VALUE])
-         FROM APIBHO
-         WHERE CNTBTCH = H.CNTBTCH
-           AND CNTITEM = H.CNTITEM
-           AND OPTFIELD = 'FOLIOCFD'),
-        ''
-    ) AS UUID,
-    R.RATEEXCHHC AS exchange_rate
-FROM APTCP DP
-JOIN APTCR R ON R.CNTBTCH = DP.CNTBTCH AND R.CNTENTR = DP.CNTRMIT
-JOIN APIBH H ON DP.IDVEND = H.IDVEND
-            AND DP.IDINVC = H.IDINVC
-            AND H.ERRENTRY = 0
-JOIN APIBC C ON H.CNTBTCH = C.CNTBTCH
-            AND C.BTCHSTTS = 3
-WHERE DP.BATCHTYPE = 'PY'
-    AND DP.CNTBTCH   = ${hdr.LotePago}
-    AND DP.CNTRMIT   = ${hdr.AsientoPago}
-    AND DP.DOCTYPE   = 1`;
-
-        const invoices = await runQuery(queryFacturasPagadas, database[index])
-            .catch(err => {
-                logGenerator(logFileName, 'error', `Error queryFacturasPagadas for ${hdr.external_id}: ${err.message}`);
-                console.error(`  Error fetching invoices for ${hdr.external_id}:`, err.message);
-                return { recordset: [] };
-            });
-
-        if (!invoices.recordset.length) {
-            continue;
-        }
-
-        // Check for missing UUIDs
-        const missingUuid = invoices.recordset.filter(inv => !inv.UUID || inv.UUID.trim() === '');
-        if (missingUuid.length > 0) {
-            categories.no_uuid.push({
-                hdr,
-                invoices: invoices.recordset,
-                missingCount: missingUuid.length,
-                totalCount: invoices.recordset.length
-            });
-            continue;
-        }
-
-        // All invoices have UUIDs — check if they exist in portal PENDING_TO_PAY
-        const allInPortal = invoices.recordset.every(inv => {
-            const uuid = inv.UUID.trim().toUpperCase();
-            return portalUuidMap.has(uuid);
-        });
-
-        if (!allInPortal) {
-            categories.not_in_portal.push({
-                hdr,
-                invoices: invoices.recordset
-            });
-            continue;
-        }
-
-        // All good — ready to upload
-        categories.ready.push({
-            hdr,
-            invoices: invoices.recordset
-        });
-    }
+    const { categories, autoResolvedCount, autoResolvedSet } = await classifyPayments(deduped, portalUuidMap, index, database[index]);
 
     // -----------------------------------------------------------------------
     // Step 5: Generate report
@@ -461,8 +485,13 @@ VALUES
     }
 }
 
-main().catch(err => {
-    console.error('[FATAL] Unexpected error:', err);
-    logGenerator(logFileName, 'error', `Fatal: ${err.message}\n${err.stack}`);
-    process.exit(1);
-});
+// Run only when executed directly (not when required for testing)
+if (require.main === module) {
+    main().catch(err => {
+        console.error('[FATAL] Unexpected error:', err);
+        logGenerator(logFileName, 'error', `Fatal: ${err.message}\n${err.stack}`);
+        process.exit(1);
+    });
+}
+
+module.exports = { classifyPayments };
