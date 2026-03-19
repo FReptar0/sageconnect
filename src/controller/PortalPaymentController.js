@@ -1,6 +1,8 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
+const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
+const { resolveUuidByFolio } = require('../services/UuidResolver');
 const axios = require('axios');
 const notifier = require('node-notifier');
 const dotenv = require('dotenv');
@@ -45,14 +47,6 @@ SELECT A.* FROM (
         P.AMTRMIT    AS total_amount,
         'TRANSFER'   AS operation_type,
         P.RATEEXCHHC AS TipoCambioPago,
-    ISNULL(
-    (SELECT [VALUE]
-        FROM APVENO
-        WHERE OPTFIELD = 'RFC'
-        AND VENDORID = P.IDVEND
-    ),
-    ''
-    ) AS RFC,
     ISNULL(
         (SELECT [VALUE]
         FROM APVENO
@@ -132,21 +126,33 @@ SELECT A.* FROM (
             });
         }
 
-        // 2) Filtrar registros sin PROVIDERID
+        // 2) Auto-resolver PROVIDERID faltante vía portal (por external_id de ERP) y filtrar
+        const withoutPid = payments.recordset.filter(r => !r.PROVIDERID || r.PROVIDERID.trim() === '');
+        for (const r of withoutPid) {
+            const providerExternalId = r.provider_external_id ? r.provider_external_id.trim() : '';
+            if (providerExternalId) {
+                console.log(
+                    `[INFO] PROVIDERID vacío para vendor ${providerExternalId} (pago ${r.external_id}). ` +
+                    `Buscando en portal por externalId...`
+                );
+                await resolveProviderIdByExternalId(r.provider_external_id, providerExternalId, index, database[index]);
+            } else {
+                console.warn(`[WARN] Vendor sin provider_external_id y sin PROVIDERID. No se puede resolver.`);
+                logGenerator(logFileName, 'warn', 'Vendor sin provider_external_id y sin PROVIDERID.');
+            }
+        }
+        // Siempre omitir los pagos sin PROVIDERID en este ciclo; el siguiente ciclo los tomará ya con PROVIDERID
         const beforeCount = payments.recordset.length;
         payments.recordset = payments.recordset.filter(r => {
             if (!r.PROVIDERID || r.PROVIDERID.trim() === '') {
-                logGenerator(
-                    'PortalPaymentController',
-                    'warn',
-                    `Proveedor ${r.provider_external_id} no tiene PROVIDERID seteado.`
-                );
-                console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío`);
+                console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío (se procesará en el siguiente ciclo si fue resuelto)`);
                 return false;
             }
             return true;
         });
-        console.log(`[INFO] Se omitieron ${beforeCount - payments.recordset.length} pagos sin PROVIDERID.`);
+        if (beforeCount - payments.recordset.length > 0) {
+            console.log(`[INFO] Se omitieron ${beforeCount - payments.recordset.length} pagos sin PROVIDERID (se resolverán en el siguiente ciclo).`);
+        }
 
         // 3) Filtrar por control table (todos los NoPagoSage ya existentes)
         const queryPagosRegistrados = `
@@ -182,6 +188,8 @@ SELECT A.* FROM (
             DP.CNTBTCH        AS LotePago,
             DP.CNTRMIT        AS AsientoPago,
             RTRIM(DP.IDINVC)  AS invoice_external_id,
+            H.CNTBTCH         AS inv_batch,
+            H.CNTITEM         AS inv_entry,
             H.AMTGROSDST      AS invoice_amount,
             CASE H.CODECURN WHEN 'MXP' THEN 'MXN' ELSE H.CODECURN END AS invoice_currency,
             H.EXCHRATEHC      AS invoice_exchange_rate,
@@ -225,6 +233,20 @@ SELECT A.* FROM (
 
             if (!invoices.recordset.length) {
                 console.log(`  [INFO] No hay facturas pagadas para Lote ${hdr.LotePago} / Asiento ${hdr.AsientoPago}.`);
+                continue;
+            }
+
+            // 4.1.1) Auto-resolver UUIDs faltantes vía portal y omitir pago si persisten
+            const missingUuid = invoices.recordset.filter(inv => !inv.UUID || inv.UUID.trim() === '');
+            if (missingUuid.length > 0) {
+                console.log(`  [INFO] ${missingUuid.length} factura(s) sin UUID para pago ${hdr.external_id}. Intentando resolver...`);
+                const providerId = hdr.PROVIDERID ? hdr.PROVIDERID.trim() : '';
+                for (const inv of missingUuid) {
+                    await resolveUuidByFolio(inv.invoice_external_id, inv.inv_batch, inv.inv_entry, providerId, index, database[index]);
+                }
+                // Omitir este pago en este ciclo; el siguiente ciclo lo tomará con los UUIDs ya escritos
+                console.warn(`  [WARN] Omite pago ${hdr.external_id} por UUID(s) faltante(s) (se procesará en el siguiente ciclo si fueron resueltos)`);
+                logGenerator(logFileName, 'warn', `Pago ${hdr.external_id} omitido: ${missingUuid.length} factura(s) sin UUID. Se intentó resolver vía portal.`);
                 continue;
             }
 
