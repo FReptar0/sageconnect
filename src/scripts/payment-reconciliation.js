@@ -344,19 +344,54 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
             }
         });
 
-        const results = resp.data && resp.data.results ? resp.data.results : [];
+        const results = Array.isArray(resp.data?.results)
+            ? resp.data.results
+            : Array.isArray(resp.data?.items)
+                ? resp.data.items
+                : Array.isArray(resp.data?.data?.results)
+                    ? resp.data.data.results
+                    : Array.isArray(resp.data)
+                        ? resp.data
+                        : [];
         console.log(`  [OK] Batch response received: ${results.length} result(s)`);
 
-        for (const result of results) {
-            const externalId = result.item?.external_id;
+        for (let i = 0; i < results.length; i++) {
+            const result = results[i] || {};
+            const fallbackExternalId = toUpload[i]?.hdr?.external_id;
+            const externalId =
+                result.item?.external_id ||
+                result.external_id ||
+                result.externalId ||
+                result.payment_external_id ||
+                fallbackExternalId;
             if (externalId) {
                 respondedIds.add(externalId);
             }
             const displayId = externalId || 'unknown';
-            const matchEntry = toUpload.find(e => e.hdr.external_id === displayId);
+            const matchEntry = toUpload.find(e => e.hdr.external_id === displayId) || toUpload[i];
 
-            if (result.error_code === 0) {
-                const idPortal = result.id || undefined;
+            const errorCode = result.error_code ?? result.errorCode;
+            const errorMessage =
+                result.error_message ??
+                result.errorMessage ??
+                result.message ??
+                (Array.isArray(result.errors) && result.errors.length > 0 ? JSON.stringify(result.errors) : undefined);
+            const statusText = typeof result.status === 'string' ? result.status.toLowerCase() : '';
+
+            const hasExplicitError =
+                (errorCode !== undefined && Number(errorCode) !== 0) ||
+                result.error === true ||
+                (Array.isArray(result.errors) && result.errors.length > 0) ||
+                statusText === 'error' ||
+                statusText === 'failed' ||
+                statusText === 'failure' ||
+                (result.status_code !== undefined && Number(result.status_code) >= 400) ||
+                (result.statusCode !== undefined && Number(result.statusCode) >= 400);
+
+            const isSuccess = !hasExplicitError;
+
+            if (isSuccess) {
+                const idPortal = result.id || result.payment_id || result.data?.id || undefined;
                 console.log(`  [OK] ${displayId} sent successfully | portal ID: ${idPortal ?? 'N/A'}`);
                 logGenerator(logFileName, 'info', `Reconciliation upload OK: ${displayId}, portal ID: ${idPortal ?? 'N/A'}`);
 
@@ -390,8 +425,9 @@ VALUES
                 }
                 successCount++;
             } else {
-                console.error(`  [ERROR] ${displayId} failed: error_code=${result.error_code}, message=${result.error_message}`);
-                logGenerator(logFileName, 'error', `Batch upload failed ${displayId}: code=${result.error_code} msg=${result.error_message}`);
+                const details = errorMessage || JSON.stringify(result);
+                console.error(`  [ERROR] ${displayId} failed: error_code=${errorCode ?? 'N/A'}, message=${details}`);
+                logGenerator(logFileName, 'error', `Batch upload failed ${displayId}: code=${errorCode ?? 'N/A'} msg=${details}`);
                 errorCount++;
             }
         }
