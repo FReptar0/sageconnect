@@ -415,7 +415,9 @@ async function modeScan(DB, tenantIndex, months) {
         for (const py of pyPayments) {
             const docNbr = py.external_id.trim();
 
-            if (state.payments[docNbr] && state.payments[docNbr].status !== 'pending') {
+            // Preserve any existing state entry (especially pending entries built in STEP 4b
+            // that include pre-matched UUID candidates for repair).
+            if (state.payments[docNbr]) {
                 skippedCount++;
                 continue;
             }
