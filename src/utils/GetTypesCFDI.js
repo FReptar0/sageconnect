@@ -398,9 +398,88 @@ async function getTypeE(index) {
 }
 
 
+/**
+ * Obtiene CFDIs PENDING_TO_PAY de tipo INVOICE filtrados por provider_id.
+ * @param {number} index - Índice del tenant.
+ * @param {string} providerId - ID del proveedor en el portal.
+ * @returns {Promise<Array>} - CFDIs del proveedor.
+ */
+async function getCfdisByProvider(index, providerId) {
+    const logFileName = 'GetTypesCFDI';
+    let dateFrom = getOneMonthAgoString();
+
+    try {
+        const response = await axios.get(
+            urlBase(index) +
+            `?from=${dateFrom}-01` +
+            `&documentTypes=CFDI` +
+            `&offset=0&pageSize=0` +
+            `&cfdiType=INVOICE` +
+            `&stage=PENDING_TO_PAY`,
+            {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index]
+                }
+            }
+        );
+
+        if (response.data.total === 0) return [];
+
+        return (response.data.items || []).filter(
+            item => item.metadata?.provider_id === providerId
+        );
+    } catch (error) {
+        console.error(`[ERROR] getCfdisByProvider: ${error.message}`);
+        logGenerator(logFileName, 'error', `getCfdisByProvider failed for provider ${providerId}: ${error.message}`);
+        return [];
+    }
+}
+
+/**
+ * Fetches ALL PENDING_TO_PAY invoices from the portal without any Sage-side
+ * filtering or date constraints. Returns every invoice the portal considers unpaid.
+ * @param {number} index - Tenant index.
+ * @returns {Promise<Array>} - Raw portal items array.
+ */
+async function getPendingToPayInvoices(index) {
+    const logFileName = 'GetTypesCFDI';
+    logGenerator(logFileName, 'info', `[START] Fetching ALL PENDING_TO_PAY invoices (no date filter, no Sage filter) for index=${index}`);
+
+    try {
+        const response = await axios.get(
+            urlBase(index) +
+            `?documentTypes=CFDI` +
+            `&offset=0&pageSize=0` +
+            `&cfdiType=INVOICE` +
+            `&stage=PENDING_TO_PAY`,
+            {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index]
+                }
+            }
+        );
+
+        if (response.data.total === 0) {
+            console.log('[INFO] No PENDING_TO_PAY invoices found in portal');
+            return [];
+        }
+
+        console.log(`[INFO] Portal returned ${response.data.items.length} PENDING_TO_PAY invoices`);
+        return response.data.items || [];
+    } catch (error) {
+        console.error(`[ERROR] getPendingToPayInvoices: ${error.message}`);
+        logGenerator(logFileName, 'error', `getPendingToPayInvoices failed: ${error.message}`);
+        return [];
+    }
+}
+
 module.exports = {
     getTypeP,
     getTypeI,
     getTypeIToSend,
-    getTypeE
+    getTypeE,
+    getCfdisByProvider,
+    getPendingToPayInvoices
 }

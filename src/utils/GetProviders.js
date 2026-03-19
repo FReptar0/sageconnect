@@ -67,4 +67,57 @@ async function getProviders(index) {
     }
 }
 
-module.exports = { getProviders };
+/**
+ * Busca un proveedor en el portal por external_id.
+ * @param {number} index - Índice del tenant.
+ * @param {string} externalId - Identificador del proveedor en ERP.
+ * @returns {Promise<Object|null>} - Datos del proveedor o null si no hay match único.
+ */
+async function getProviderByExternalId(index, externalId) {
+    const logFileName = 'GetProviders';
+    try {
+        const externalIdClean = (externalId || '').trim();
+        if (!externalIdClean) {
+            console.warn('[WARN] Empty externalId provided');
+            logGenerator(logFileName, 'warn', 'Empty externalId provided');
+            return null;
+        }
+
+        const response = await axios.get(
+            urlBase(index) + `?externalId=${encodeURIComponent(externalIdClean)}&pageSize=-1`,
+            {
+                headers: {
+                    'PDPTenantKey': apiKeys[index],
+                    'PDPTenantSecret': apiSecrets[index]
+                }
+            }
+        );
+
+        const items = response.data.items || [];
+        const exactMatches = items.filter(item => {
+            const currentExternalId = (item.external_id || '').toString().trim();
+            return currentExternalId === externalIdClean;
+        });
+
+        if (exactMatches.length === 0) {
+            console.log(`[INFO] No provider found with externalId: ${externalIdClean}`);
+            logGenerator(logFileName, 'info', `No provider found with externalId: ${externalIdClean}`);
+            return null;
+        }
+
+        if (exactMatches.length > 1) {
+            console.warn(`[WARN] Ambiguous provider search by externalId "${externalIdClean}": ${exactMatches.length} matches`);
+            logGenerator(logFileName, 'warn', `Ambiguous provider search by externalId "${externalIdClean}": ${exactMatches.length} matches`);
+            return null;
+        }
+
+        return exactMatches[0];
+    } catch (error) {
+        const externalIdClean = (externalId || '').trim();
+        console.error(`[ERROR] Error fetching provider by externalId ${externalIdClean}:`, error.message);
+        logGenerator(logFileName, 'error', `Error fetching provider by externalId ${externalIdClean}: ${error.message}`);
+        return null;
+    }
+}
+
+module.exports = { getProviders, getProviderByExternalId };
