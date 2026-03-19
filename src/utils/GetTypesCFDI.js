@@ -440,37 +440,130 @@ async function getCfdisByProvider(index, providerId) {
  * Fetches ALL PENDING_TO_PAY invoices from the portal without any Sage-side
  * filtering or date constraints. Returns every invoice the portal considers unpaid.
  * @param {number} index - Tenant index.
+ * @param {Object} [options] - Optional paging and filter settings.
+ * @param {number} [options.pageSize=200] - Page size for portal pagination.
+ * @param {number} [options.maxPages=1000] - Safety cap for page iterations.
+ * @param {string|null} [options.from=null] - Optional from date (YYYY-MM-DD).
+ * @param {string|null} [options.to=null] - Optional to date (YYYY-MM-DD).
  * @returns {Promise<Array>} - Raw portal items array.
  */
-async function getPendingToPayInvoices(index) {
-    const logFileName = 'GetTypesCFDI';
-    logGenerator(logFileName, 'info', `[START] Fetching ALL PENDING_TO_PAY invoices (no date filter, no Sage filter) for index=${index}`);
+function isRetryablePortalError(error) {
+    const retryableStatus = [429, 502, 503, 504];
+    const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED', 'ENOTFOUND', 'EAI_AGAIN'];
+    const status = error?.response?.status;
+    const code = error?.code;
 
-    try {
-        const response = await axios.get(
-            urlBase(index) +
-            `?documentTypes=CFDI` +
-            `&offset=0&pageSize=0` +
-            `&cfdiType=INVOICE` +
-            `&stage=PENDING_TO_PAY`,
-            {
+    return retryableStatus.includes(status) || retryableCodes.includes(code);
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestPendingToPayPage(index, offset, pageSize, from, to, logFileName) {
+    const maxAttempts = 3;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            let query =
+                `?documentTypes=CFDI` +
+                `&offset=${offset}` +
+                `&pageSize=${pageSize}` +
+                `&cfdiType=INVOICE` +
+                `&stage=PENDING_TO_PAY`;
+
+            if (from) query += `&from=${from}`;
+            if (to) query += `&to=${to}`;
+
+            return await axios.get(urlBase(index) + query, {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
                     'PDPTenantSecret': apiSecrets[index]
                 }
-            }
-        );
+            });
+        } catch (error) {
+            const canRetry = attempt < maxAttempts && isRetryablePortalError(error);
+            if (!canRetry) throw error;
 
-        if (response.data.total === 0) {
+            const backoffMs = attempt * 1500;
+            const status = error?.response?.status || 'N/A';
+            console.warn(`[WARN] getPendingToPayInvoices page offset=${offset} attempt=${attempt} failed (status ${status}). Retrying in ${backoffMs}ms...`);
+            logGenerator(logFileName, 'warn', `PendingToPay page retry offset=${offset} attempt=${attempt} status=${status}`);
+            await sleep(backoffMs);
+        }
+    }
+
+    return null;
+}
+
+async function getPendingToPayInvoices(index, options = {}) {
+    const logFileName = 'GetTypesCFDI';
+    const pageSize = options.pageSize || 200;
+    const maxPages = options.maxPages || 1000;
+    const from = options.from || null;
+    const to = options.to || null;
+
+    logGenerator(
+        logFileName,
+        'info',
+        `[START] Fetching PENDING_TO_PAY invoices (paged) index=${index}, pageSize=${pageSize}, from=${from || 'N/A'}, to=${to || 'N/A'}`
+    );
+
+    try {
+        let offset = 0;
+        let pagesFetched = 0;
+        let totalExpected = null;
+        const items = [];
+
+        while (pagesFetched < maxPages) {
+            const response = await requestPendingToPayPage(index, offset, pageSize, from, to, logFileName);
+            const pageItems = response?.data?.items || [];
+            const pageTotal = Number(response?.data?.total || 0);
+
+            if (totalExpected === null) totalExpected = pageTotal;
+            if (pageItems.length === 0) break;
+
+            items.push(...pageItems);
+            offset += pageItems.length;
+            pagesFetched++;
+
+            if (totalExpected > 0 && items.length >= totalExpected) break;
+        }
+
+        if (pagesFetched >= maxPages) {
+            console.warn(`[WARN] getPendingToPayInvoices reached maxPages=${maxPages} before completion`);
+            logGenerator(logFileName, 'warn', `getPendingToPayInvoices reached maxPages=${maxPages}`);
+        }
+
+        if (items.length === 0) {
             console.log('[INFO] No PENDING_TO_PAY invoices found in portal');
             return [];
         }
 
-        console.log(`[INFO] Portal returned ${response.data.items.length} PENDING_TO_PAY invoices`);
-        return response.data.items || [];
+        // Defensive dedupe by UUID (or portal id when UUID is absent).
+        const deduped = [];
+        const seen = new Set();
+        for (const item of items) {
+            const key = item?.cfdi?.timbre?.uuid || item?.id;
+            if (!key) {
+                deduped.push(item);
+                continue;
+            }
+            if (!seen.has(key)) {
+                seen.add(key);
+                deduped.push(item);
+            }
+        }
+
+        console.log(`[INFO] Portal returned ${deduped.length} PENDING_TO_PAY invoices (raw=${items.length})`);
+        return deduped;
     } catch (error) {
         console.error(`[ERROR] getPendingToPayInvoices: ${error.message}`);
-        logGenerator(logFileName, 'error', `getPendingToPayInvoices failed: ${error.message}`);
+        logGenerator(
+            logFileName,
+            'error',
+            `getPendingToPayInvoices failed: ${error.message} (status=${error?.response?.status || 'N/A'})`
+        );
         return [];
     }
 }
