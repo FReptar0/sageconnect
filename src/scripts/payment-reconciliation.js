@@ -43,6 +43,17 @@ for (let i = 0; i < cliArgs.length; i++) {
 
 const logFileName = 'PaymentReconciliation';
 
+function compactToDashed(compactDate) {
+    if (!compactDate || !/^\d{8}$/.test(compactDate)) return null;
+    return `${compactDate.slice(0, 4)}-${compactDate.slice(4, 6)}-${compactDate.slice(6, 8)}`;
+}
+
+function oneYearAgoDashed() {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 // ---------------------------------------------------------------------------
 // Classification
 // ---------------------------------------------------------------------------
@@ -422,9 +433,12 @@ VALUES
 // ---------------------------------------------------------------------------
 async function main() {
     const currentDate = getCurrentDateCompact();
+    const portalFrom = compactToDashed(fromDate) || oneYearAgoDashed();
+    const portalTo = compactToDashed(currentDate);
+
     console.log('=== PAYMENT RECONCILIATION ===');
     console.log(`Tenant: ${tenantIds[index]} | DB: ${database[index]} | Today: ${currentDate}`);
-    console.log(`Mode: ${shouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: ALL PENDING_TO_PAY (no date filter)`);
+    console.log(`Mode: ${shouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: PENDING_TO_PAY from ${portalFrom} to ${portalTo}`);
     if (fromDate) console.log(`Sage --from: ${fromDate}`);
     if (pyFilter) console.log(`Sage --py: ${pyFilter}`);
     console.log('');
@@ -433,7 +447,11 @@ async function main() {
     // Step 1: Fetch portal PENDING_TO_PAY invoices
     // -----------------------------------------------------------------------
     console.log('[Step 1] Fetching portal PENDING_TO_PAY invoices...');
-    const portalItems = await getPendingToPayInvoices(index);
+    const portalItems = await getPendingToPayInvoices(index, {
+        from: portalFrom,
+        to: portalTo,
+        pageSize: 200
+    });
 
     // Build lookup map: uuid -> portal item info
     const portalUuidMap = new Map();
