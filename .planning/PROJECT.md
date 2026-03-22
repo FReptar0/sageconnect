@@ -1,12 +1,22 @@
-# SageConnect — Payment Reconciliation Fixes
+# SageConnect
 
 ## What This Is
 
-SageConnect es un sistema de integración entre Sage 300 ERP y Portal de Proveedores (portaldeproveedores.mx) que automatiza la gestión de CFDIs, pagos, y órdenes de compra. Este proyecto se enfoca en corregir gaps funcionales y de robustez en el flujo de conciliación de pagos (`payment-reconciliation.js`) y su consistencia con el flujo principal de subida de pagos (`PortalPaymentController.js`).
+SageConnect es un sistema de integración entre Sage 300 ERP y Portal de Proveedores (portaldeproveedores.mx) que automatiza la gestión de CFDIs, pagos, y órdenes de compra.
 
 ## Core Value
 
-Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor validado, datos completos, y errores trazables. Un pago subido con proveedor incorrecto o un error silenciado causa problemas operativos difíciles de revertir.
+La integración Sage-Portal debe ser confiable, mantenible, y operable: configuración centralizada, datos validados, y errores trazables.
+
+## Current Milestone: v1.1 Env Unification
+
+**Goal:** Unificar los 5 archivos .env dispersos en un solo archivo con un config loader centralizado que valide variables requeridas al arranque y exponga configuración estructurada.
+
+**Target features:**
+- Config loader centralizado (`src/config.js`) que carga un solo `.env` y exporta objeto estructurado
+- Validación fail-fast de variables requeridas al arranque
+- Reemplazo de las 25+ llamadas `dotenv.config()` dispersas por `require('./config')`
+- Un solo `.env.example` como referencia de todas las variables
 
 ## Current State (post v1.0)
 
@@ -32,29 +42,32 @@ Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor 
 
 ### Active
 
-- [ ] Eliminar columna RFC residual de la query de conciliación y del reporte (CONS-01)
-- [ ] Agregar auto-resolución de UUIDs faltantes en el flujo de conciliación (CONS-02)
+- [ ] Unificar 5 archivos .env en un solo archivo
+- [ ] Config loader centralizado con validación fail-fast
+- [ ] Reemplazar 25+ llamadas dotenv.config() por require centralizado
+- [ ] Limpiar archivos .env.example redundantes
 
 ### Out of Scope
 
-- SQL injection en CLI args (`--py`, `--from`) — script ejecutado localmente por equipo técnico con acceso admin a BD, riesgo irrelevante
-- Refactoring general del codebase — solo se corrigen los gaps del flujo de pagos
-- Cambios al flujo principal (`PortalPaymentController.js`) — ya funciona correctamente
-- Migración a queries parametrizadas — patrón establecido en todo el codebase; cambio sistémico fuera de scope
+- SQL injection en CLI args — script ejecutado localmente por equipo técnico
+- Migración a queries parametrizadas — patrón establecido en todo el codebase
+- Soporte multi-ambiente (sandbox/prod) — solo producción por ahora, estructura permite agregar después
+- Migración a YAML — se mantiene .env como estándar Node.js
 
 ## Context
 
-- **Rama activa:** `fix/missing-payments`
-- **API spec disponible:** `.planning/codebase/API-SPEC.md` (extraída del Swagger sandbox)
-- **PROVIDERID en APVENO:** Almacena el `id` interno del portal (MongoDB ObjectId)
-- **`metadata.provider_id` en CFDIs:** Es el mismo ID interno PDP — validación directa contra PROVIDERID de Sage
-- **Ambiente de pruebas:** Credenciales sandbox en `reports/.env.credentials.focaltec.backup`
+- **Rama activa:** `refactor/unify-env-files`
+- **Archivos .env actuales:** 5 archivos separados (.env, .env.path, .env.credentials.database, .env.credentials.focaltec, .env.credentials.mailing)
+- **Variables totales:** 27 únicas, con 25+ llamadas dotenv.config() independientes
+- **Backups en /reports/:** 5 archivos .backup con configuración histórica (se mantienen)
+- **Patrón actual:** Cada módulo carga su propio .env; mezcla de `.parsed` y `process.env`
 
 ## Constraints
 
-- **Sin BD Sage local:** Los cambios solo pueden probarse del lado API portal; queries SQL se validan por estructura
-- **Consistencia:** El script de conciliación sigue los mismos patrones que `PortalPaymentController.js`
-- **Backward-compatible:** Los flags CLI existentes (`--upload`, `--batch`, `--from`, `--py`, `--index`) siguen funcionando igual
+- **Sin BD Sage local:** Queries SQL se validan por estructura, no por ejecución
+- **Backward-compatible:** La aplicación debe funcionar igual después de la migración
+- **Zero nuevas dependencias:** dotenv ya está instalado; no agregar yaml parsers ni config frameworks
+- **Credenciales activas:** No romper la configuración de producción durante la migración
 
 ## Key Decisions
 
@@ -68,4 +81,4 @@ Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor 
 | Extraer classifyPayments y uploadBatch como funciones exportadas | Patrón TDD: funciones testables independientemente con dependencias inyectables | ✓ Good |
 
 ---
-*Last updated: 2026-03-22 after v1.0 milestone*
+*Last updated: 2026-03-22 after v1.1 milestone start*

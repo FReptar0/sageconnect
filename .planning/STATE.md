@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: Completed 02-02-PLAN.md (all plans complete)
-last_updated: "2026-03-22T16:56:55.530Z"
-last_activity: 2026-03-12 -- Completed 02-02-PLAN.md
+milestone: v1.1
+milestone_name: env-unification
+status: defining_requirements
+stopped_at: Defining requirements for v1.1
+last_updated: "2026-03-22T17:30:00Z"
+last_activity: 2026-03-22 -- Milestone v1.1 started
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,48 +20,33 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-03-22)
 
-**Core value:** Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor validado, datos completos, y errores trazables.
-**Current focus:** v1.0 shipped — planning next milestone
+**Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable.
+**Current focus:** v1.1 Env Unification — defining requirements
 
 ## Current Position
 
-Phase: 2 of 2 (Batch Upload Robustness) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: All phases and plans complete
-Last activity: 2026-03-12 -- Completed 02-02-PLAN.md
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-03-22 — Milestone v1.1 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 3.8min
-- Total execution time: 0.25 hours
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1. Reconciliation Classification | 2/2 | 9min | 4.5min |
-| 2. Batch Upload Robustness | 2/2 | 6min | 3min |
-
-**Recent Trend:**
-- Last 5 plans: 01-01 (6min), 01-02 (3min), 02-01 (4min), 02-02 (2min)
-- Trend: Stable/Improving
-
-*Updated after each plan completion*
-| Phase 01 P01 | 6min | 2 tasks | 2 files |
-| Phase 01 P02 | 3min | 2 tasks | 1 files |
-| Phase 02 P01 | 4min | 2 tasks | 2 files |
-| Phase 02 P02 | 2min | 1 tasks | 1 files |
+- Total plans completed: 0
+- Average duration: —
+- Total execution time: —
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions archived in PROJECT.md Key Decisions table and `.planning/milestones/v1.0-ROADMAP.md`.
-No active decisions — between milestones.
+- [v1.1 Init]: Single .env file + centralized config loader (not YAML) — zero new dependencies, Node.js standard
+- [v1.1 Init]: Fail-fast validation of required vars at startup
+- [v1.1 Init]: Production only (no multi-environment switching for now)
+- [v1.1 Init]: Backup files in /reports/ kept as-is
 
 ### Pending Todos
 
@@ -69,10 +54,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- No Sage DB access locally: SQL query changes can only be validated structurally, not executed. API-side behavior can be tested against sandbox.
+- No Sage DB access locally: SQL query changes can only be validated structurally
+- 25+ files reference dotenv directly — migration must be careful not to break imports
 
 ## Session Continuity
 
-Last session: 2026-03-12T18:55:53Z
-Stopped at: Completed 02-02-PLAN.md (all plans complete)
-Resume file: N/A (milestone complete)
+Last session: 2026-03-22T17:30:00Z
+Stopped at: Defining requirements for v1.1
+Resume file: None
