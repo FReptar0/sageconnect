@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: completed
 stopped_at: Completed 02-02-PLAN.md (all plans complete)
-last_updated: "2026-03-12T19:00:55.075Z"
+last_updated: "2026-03-22T16:56:55.530Z"
 last_activity: 2026-03-12 -- Completed 02-02-PLAN.md
 progress:
   total_phases: 2
@@ -18,10 +18,10 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-12)
+See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor validado, datos completos, y errores trazables.
-**Current focus:** All phases complete - Milestone v1.0 finished
+**Current focus:** v1.0 shipped — planning next milestone
 
 ## Current Position
 
@@ -60,20 +60,8 @@ Progress: [██████████] 100%
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [Init]: Use `external_id` (not RFC) for PROVIDERID resolution -- RFC can have duplicates (e.g., XEXX010101000 for foreign vendors)
-- [Init]: `metadata.provider_id` from CFDI is the PDP internal ID -- direct comparison against PROVIDERID from Sage APVENO table
-- [Phase 01]: Extracted classifyPayments uses module-scope runQuery (no need to pass as parameter)
-- [Phase 01]: Added provider_mismatch category and autoResolvedSet tracking proactively in extracted function
-- [Phase 01]: Auto-resolution does two-step: getProviderByExternalId for ID lookup, then resolveProviderIdByExternalId for Sage DB write
-- [Phase 01]: Provider mismatch check runs after allInPortal check -- only portal-matched invoices are checked for provider_id consistency
-- [Phase 01]: Case-insensitive comparison for provider_id matching via .toLowerCase()
-- [Phase 02]: uploadBatch receives categories and config as explicit parameters (same extraction pattern as classifyPayments)
-- [Phase 02]: Upload hint in report mode already guarded by ready.length > 0 -- no change needed for BTCH-02 baseline
-- [Phase 02]: Missing scan uses results.length > 0 guard (not respondedIds.size > 0) to handle item:null edge case
-- [Phase 02]: Missing results NOT inserted into fesaPagosFocaltec -- remain eligible for retry on next run
+Decisions archived in PROJECT.md Key Decisions table and `.planning/milestones/v1.0-ROADMAP.md`.
+No active decisions — between milestones.
 
 ### Pending Todos
 
