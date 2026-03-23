@@ -51,11 +51,11 @@ Plans:
   2. A single `.env.example` in the project root documents all 27 variables with example values and section comments
   3. No `.env.*.example` files exist in root or `dist/` directories -- all redundant example files are removed
   4. No module accesses `process.env` directly for configuration values that are covered by the config loader
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Rename DB_USER/DB_PASSWORD + migrate utils, services, entry points, routes (CONF-03, UNIF-02)
+- [ ] 04-02-PLAN.md -- Migrate controllers, scripts, tests + delete redundant .env.*.example files (CONF-03, UNIF-03)
 
 ### Phase 5: Regression Verification
 **Goal**: All existing functionality is confirmed working after the env unification migration
@@ -79,5 +79,5 @@ Plans:
 | 1. Reconciliation Classification | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 2. Batch Upload Robustness | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
-| 4. Codebase Migration | v1.1 | 0/TBD | Not started | - |
+| 4. Codebase Migration | v1.1 | 0/2 | Not started | - |
 | 5. Regression Verification | v1.1 | 0/TBD | Not started | - |
