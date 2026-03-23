@@ -41,6 +41,45 @@
 
 ---
 
+## Milestone: v1.1 — Env Unification
+
+**Shipped:** 2026-03-23
+**Phases:** 3 | **Plans:** 6 | **Sessions:** 1
+
+### What Was Built
+- Centralized config loader (`src/config.js`) with fail-fast validation and structured sections
+- Unified 5 scattered `.env` files into single `.env` with documented `.env.example`
+- Migrated 31 source modules from 25+ independent dotenv calls to centralized require
+- Fixed OS env var collisions (USER→DB_USER, PATH→DOWNLOADS_PATH)
+- Regression verification suite: 25 module-load tests + dotenv scan
+
+### What Worked
+- Skipping research for a well-understood refactoring pattern saved time — no new libraries or patterns to investigate
+- Parallel execution in Wave 1 (Phase 3: config.js + unified .env ran simultaneously)
+- The integration checker caught the PATH collision that all 3 phase verifiers missed — cross-concern bugs need cross-phase analysis
+- discuss-phase captured the multi-tenant structure decision (array of objects vs parallel arrays) that would have caused rework if decided mid-implementation
+
+### What Was Inefficient
+- The plan checker's 15-file threshold forced a split of Phase 4 Plan 02 into two plans — the threshold is too aggressive for mechanical migrations where every file gets the same search-and-replace pattern
+- Phase 5 success criteria in ROADMAP.md were aspirational ("run with --classify and --upload flags") but impossible without a live Sage DB — required a revision cycle to align criteria with reality
+
+### Patterns Established
+- OS env var collision check: always rename `USER`, `PATH`, `HOME`, `SHELL` and other OS-reserved names
+- Config loader as single source of truth: `require('../config')` + structured sections
+- Module-load tests as regression proxy when end-to-end execution requires external dependencies
+
+### Key Lessons
+1. dotenv does NOT override pre-existing OS env vars — any variable name that matches an OS variable (USER, PATH, HOME) will silently use the wrong value. Always prefix with domain (DB_USER, DOWNLOADS_PATH).
+2. Integration checkers catch bugs that phase-level verifiers miss — they see cross-phase data flow that individual phase scopes cannot.
+3. For mechanical migrations (same pattern across 30+ files), the file-count threshold should be relaxed — splitting into more plans adds overhead without reducing risk.
+
+### Cost Observations
+- Model mix: ~65% opus (orchestration + execution), ~35% sonnet (verification + integration)
+- Sessions: 1 (entire milestone in a single session)
+- Notable: 6 plans executed in ~20 minutes total — config refactoring is fast when scope is clear
+
+---
+
 ## Cross-Milestone Trends
 
 ### Process Evolution
@@ -48,14 +87,17 @@
 | Milestone | Sessions | Phases | Key Change |
 |-----------|----------|--------|------------|
 | v1.0 | 2 | 2 | Established TDD RED/GREEN 2-plan pattern |
+| v1.1 | 1 | 3 | Skipped research for known patterns; integration checker caught cross-phase bug |
 
 ### Cumulative Quality
 
 | Milestone | Tests | Coverage | Zero-Dep Additions |
 |-----------|-------|----------|-------------------|
 | v1.0 | 24 | 6/6 reqs | 0 (all use existing deps) |
+| v1.1 | 108 | 7/7 reqs | 0 (dotenv already installed) |
 
 ### Top Lessons (Verified Across Milestones)
 
 1. Extract functions for testability before writing tests — mocking `main()` is brittle
-2. Discuss operational behavior (log levels, retry strategy, summary format) during context gathering, not during implementation
+2. Discuss operational behavior during context gathering, not during implementation
+3. dotenv does NOT override pre-existing OS env vars — always check for naming collisions (verified v1.1: USER and PATH both caused silent bugs)

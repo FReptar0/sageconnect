@@ -1,5 +1,30 @@
 # Milestones
 
+## v1.1 Env Unification (Shipped: 2026-03-23)
+
+**Phases completed:** 3 phases, 6 plans, 7 tasks
+**Files:** 830 LOC new (config.js 156 + config tests 444 + regression tests 230) + 31 modules migrated
+**Tests:** 108 total (104 pass, 3 pre-existing, 1 skipped integration)
+**Git range:** `fb1d8a4` → `62ddfd4`
+
+**Key accomplishments:**
+- Centralized config loader (`src/config.js`) with fail-fast validation and structured sections (database, portal, mailing, paths, app)
+- Unified 5 scattered `.env` files into single `.env` with section comments
+- Multi-tenant portal config exposed as array of tenant objects (not parallel arrays)
+- Mailing transport selector (`MAIL_TRANSPORT=smtp|gmail`) for easy switching
+- Migrated 31 source modules from 25+ independent `dotenv.config()` calls to centralized `require('../config')`
+- Fixed OS env var collisions: `USER`→`DB_USER`, `PATH`→`DOWNLOADS_PATH`
+- Regression verification: 25 module-load tests + dotenv scan confirming zero leakage
+
+**Tech debt (resolved during audit):**
+- PATH→DOWNLOADS_PATH rename (fixed before shipping)
+
+**Remaining tech debt:**
+- `EnhancedPaymentSync.test.js` has unmocked `require('../src/config')` (excluded from Jest)
+- 3 pre-existing test failures should be `test.skip`'d (TransformTime 2/3, PaymentReconciliation 1/24)
+
+---
+
 ## v1.0 Payment Reconciliation Fixes (Shipped: 2026-03-22)
 
 **Phases completed:** 2 phases, 4 plans, 7 tasks
