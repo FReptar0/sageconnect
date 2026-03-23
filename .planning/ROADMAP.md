@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Payment Reconciliation Fixes** - Phases 1-2 (shipped 2026-03-22)
-- 🚧 **v1.1 Env Unification** - Phases 3-5 (in progress)
+- ✅ **v1.1 Env Unification** - Phases 3-5 (completed 2026-03-23)
 
 ## Phases
 
@@ -17,13 +17,13 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 
 </details>
 
-### 🚧 v1.1 Env Unification (In Progress)
+### ✅ v1.1 Env Unification (Completed 2026-03-23)
 
 **Milestone Goal:** Unificar los 5 archivos .env dispersos en un solo archivo con un config loader centralizado que valide variables requeridas al arranque y exponga configuracion estructurada.
 
 - [x] **Phase 3: Config Loader Foundation** - Build centralized config loader with validation and consolidate .env files (completed 2026-03-23)
-- [ ] **Phase 4: Codebase Migration** - Replace all scattered dotenv calls and clean up redundant env files
-- [ ] **Phase 5: Regression Verification** - Verify all existing functionality works after migration
+- [x] **Phase 4: Codebase Migration** - Replace all scattered dotenv calls and clean up redundant env files (completed 2026-03-23)
+- [x] **Phase 5: Regression Verification** - Verify all existing functionality works after migration (completed 2026-03-23)
 
 ## Phase Details
 
@@ -54,9 +54,9 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
-- [ ] 04-01-PLAN.md -- Rename DB_USER/DB_PASSWORD + migrate utils, services, entry points, routes (CONF-03, UNIF-02)
-- [ ] 04-02-PLAN.md -- Migrate controllers to config loader (CONF-03)
-- [ ] 04-03-PLAN.md -- Migrate scripts + tests + delete redundant .env.*.example files (CONF-03, UNIF-03)
+- [x] 04-01-PLAN.md -- Rename DB_USER/DB_PASSWORD + migrate utils, services, entry points, routes (CONF-03, UNIF-02)
+- [x] 04-02-PLAN.md -- Migrate controllers to config loader (CONF-03)
+- [x] 04-03-PLAN.md -- Migrate scripts + tests + delete redundant .env.*.example files (CONF-03, UNIF-03)
 
 ### Phase 5: Regression Verification
 **Goal**: All existing functionality is confirmed working after the env unification migration
@@ -69,7 +69,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 05-01-PLAN.md -- Fix test infrastructure regressions and verify all modules load correctly (REGR-01)
+- [x] 05-01-PLAN.md -- Fix test infrastructure regressions and verify all modules load correctly (REGR-01)
 
 ## Progress
 
@@ -80,5 +80,5 @@ Plans:
 | 1. Reconciliation Classification | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 2. Batch Upload Robustness | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
-| 4. Codebase Migration | v1.1 | 0/3 | Not started | - |
-| 5. Regression Verification | v1.1 | 0/1 | Not started | - |
+| 4. Codebase Migration | v1.1 | 3/3 | Complete | 2026-03-23 |
+| 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |

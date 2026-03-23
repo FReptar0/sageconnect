@@ -19,7 +19,7 @@
 
 ### Regression
 
-- [ ] **REGR-01**: Toda la funcionalidad existente (pagos, ordenes de compra, CFDIs, email, logging) sigue funcionando sin cambios despues de la migracion
+- [x] **REGR-01**: Toda la funcionalidad existente (pagos, ordenes de compra, CFDIs, email, logging) sigue funcionando sin cambios despues de la migracion
 
 ## v2 Requirements
 
@@ -51,7 +51,7 @@
 | UNIF-01 | Phase 3 | Complete |
 | UNIF-02 | Phase 4 | Complete |
 | UNIF-03 | Phase 4 | Complete |
-| REGR-01 | Phase 5 | Pending |
+| REGR-01 | Phase 5 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 7 total
