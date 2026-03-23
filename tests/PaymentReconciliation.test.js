@@ -31,16 +31,22 @@ jest.mock('../src/utils/TimezoneHelper', () => ({
     getCurrentDateCompact: jest.fn().mockReturnValue('20260312')
 }));
 
-jest.mock('dotenv', () => ({
-    config: jest.fn().mockReturnValue({
-        parsed: {
-            DATABASES: 'TESTDB',
-            TENANT_ID: 'tenant1',
-            API_KEY: 'key1',
-            API_SECRET: 'secret1',
-            URL: 'http://localhost'
-        }
-    })
+jest.mock('../src/config', () => ({
+    portal: {
+        url: 'http://localhost',
+        tenants: [
+            { id: 'tenant1', key: 'key1', secret: 'secret1', database: 'TESTDB', externalId: 'ext1' }
+        ]
+    },
+    database: { user: '', password: '', server: '', database: '' },
+    mailing: {},
+    paths: { downloads: '', providers: '', logs: '' },
+    app: {
+        importRoute: '', arg: '', company: '', rfc: '', regimen: '', timezone: '',
+        autoTerminate: false,
+        defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
+        addressIdentifiersSkip: []
+    }
 }));
 
 jest.mock('axios');

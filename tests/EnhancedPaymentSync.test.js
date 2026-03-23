@@ -3,22 +3,13 @@ const { logGenerator } = require('../src/utils/LogGenerator');
 const { uploadPayments } = require('../src/controller/PortalPaymentController');
 const { checkPayments } = require('../src/controller/SagePaymentController');
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../src/config');
 
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES
-} = credentials;
-
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const database = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const database = config.portal.tenants.map(t => t.database);
+const URL = config.portal.url;
 
 /**
  * Enhanced Payment Testing with Sync Validation

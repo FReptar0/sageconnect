@@ -1,12 +1,12 @@
 // tests/GetPaymentCFDI.test.js - Unit tests for Payment CFDI (Type P) fetching
 const axios = require('axios');
-require('dotenv').config({ path: '.env.credentials.focaltec' });
+const config = require('../src/config');
 const { logGenerator } = require('../src/utils/LogGenerator');
 
-const url = process.env.URL;
-const tenantIds = process.env.TENANT_ID.split(',');
-const apiKeys = process.env.API_KEY.split(',');
-const apiSecrets = process.env.API_SECRET.split(',');
+const url = config.portal.url;
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
 const urlPayments = (index, paymentId) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments/${paymentId}`;

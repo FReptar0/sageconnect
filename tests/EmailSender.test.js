@@ -1,5 +1,5 @@
 // tests/EmailSender.test.js
-require('dotenv').config({ path: '.env.credentials.mailing' });
+// EmailSender loads its own config internally via require('../config')
 const { sendMail } = require('../src/utils/EmailSender');
 
 describe('sendMail util', () => {
