@@ -6,6 +6,7 @@ const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
@@ -22,6 +23,7 @@ const DEFAULT_ADDRESS_ZIP = config.app.defaultAddress.zip;
  * @param {string} database - Base de datos a consultar (ej: 'COPDAT')
  */
 async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
+    const startTime = Date.now();
     const logFileName = 'Address_Diagnostic';
     console.log(`\n=== DIAGNÓSTICO DE DIRECCIONES PARA ${poNumber} ===`);
     console.log(`Base de datos: ${database}`);
@@ -142,7 +144,11 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
             console.log('❌ La consulta no devolvió resultados. Posibles causas:');
             console.log('   - La OC fue filtrada por ADDRESS_IDENTIFIERS_SKIP');
             console.log('   - No existe la OC o no tiene líneas de detalle');
-            return;
+            return successResult(
+                { poNumber, database, records: 0, addresses: [], validationPassed: false },
+                `No records found for PO ${poNumber} - may be filtered by ADDRESS_IDENTIFIERS_SKIP`,
+                { startTime }
+            );
         }
 
         // Mostrar solo los primeros 3 registros para revisión
@@ -259,9 +265,39 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
 
         logGenerator(logFileName, 'info', `Diagnóstico de direcciones completado para ${poNumber}`);
 
+        const hasAddressIssues = ordersToSend.some(po => !po.addresses || po.addresses.length === 0);
+        const hasValidationIssues = ordersToSend.some(po => {
+            try {
+                validateExternPurchaseOrder(po);
+                return false;
+            } catch {
+                return true;
+            }
+        });
+
+        return successResult(
+            {
+                poNumber,
+                database,
+                records: systemResult.recordset.length,
+                ordersGrouped: Object.keys(grouped).length,
+                ordersParsed: ordersToSend.length,
+                hasAddressIssues,
+                hasValidationIssues,
+                allValid: !hasAddressIssues && !hasValidationIssues
+            },
+            `Address diagnostic completed for ${poNumber}: ${systemResult.recordset.length} records, valid=${!hasAddressIssues && !hasValidationIssues}`,
+            { startTime }
+        );
+
     } catch (error) {
         console.error('\n❌ ERROR DURANTE EL DIAGNÓSTICO:', error.message);
         logGenerator(logFileName, 'error', `Error en diagnóstico de direcciones para ${poNumber}: ${error.message}`);
+        return errorResult(
+            [error.message],
+            `Address diagnostic failed for ${poNumber}`,
+            { startTime }
+        );
     }
 }
 

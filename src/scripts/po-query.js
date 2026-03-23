@@ -1,6 +1,7 @@
 // src/scripts/po-query.js
 
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
@@ -35,6 +36,7 @@ const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenant
  * @param {number} tenantIndex - Tenant index to use (optional, defaults to 0)
  */
 async function testSpecificPurchaseOrders(poNumbers, database = null, tenantIndex = 0) {
+  const startTime = Date.now();
   const logFileName = 'PO_Query';
   const dbToUse = database || databases[tenantIndex];
 
@@ -232,7 +234,11 @@ order by A.PONUMBER, B.PORLREV;
   } catch (dbErr) {
     console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
     logGenerator(logFileName, 'error', `[ERROR] Error al ejecutar la consulta SQL: ${dbErr.message}`);
-    return;
+    return errorResult(
+      [dbErr.message],
+      `SQL query failed for POs: ${poNumbers.join(', ')}`,
+      { tenant: tenantIds[tenantIndex], startTime }
+    );
   }
 
   if (recordset.length === 0) {
@@ -242,7 +248,11 @@ order by A.PONUMBER, B.PORLREV;
     console.log('   - Las POs no están autorizadas');
     console.log('   - Error en el nombre de la base de datos');
     logGenerator(logFileName, 'warn', `[WARN] No se encontraron registros para las POs: ${poNumbers.join(', ')}`);
-    return;
+    return successResult(
+      { orders: [], validated: 0, failed: 0 },
+      `No records found for POs: ${poNumbers.join(', ')}`,
+      { tenant: tenantIds[tenantIndex], startTime }
+    );
   }
 
   // 3) Agrupar y parsear al formato de envío (SIN ENVIAR)
@@ -262,6 +272,9 @@ order by A.PONUMBER, B.PORLREV;
     console.log(`[INFO] - ${order.external_id}`);
   });
 
+  // Track query results for envelope
+  const queryResults = { orders: [], validated: 0, failed: 0 };
+
   // 4) Procesar cada PO (SOLO VALIDACIÓN, SIN ENVÍO)
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
@@ -280,6 +293,7 @@ order by A.PONUMBER, B.PORLREV;
     if (existing.length > 0) {
       console.log(`⚠️  [TEST] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       logGenerator(logFileName, 'warn', `[TEST] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      queryResults.orders.push({ po: po.external_id, status: 'skipped', reason: 'already POSTED' });
       continue;
     } else {
       console.log(`✅ [TEST] PO ${po.external_id} no existe en FESA - se puede procesar`);
@@ -294,10 +308,13 @@ order by A.PONUMBER, B.PORLREV;
       validateExternPurchaseOrder(po);
       console.log(`✅ [VALID] PO ${po.external_id} pasó validación Joi`);
       logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} pasó validación Joi`);
+      queryResults.validated++;
     } catch (valErr) {
       console.error(`❌ [ERROR] Joi validation failed for PO ${po.external_id}:`);
       valErr.details.forEach(d => console.error(`   -> ${d.message}`));
       logGenerator(logFileName, 'error', `[ERROR] Validación Joi falló para PO ${po.external_id}: ${valErr.details.map(d => d.message).join('; ')}`);
+      queryResults.failed++;
+      queryResults.orders.push({ po: po.external_id, status: 'validation_failed' });
       continue;
     }
 
@@ -318,6 +335,7 @@ order by A.PONUMBER, B.PORLREV;
     }
 
     console.log(`🚀 [SIMULATE] PO ${po.external_id} LISTA PARA ENVÍO (sin enviar en modo test)`);
+    queryResults.orders.push({ po: po.external_id, status: 'ready', lines: po.lines?.length || 0 });
   }
 
   console.log(`\n[FIN] ==========================================`);
@@ -327,6 +345,12 @@ order by A.PONUMBER, B.PORLREV;
   console.log(`[FIN] ¡SIN ENVÍOS AL PORTAL NI INSERTS EN DB!`);
   console.log(`[FIN] ==========================================`);
   logGenerator(logFileName, 'info', `[FIN] Proceso de prueba completado para ${ordersToSend.length} órdenes - Tenant: ${tenantIds[tenantIndex]}`);
+
+  return successResult(
+    queryResults,
+    `Query completed for ${ordersToSend.length} POs: ${queryResults.validated} validated, ${queryResults.failed} failed`,
+    { tenant: tenantIds[tenantIndex], startTime }
+  );
 }
 
 // Función principal para manejar argumentos CLI
