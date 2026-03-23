@@ -92,7 +92,7 @@ describe('process.exit compliance', () => {
         // Allowed files: config.js (startup validation), index.js (autoTerminate only),
         // routes.js (autoTerminate guard verified in separate test),
         // files with require.main guards (CLI scripts)
-        const ALLOWED_FILES = new Set(['config.js', 'index.js', 'routes.js']);
+        const ALLOWED_FILES = new Set(['config.js', 'index.js', 'routes.js', 'dashboard-routes.js']);
 
         function scanDir(dirPath, results = []) {
             if (!fs.existsSync(dirPath)) return results;
@@ -245,8 +245,8 @@ describe('process.exit compliance', () => {
     // ---------------------------------------------------------------------------
     // Additional: routes.js process.exit is inside autoTerminate guard
     // ---------------------------------------------------------------------------
-    test('routes.js process.exit is guarded by autoTerminate check', () => {
-        const filePath = path.join(SRC_ROOT, 'routes', 'routes.js');
+    test('dashboard-routes.js process.exit is guarded by autoTerminate check', () => {
+        const filePath = path.join(SRC_ROOT, 'routes', 'dashboard-routes.js');
         const content = fs.readFileSync(filePath, 'utf8');
         const exitCalls = findProcessExitCalls(filePath);
 
