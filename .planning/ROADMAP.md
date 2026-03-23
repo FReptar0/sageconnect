@@ -36,11 +36,11 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
   2. If any required variable is missing from `.env`, the process prints the list of missing variables and exits with code 1 before any business logic runs
   3. A single `.env` file in the project root contains all 27 variables previously spread across 5 separate `.env` files, organized by section comments
   4. The config loader works with the existing `dotenv` dependency -- no new packages installed
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- TDD: Build config loader with validation (CONF-01, CONF-02)
+- [ ] 03-02-PLAN.md -- Create unified .env, .env.example, and archive old files (UNIF-01)
 
 ### Phase 4: Codebase Migration
 **Goal**: Every module in the codebase obtains configuration from the centralized config loader instead of loading dotenv independently
@@ -78,6 +78,6 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 1. Reconciliation Classification | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 2. Batch Upload Robustness | v1.0 | 2/2 | Complete | 2026-03-22 |
-| 3. Config Loader Foundation | v1.1 | 0/TBD | Not started | - |
+| 3. Config Loader Foundation | v1.1 | 0/2 | Not started | - |
 | 4. Codebase Migration | v1.1 | 0/TBD | Not started | - |
 | 5. Regression Verification | v1.1 | 0/TBD | Not started | - |
