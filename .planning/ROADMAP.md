@@ -50,12 +50,13 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
   2. No code path in the always-on process calls process.exit() -- the server stays running after any script completes or fails
   3. A single SQL connection pool is created at startup and reused across all script executions (no per-query pool creation/destruction)
   4. Existing CLI behavior (console output, exit codes) is preserved unchanged for backward compatibility
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
-- [ ] 06-03: TBD
+- [ ] 06-01-PLAN.md -- SQL pool singleton + result envelope helper (Wave 1)
+- [ ] 06-02-PLAN.md -- process.exit removal + PortalOC_StatusUpdater refactor (Wave 2)
+- [ ] 06-03-PLAN.md -- Envelope returns for 8 already-exporting scripts (Wave 2)
+- [ ] 06-04-PLAN.md -- Envelope returns for 5 no-export scripts + contract test (Wave 3)
 
 ### Phase 7: REST API + Security
 **Goal**: Operations team can trigger any payment or PO operation via HTTP request with proper validation, rate limiting, and API key protection
@@ -134,7 +135,7 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
 | 4. Codebase Migration | v1.1 | 3/3 | Complete | 2026-03-23 |
 | 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |
-| 6. Infrastructure Foundation | v2.0 | 0/? | Not started | - |
+| 6. Infrastructure Foundation | v2.0 | 0/4 | Planning | - |
 | 7. REST API + Security | v2.0 | 0/? | Not started | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/? | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/? | Not started | - |
