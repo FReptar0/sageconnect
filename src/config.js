@@ -20,7 +20,7 @@ dotenv.config();
 const REQUIRED = {
     database: ['DB_USER', 'DB_PASSWORD', 'SERVER', 'DATABASE'],
     portal: ['URL', 'TENANT_ID', 'API_KEY', 'API_SECRET', 'DATABASES', 'EXTERNAL_IDS'],
-    paths: ['PATH', 'PROVIDERS_PATH', 'LOG_PATH'],
+    paths: ['DOWNLOADS_PATH', 'PROVIDERS_PATH', 'LOG_PATH'],
     app: [
         'IMPORT_CFDIS_ROUTE', 'ARG', 'NOMBRE', 'RFC', 'REGIMEN', 'TIMEZONE',
         'DEFAULT_ADDRESS_CITY', 'DEFAULT_ADDRESS_COUNTRY', 'DEFAULT_ADDRESS_IDENTIFIER',
@@ -127,7 +127,7 @@ const config = {
     mailing: buildMailing(),
 
     paths: {
-        downloads: process.env.PATH,
+        downloads: process.env.DOWNLOADS_PATH,
         providers: process.env.PROVIDERS_PATH,
         logs: process.env.LOG_PATH,
     },

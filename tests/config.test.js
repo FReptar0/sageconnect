@@ -25,7 +25,7 @@ const VALID_ENV = {
     DATABASES: 'DB1',
     EXTERNAL_IDS: 'RFC1',
     // paths
-    PATH: '/downloads',
+    DOWNLOADS_PATH: '/downloads',
     PROVIDERS_PATH: '/providers',
     LOG_PATH: '/logs',
     // app
