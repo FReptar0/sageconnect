@@ -17,13 +17,13 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 
 ### API -- Payments
 
-- [ ] **PAY-01**: POST /api/payments/reconciliation runs payment reconciliation with tenant/date/batch filters
-- [ ] **PAY-02**: GET /api/payments/uuid-diagnostic returns UUID diagnostic for specific PY document numbers
-- [ ] **PAY-03**: POST /api/payments/uuid-repair/scan scans for repairable UUIDs
-- [ ] **PAY-04**: POST /api/payments/uuid-repair/repair applies UUID repairs (dry-run by default)
-- [ ] **PAY-05**: POST /api/payments/uuid-repair/upload uploads repaired payments to portal
-- [ ] **PAY-06**: POST /api/payments/generate generates payment JSON and optionally posts to portal
-- [ ] **PAY-07**: GET /api/payments/cfdis fetches CFDI Type P invoices from portal
+- [x] **PAY-01**: POST /api/payments/reconciliation runs payment reconciliation with tenant/date/batch filters
+- [x] **PAY-02**: GET /api/payments/uuid-diagnostic returns UUID diagnostic for specific PY document numbers
+- [x] **PAY-03**: POST /api/payments/uuid-repair/scan scans for repairable UUIDs
+- [x] **PAY-04**: POST /api/payments/uuid-repair/repair applies UUID repairs (dry-run by default)
+- [x] **PAY-05**: POST /api/payments/uuid-repair/upload uploads repaired payments to portal
+- [x] **PAY-06**: POST /api/payments/generate generates payment JSON and optionally posts to portal
+- [x] **PAY-07**: GET /api/payments/cfdis fetches CFDI Type P invoices from portal
 
 ### API -- Purchase Orders
 
@@ -106,13 +106,13 @@ Deferred to future release. Tracked but not in current roadmap.
 | INFRA-03 | Phase 6 | Complete |
 | INFRA-04 | Phase 8 | Pending |
 | INFRA-05 | Phase 8 | Pending |
-| PAY-01 | Phase 7 | Pending |
-| PAY-02 | Phase 7 | Pending |
-| PAY-03 | Phase 7 | Pending |
-| PAY-04 | Phase 7 | Pending |
-| PAY-05 | Phase 7 | Pending |
-| PAY-06 | Phase 7 | Pending |
-| PAY-07 | Phase 7 | Pending |
+| PAY-01 | Phase 7 | Complete |
+| PAY-02 | Phase 7 | Complete |
+| PAY-03 | Phase 7 | Complete |
+| PAY-04 | Phase 7 | Complete |
+| PAY-05 | Phase 7 | Complete |
+| PAY-06 | Phase 7 | Complete |
+| PAY-07 | Phase 7 | Complete |
 | PO-01 | Phase 7 | Pending |
 | PO-02 | Phase 7 | Pending |
 | PO-03 | Phase 7 | Pending |

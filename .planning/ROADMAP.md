@@ -136,7 +136,7 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 4. Codebase Migration | v1.1 | 3/3 | Complete | 2026-03-23 |
 | 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |
 | 6. Infrastructure Foundation | v2.0 | 4/4 | Complete | 2026-03-23 |
-| 7. REST API + Security | v2.0 | 0/3 | Not started | - |
+| 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/? | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/? | Not started | - |
 | 10. Servy Cutover + Retirement | v2.0 | 0/? | Not started | - |

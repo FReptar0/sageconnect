@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
 status: executing
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-23T22:25:35.885Z"
-last_activity: 2026-03-23 -- Completed 07-01 security middleware, route restructure, integration tests
+stopped_at: Completed 07-02-PLAN.md
+last_updated: "2026-03-23T22:33:10.000Z"
+last_activity: 2026-03-23 -- Completed 07-02 payment routes, schemas, tests
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 7
-  completed_plans: 5
-  percent: 28
+  completed_plans: 6
+  percent: 42
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 7 of 10 (REST API + Security)
-Plan: 1 of 3 complete
+Plan: 2 of 3 complete
 Status: Executing
-Last activity: 2026-03-23 -- Completed 07-01 security middleware, route restructure, integration tests
+Last activity: 2026-03-23 -- Completed 07-02 payment routes, schemas, tests
 
-Progress: [███░░░░░░░] 28%
+Progress: [████░░░░░░] 42%
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [███░░░░░░░] 28%
 |-------|-------|-------|----------|
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
-| 7 (rest-api-security) | 1/3 | 8min | 8min |
+| 7 (rest-api-security) | 2/3 | 13min | 6.5min |
 
 ## Accumulated Context
 
@@ -73,6 +73,9 @@ Progress: [███░░░░░░░] 28%
 - [07-01]: Helmet CSP disabled for dashboard inline scripts
 - [07-01]: draft-7 standard headers for rate limiting (ratelimit + ratelimit-policy)
 - [07-01]: Test app builder pattern avoids config.js process.exit during security tests
+- [07-02]: Inline writeLimiter in payment-routes.js to avoid circular dep with server.js
+- [07-02]: runReconciliation returns category counts (not full arrays) for lightweight API responses
+- [07-02]: dryRun=true default on all destructive payment endpoints for production safety
 
 ### Pending Todos
 
@@ -85,6 +88,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T22:25:35.881Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-23T22:33:10.000Z
+Stopped at: Completed 07-02-PLAN.md
 Resume file: None
