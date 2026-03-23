@@ -85,11 +85,12 @@ Plans:
   3. POST /api/schedule/:taskId/trigger manually fires a scheduled task and returns 409 if that task is already running
   4. Long-running operations stream real-time progress updates via SSE to connected clients
   5. GET /api/operations/status shows which operations are currently in-flight
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- OperationManager service + config schedule section + node-cron install (Wave 1)
+- [ ] 08-02-PLAN.md -- CronScheduler + forResponse progress emission + index.js wiring (Wave 2)
+- [ ] 08-03-PLAN.md -- Schedule and operations REST endpoints with SSE streaming (Wave 2)
 
 ### Phase 9: Operational Web UI
 **Goal**: Operations team can audit payments, manage POs, monitor schedules, and switch tenants entirely from the browser -- no SSH/RDP/CLI needed for daily operations
@@ -137,6 +138,6 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |
 | 6. Infrastructure Foundation | v2.0 | 4/4 | Complete | 2026-03-23 |
 | 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
-| 8. Scheduler + Real-Time Layer | v2.0 | 0/? | Not started | - |
+| 8. Scheduler + Real-Time Layer | v2.0 | 0/3 | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/? | Not started | - |
 | 10. Servy Cutover + Retirement | v2.0 | 0/? | Not started | - |
