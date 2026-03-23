@@ -2,7 +2,7 @@
 // Script to fetch and process CFDI Payment Type (Type P) from Portal de Proveedores
 
 const axios = require('axios');
-const config = require('../../config');
+const config = require('../config');
 const { logGenerator } = require('../utils/LogGenerator');
 
 const url = config.portal.url;

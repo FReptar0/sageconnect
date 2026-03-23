@@ -5,7 +5,7 @@ const { getPendingToPayInvoices } = require('../utils/GetTypesCFDI');
 const { getProviderByExternalId } = require('../utils/GetProviders');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const axios = require('axios');
-const config = require('../../config');
+const config = require('../config');
 
 const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);

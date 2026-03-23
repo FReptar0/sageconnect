@@ -7,7 +7,7 @@
  *   node src/scripts/payment-uuid-diagnostic.js --all-failing     (checks all PYs not in control table)
  */
 const { runQuery } = require('../utils/SQLServerConnection');
-const config = require('../../config');
+const config = require('../config');
 
 const database = config.portal.tenants.map(t => t.database);
 const DB = database[0]; // Use first database by default

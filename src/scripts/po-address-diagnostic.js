@@ -5,7 +5,7 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
-const config = require('../../config');
+const config = require('../config');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;

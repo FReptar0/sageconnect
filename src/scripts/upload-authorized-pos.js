@@ -1,6 +1,6 @@
 // src/scripts/upload-authorized-pos.js
 // Script to upload authorized purchase orders from today to Portal de Proveedores
-const config = require('../../config');
+const config = require('../config');
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');

@@ -1,6 +1,6 @@
 // src/scripts/po-query.js
 
-const config = require('../../config');
+const config = require('../config');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;

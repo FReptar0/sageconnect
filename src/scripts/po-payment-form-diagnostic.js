@@ -1,6 +1,6 @@
 // src/scripts/po-payment-form-diagnostic.js
 
-const config = require('../../config');
+const config = require('../config');
 const { runQuery } = require('../utils/SQLServerConnection');
 
 const databases = config.portal.tenants.map(t => t.database);
