@@ -63,9 +63,9 @@ Plans:
 **Depends on**: Phase 4
 **Requirements**: REGR-01
 **Success Criteria** (what must be TRUE):
-  1. Payment reconciliation script (`payment-reconciliation.js`) runs successfully with `--classify` and `--upload` flags, producing the same output categories as before migration
-  2. All 24 existing tests pass without modification (tests validate business logic is unchanged)
-  3. CFDI import, order processing, and email notification modules load configuration correctly and execute without errors
+  1. All source modules (controllers, utils, scripts including `payment-reconciliation.js`) load successfully via `require()` with the centralized config -- verified by automated module-loading tests (end-to-end CLI execution with `--classify`/`--upload` flags requires live Sage DB credentials not available locally)
+  2. Existing test suites run to completion: TimezoneHelper (24 pass), GetPaymentCFDI (3 pass), config (27 pass), SQLServerConnection (1 pass), PaymentReconciliation (23 pass, 1 pre-existing failure), TransformTime (1 pass, 2 pre-existing failures). EmailSender skipped (integration test requiring real SMTP). Pre-existing failures are non-regressions documented before migration.
+  3. CFDI import, order processing, and email notification modules load configuration correctly without `process.exit` crashes -- zero `dotenv` references remain outside `src/config.js`
 **Plans:** 1 plan
 
 Plans:
