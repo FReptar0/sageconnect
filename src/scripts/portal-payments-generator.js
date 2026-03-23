@@ -1,5 +1,6 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const axios = require('axios');
 const config = require('../config');
 
@@ -8,45 +9,25 @@ const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);
 const apiSecrets = config.portal.tenants.map(t => t.secret);
 
-// preparamos array de bases de datos (usamos índice 0 para pruebas)
+// preparamos array de bases de datos (usamos indice 0 para pruebas)
 const database = config.portal.tenants.map(t => t.database);
 const URL = config.portal.url;
-const index = 0;
 
-async function testGeneratePaymentJson() {
+async function generatePayments(options = {}) {
+  const startTime = Date.now();
+  const tenantIndex = options.tenantIndex || 0;
+  const pyFilter = options.pyFilter || null;
+  let dateFilter = options.dateFilter || null;
+  const shouldPost = options.shouldPost || false;
   const logFileName = 'TestUploadPayments';
-  // 0) Obtener parámetros CLI: --py <DOCNBR> o --date <YYYYMMDD> o --post (para enviar al portal)
-  const cliArgs = process.argv.slice(2);
-  let pyFilter = null;
-  let dateFilter = null;
-  let shouldPost = false;
-
-  for (let i = 0; i < cliArgs.length; i++) {
-    const a = cliArgs[i];
-    if (a === '--py' && cliArgs[i + 1]) {
-      pyFilter = cliArgs[i + 1];
-      i++;
-    } else if (a === '--date' && cliArgs[i + 1]) {
-      dateFilter = cliArgs[i + 1];
-      i++;
-    } else if (a === '--post') {
-      shouldPost = true;
-    } else if (/^\d{8}$/.test(a) && !dateFilter && !pyFilter) {
-      // si se pasa un argumento suelto de 8 dígitos lo interpretamos como fecha YYYYMMDD
-      dateFilter = a;
-    } else if (!pyFilter && !/^\d{8}$/.test(a)) {
-      // si se pasa un argumento que no es fecha lo interpretamos como DOCNBR (py)
-      pyFilter = a;
-    }
-  }
 
   if (shouldPost) {
-    console.log('🚀 Modo POST activado - Los pagos serán enviados al portal');
+    console.log('Modo POST activado - Los pagos seran enviados al portal');
   } else {
-    console.log('📋 Modo preview - Solo se mostrará el JSON (usa --post para enviar)');
+    console.log('Modo preview - Solo se mostrara el JSON (usa --post para enviar)');
   }
 
-  // Si no se proporcionó fecha, tomamos la fecha de hoy en formato YYYYMMDD
+  // Si no se proporciono fecha, tomamos la fecha de hoy en formato YYYYMMDD
   if (!dateFilter && !pyFilter) {
     const d = new Date();
     const yyyy = d.getFullYear();
@@ -54,7 +35,7 @@ async function testGeneratePaymentJson() {
     const dd = String(d.getDate()).padStart(2, '0');
     dateFilter = `${yyyy}${mm}${dd}`;
   }
-  // Construir condición dinámica: si se indicó --py filtramos por P.DOCNBR exacto, si no usamos P.DATEBUS >= <fecha>
+  // Construir condicion dinamica: si se indico --py filtramos por P.DOCNBR exacto, si no usamos P.DATEBUS >= <fecha>
   const extraCondition = pyFilter ? `AND P.DOCNBR = '${pyFilter}'` : `AND P.DATEBUS >= ${dateFilter}`;
 
   const queryEncabezadosPago = `
@@ -109,12 +90,16 @@ SELECT A.* FROM (
 `;
   let hdrs;
   try {
-    ({ recordset: hdrs } = await runQuery(queryEncabezadosPago, database[index]));
+    ({ recordset: hdrs } = await runQuery(queryEncabezadosPago, database[tenantIndex]));
   } catch (err) {
     console.error('Error al traer cabeceras:', err);
-    return;
+    return errorResult(
+      [err.message],
+      'Failed to fetch payment headers',
+      { tenant: tenantIndex, startTime }
+    );
   }
-  console.log(`🔍 ${hdrs.length} cabeceras recuperadas`);
+  console.log(`${hdrs.length} cabeceras recuperadas`);
 
   // 2) Filtrar en JS registros sin PROVIDERID
   const before = hdrs.length;
@@ -126,11 +111,15 @@ SELECT A.* FROM (
     }
     return true;
   });
-  console.log(`ℹ️  Omitidos ${before - hdrs.length} pagos sin PROVIDERID`);
+  console.log(`Omitidos ${before - hdrs.length} pagos sin PROVIDERID`);
 
   if (!hdrs.length) {
-    console.log('✅ No quedan cabeceras tras filtrar PROVIDERID');
-    return;
+    console.log('No quedan cabeceras tras filtrar PROVIDERID');
+    return successResult(
+      { total: 0, sent: 0, skippedNoProvider: before, skippedAlreadyProcessed: 0, errors: 0 },
+      'No payments to process after PROVIDERID filter',
+      { tenant: tenantIndex, startTime }
+    );
   }
 
   // 3) Filtrar pagos ya registrados
@@ -145,14 +134,22 @@ SELECT A.* FROM (
   const seen = new Set(regs.map(r => r.NoPagoSage));
   const before2 = hdrs.length;
   hdrs = hdrs.filter(r => !seen.has(r.external_id));
-  console.log(`ℹ️  Omitidos ${before2 - hdrs.length} pagos ya procesados`);
+  console.log(`Omitidos ${before2 - hdrs.length} pagos ya procesados`);
 
   if (!hdrs.length) {
-    console.log('✅ Todos los pagos ya estaban procesados');
-    return;
+    console.log('Todos los pagos ya estaban procesados');
+    return successResult(
+      { total: 0, sent: 0, skippedNoProvider: before - hdrs.length, skippedAlreadyProcessed: before2 - hdrs.length, errors: 0 },
+      'All payments already processed',
+      { tenant: tenantIndex, startTime }
+    );
   }
 
   // 4) Generar JSON para cada pago
+  let sentCount = 0;
+  let errorCount = 0;
+  const results = [];
+
   for (const hdr of hdrs) {
     // 4.1) Obtener facturas del lote/asiento
     const qInv = `
@@ -194,17 +191,17 @@ WHERE DP.BATCHTYPE = 'PY'
 `;
     let invs;
     try {
-      ({ recordset: invs } = await runQuery(qInv, database[index]));
+      ({ recordset: invs } = await runQuery(qInv, database[tenantIndex]));
     } catch (err) {
       console.error(`Error al traer facturas L${hdr.LotePago}/A${hdr.AsientoPago}:`, err);
       invs = [];
     }
     if (!invs.length) {
-      console.log(`⚠️  Sin facturas para L${hdr.LotePago}/A${hdr.AsientoPago}`);
+      console.log(`Sin facturas para L${hdr.LotePago}/A${hdr.AsientoPago}`);
       continue;
     }
 
-    // 4.2) Construir cfdis con lógica de exchange_rate
+    // 4.2) Construir cfdis con logica de exchange_rate
     const cfdis = invs.map(inv => {
       const sameCurrency = inv.invoice_currency === hdr.bk_currency;
       return {
@@ -240,26 +237,26 @@ WHERE DP.BATCHTYPE = 'PY'
       total_amount: hdr.total_amount
     };
 
-    console.log(`\n📦 Payload para pago ${hdr.external_id} (status ${payStatus}):`);
+    console.log(`\nPayload para pago ${hdr.external_id} (status ${payStatus}):`);
     console.log(JSON.stringify(payload, null, 2));
 
-    // Si se pasó el flag --post, enviar al portal
+    // Si se paso el flag --post, enviar al portal
     if (shouldPost) {
-      console.log(`\n🚀 Enviando pago ${hdr.external_id} al portal...`);
-      const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
+      console.log(`\nEnviando pago ${hdr.external_id} al portal...`);
+      const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[tenantIndex]}/payments`;
 
       try {
         const resp = await axios.post(endpoint, payload, {
           headers: {
-            'PDPTenantKey': apiKeys[index],
-            'PDPTenantSecret': apiSecrets[index],
+            'PDPTenantKey': apiKeys[tenantIndex],
+            'PDPTenantSecret': apiSecrets[tenantIndex],
             'Content-Type': 'application/json'
           }
         });
 
         if (resp.status === 200) {
           const idPortal = resp.data && resp.data.id ? resp.data.id : undefined;
-          console.log(`✅ Pago ${hdr.external_id} enviado con éxito (200)`);
+          console.log(`Pago ${hdr.external_id} enviado con exito (200)`);
           if (idPortal) {
             console.log(`   ID asignado por portal: ${idPortal}`);
           }
@@ -267,7 +264,7 @@ WHERE DP.BATCHTYPE = 'PY'
           logGenerator(
             logFileName,
             'success',
-            `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[index]}, ID portal: ${idPortal ?? 'N/A'}`
+            `Pago ${hdr.external_id} enviado correctamente. Tenant: ${tenantIds[tenantIndex]}, ID portal: ${idPortal ?? 'N/A'}`
           );
 
           // Registrar en control table
@@ -275,7 +272,7 @@ WHERE DP.BATCHTYPE = 'PY'
                     INSERT INTO fesa.dbo.fesaPagosFocaltec
                         (idCia, NoPagoSage, status, idFocaltec)
                     VALUES
-                        ('${database[index]}',
+                        ('${database[tenantIndex]}',
                          '${hdr.external_id}',
                          '${payStatus}',
                          ${idPortal ? `'${idPortal}'` : 'NULL'}
@@ -284,26 +281,31 @@ WHERE DP.BATCHTYPE = 'PY'
 
           const result = await runQuery(insertSql).catch(err => {
             logGenerator(logFileName, 'error', `Insert control table failed: ${err.message}`);
-            console.error(`❌ Falló INSERT control table: ${err.message}`);
+            console.error(`Fallo INSERT control table: ${err.message}`);
             return { rowsAffected: [0] };
           });
 
           if (result.rowsAffected[0]) {
-            console.log(`✅ Control table actualizado para pago ${hdr.external_id}`);
+            console.log(`Control table actualizado para pago ${hdr.external_id}`);
           } else {
-            console.warn(`⚠️  No se insertó control para pago ${hdr.external_id}`);
+            console.warn(`No se inserto control para pago ${hdr.external_id}`);
           }
+
+          sentCount++;
+          results.push({ externalId: hdr.external_id, status: 'sent', portalId: idPortal });
         } else {
-          console.error(`❌ Error enviando pago ${hdr.external_id}: ${resp.status}`);
+          console.error(`Error enviando pago ${hdr.external_id}: ${resp.status}`);
           console.error('   Detalle:', resp.data);
           logGenerator(
             logFileName,
             'error',
             `Error al enviar pago ${hdr.external_id}: ${resp.status} ${JSON.stringify(resp.data)}`
           );
+          errorCount++;
+          results.push({ externalId: hdr.external_id, status: 'error', error: `HTTP ${resp.status}` });
         }
       } catch (err) {
-        console.error(`❌ Error POST para pago ${hdr.external_id}:`, err.message);
+        console.error(`Error POST para pago ${hdr.external_id}:`, err.message);
         if (err.response) {
           console.error('   Status:', err.response.status);
           console.error('   Data:', err.response.data);
@@ -313,16 +315,56 @@ WHERE DP.BATCHTYPE = 'PY'
           'error',
           `Error POST payment ${hdr.external_id}: ${err.message}`
         );
+        errorCount++;
+        results.push({ externalId: hdr.external_id, status: 'error', error: err.message });
       }
+    } else {
+      results.push({ externalId: hdr.external_id, status: 'preview', payload });
     }
   }
+
+  return successResult(
+    { total: hdrs.length, sent: sentCount, errors: errorCount, payments: results },
+    shouldPost
+      ? `Generated and sent ${sentCount} payments (${errorCount} errors)`
+      : `Generated ${hdrs.length} payment payloads (preview mode)`,
+    { tenant: tenantIndex, startTime }
+  );
 }
 
-module.exports = { testGeneratePaymentJson };
+module.exports = { generatePayments };
 
 // CLI execution
 if (require.main === module) {
-  testGeneratePaymentJson().catch(err => {
-    console.error('Error en testGeneratePaymentJson:', err);
+  (async () => {
+    const cliArgs = process.argv.slice(2);
+    let pyFilter = null;
+    let dateFilter = null;
+    let shouldPost = false;
+    let tenantIndex = 0;
+
+    for (let i = 0; i < cliArgs.length; i++) {
+      const a = cliArgs[i];
+      if (a === '--py' && cliArgs[i + 1]) {
+        pyFilter = cliArgs[i + 1];
+        i++;
+      } else if (a === '--date' && cliArgs[i + 1]) {
+        dateFilter = cliArgs[i + 1];
+        i++;
+      } else if (a === '--post') {
+        shouldPost = true;
+      } else if (a.startsWith('--index=')) {
+        tenantIndex = parseInt(a.split('=')[1]) || 0;
+      } else if (/^\d{8}$/.test(a) && !dateFilter && !pyFilter) {
+        dateFilter = a;
+      } else if (!pyFilter && !/^\d{8}$/.test(a)) {
+        pyFilter = a;
+      }
+    }
+
+    const result = await generatePayments({ tenantIndex, pyFilter, dateFilter, shouldPost });
+    console.log('\n[RESULT]', JSON.stringify(result, null, 2));
+  })().catch(err => {
+    console.error('Error en generatePayments:', err);
   });
 }

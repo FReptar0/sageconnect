@@ -2,26 +2,28 @@
 // Script to upload authorized purchase orders from today to Portal de Proveedores
 const config = require('../config');
 
-// utilerías
+// utilerias
 const { runQuery } = require('../utils/SQLServerConnection');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
+const axios = require('axios');
 
-// preparamos arrays de tenants/keys/etc. y sólo usamos el primero en este test
+// preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);
 const apiSecrets = config.portal.tenants.map(t => t.secret);
 const databases = config.portal.tenants.map(t => t.database);
 const URL = config.portal.url;
-const index = 0;
 
-async function testQuery() {
+async function uploadAuthorizedPOs(options = {}) {
+  const startTime = Date.now();
+  const tenantIndex = options.tenantIndex || 0;
   const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
-  // 1) Ejecuta tu consulta a DATABASE para los dos POs
 
   const sql = `
-select 
+select
   'ACCEPTED' as ACCEPTANCE_STATUS,
   ISNULL(RTRIM(F.CITY),'')                     as [ADDRESSES_CITY],
   ISNULL(RTRIM(F.COUNTRY),'')                  as [ADDRESSES_COUNTRY],
@@ -162,17 +164,35 @@ order by A.PONUMBER, B.DETAILNUM;
   let recordset;
   try {
     ({ recordset } = await runQuery(sql, 'COPDAT'));
-    console.log(`🔍 Recuperadas ${recordset.length} filas de la base`);
+    console.log(`Recuperadas ${recordset.length} filas de la base`);
   } catch (dbErr) {
-    console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
-    return;
+    console.error('Error al ejecutar la consulta SQL:', dbErr);
+    return errorResult(
+      [dbErr.message],
+      'Failed to query authorized POs',
+      { tenant: tenantIndex, startTime }
+    );
   }
 
-  // 3) Agrupar y parsear al formato de envío
+  // 3) Agrupar y parsear al formato de envio
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
 
+  if (ordersToSend.length === 0) {
+    console.log('No authorized POs to upload today');
+    return successResult(
+      { total: 0, sent: 0, skipped: 0, errors: 0 },
+      'No authorized POs to upload today',
+      { tenant: tenantIndex, startTime }
+    );
+  }
+
   // 4) Procesar cada PO
+  let sentCount = 0;
+  let skippedCount = 0;
+  let errorCount = 0;
+  const results = [];
+
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
 
@@ -181,13 +201,15 @@ order by A.PONUMBER, B.DETAILNUM;
       SELECT idFocaltec
       FROM fesa.dbo.fesaOCFocaltec
       WHERE ocSage    = '${po.external_id}'
-        AND idDatabase= '${databases[index]}'
+        AND idDatabase= '${databases[tenantIndex]}'
         AND idFocaltec IS NOT NULL
         AND status = 'POSTED'
     `;
     const { recordset: existing } = await runQuery(checkSql, 'FESA');
     if (existing.length > 0) {
-      console.log(`⚠ [${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      console.log(`[${i + 1}/${ordersToSend.length}] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      skippedCount++;
+      results.push({ externalId: po.external_id, status: 'skipped' });
       continue;
     }
 
@@ -199,10 +221,10 @@ order by A.PONUMBER, B.DETAILNUM;
     // 4.3) Validar con Joi
     try {
       validateExternPurchaseOrder(po);
-      console.log(`✅ [${i + 1}/${ordersToSend.length}] PO ${po.external_id} pasó validación Joi`);
+      console.log(`[${i + 1}/${ordersToSend.length}] PO ${po.external_id} paso validacion Joi`);
     } catch (valErr) {
-      console.error(`❌ Joi validation failed for PO ${po.external_id}:`);
-      valErr.details.forEach(d => console.error(`   • ${d.message}`));
+      console.error(`Joi validation failed for PO ${po.external_id}:`);
+      valErr.details.forEach(d => console.error(`   - ${d.message}`));
 
       // Insert ERROR en fesaOCFocaltec
       const respAPI = valErr.details.map(d => d.message).join('; ');
@@ -216,31 +238,33 @@ order by A.PONUMBER, B.DETAILNUM;
            GETDATE(),
            GETDATE(),
            '${respAPI}',
-           '${databases[index]}'
+           '${databases[tenantIndex]}'
           )
       `;
       await runQuery(sqlErr, 'FESA');
+      errorCount++;
+      results.push({ externalId: po.external_id, status: 'validation_error', error: respAPI });
       continue;
     }
 
     // 4.4) Enviar al portal
-    const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/purchase-orders`;
+    const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[tenantIndex]}/purchase-orders`;
     try {
       const resp = await axios.post(
         endpoint,
         po,
         {
           headers: {
-            'PDPTenantKey': apiKeys[index],
-            'PDPTenantSecret': apiSecrets[index],
+            'PDPTenantKey': apiKeys[tenantIndex],
+            'PDPTenantSecret': apiSecrets[tenantIndex],
             'Content-Type': 'application/json'
           },
           timeout: 30000
         }
       );
       console.log(
-        `📤 [${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
-        `   ▶ Status: ${resp.status} ${resp.statusText}`
+        `[${i + 1}/${ordersToSend.length}] PO ${po.external_id} enviada OK\n` +
+        `   Status: ${resp.status} ${resp.statusText}`
       );
 
       // 4.5) Insert POSTED en fesaOCFocaltec
@@ -255,21 +279,23 @@ order by A.PONUMBER, B.DETAILNUM;
            GETDATE(),
            GETDATE(),
            NULL,
-           '${databases[index]}'
+           '${databases[tenantIndex]}'
           )
       `;
       await runQuery(sqlOk, 'FESA');
+      sentCount++;
+      results.push({ externalId: po.external_id, status: 'sent', portalId: idFocaltec });
 
     } catch (err) {
-      console.error(`🚨 [${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
+      console.error(`[${i + 1}/${ordersToSend.length}] Error enviando PO ${po.external_id}:`);
       let respAPI;
       if (err.response) {
-        console.error(`   ▶ Status: ${err.response.status} ${err.response.statusText}`);
-        console.error(`   ▶ Body:`, err.response.data);
+        console.error(`   Status: ${err.response.status} ${err.response.statusText}`);
+        console.error(`   Body:`, err.response.data);
         const { code, description } = err.response.data;
         respAPI = `${code}: ${description}`;
       } else {
-        console.error('   ▶ No hubo respuesta del servidor o timeout.');
+        console.error('   No hubo respuesta del servidor o timeout.');
         respAPI = err.message;
       }
 
@@ -284,17 +310,29 @@ order by A.PONUMBER, B.DETAILNUM;
            GETDATE(),
            GETDATE(),
            '${respAPI}',
-           '${databases[index]}'
+           '${databases[tenantIndex]}'
           )
       `;
       await runQuery(sqlErr, 'FESA');
+      errorCount++;
+      results.push({ externalId: po.external_id, status: 'error', error: respAPI });
     }
   }
+
+  return successResult(
+    { total: ordersToSend.length, sent: sentCount, skipped: skippedCount, errors: errorCount, orders: results },
+    `Uploaded ${sentCount} POs, skipped ${skippedCount}, ${errorCount} errors`,
+    { tenant: tenantIndex, startTime }
+  );
 }
 
-module.exports = { testQuery };
+module.exports = { uploadAuthorizedPOs };
 
 // CLI execution
 if (require.main === module) {
-  testQuery();
+  uploadAuthorizedPOs().then(result => {
+    console.log('\n[RESULT]', JSON.stringify(result, null, 2));
+  }).catch(err => {
+    console.error('Error:', err);
+  });
 }
