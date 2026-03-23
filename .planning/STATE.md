@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Env Unification
-status: in-progress
-stopped_at: Completed 04-02-PLAN.md
-last_updated: "2026-03-23T04:20:29Z"
-last_activity: 2026-03-23 -- Completed 04-02 (controller migration)
+status: completed
+stopped_at: Completed 04-03-PLAN.md
+last_updated: "2026-03-23T04:25:18.671Z"
+last_activity: 2026-03-23 -- Completed 04-03 (scripts and tests migration)
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable.
-**Current focus:** v1.1 Env Unification -- Phase 4 in progress (plan 02 of 03 complete)
+**Current focus:** v1.1 Env Unification -- Phase 4 complete (plan 03 of 03 complete)
 
 ## Current Position
 
 Phase: 4 of 5 (Codebase Migration)
-Plan: 2 of 3 complete
-Status: Phase 4 in progress
-Last activity: 2026-03-23 -- Completed 04-02 (controller migration)
+Plan: 3 of 3 complete
+Status: Phase 4 complete
+Last activity: 2026-03-23 -- Completed 04-03 (scripts and tests migration)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 2.75min
-- Total execution time: 11min
+- Total plans completed: 5
+- Average duration: 3.6min
+- Total execution time: 18min
 
 | Phase | Plan | Duration | Tasks | Files |
 | ----- | ---- | -------- | ----- | ----- |
@@ -45,6 +45,7 @@ Progress: [████████░░] 80%
 | 03    | 02   | 2min     | 2     | 4     |
 | 04    | 01   | 3min     | 2     | 14    |
 | 04    | 02   | 3min     | 1     | 9     |
+| 04    | 03   | 7min     | 2     | 20    |
 
 ## Accumulated Context
 
@@ -66,6 +67,10 @@ Progress: [████████░░] 80%
 - [04-01]: Tenant arrays built via config.portal.tenants.map() replacing manual split+push
 - [Phase 04]: PortalOC_ContentUpdater and LifecycleManager preserve addressConfig object shape for PayloadBuilder compatibility
 - [Phase 04]: All 9 controllers use require('../config') -- zero dotenv/process.env references remain in src/controller/
+- [04-03]: Scripts use require('../config') not ../../config -- plan had wrong path depth, corrected during execution
+- [04-03]: PaymentReconciliation.test.js mocks '../src/config' with full config shape instead of dotenv
+- [04-03]: EmailSender.test.js needs no config require -- EmailSender loads config internally
+- [04-03]: Module-level URL constants preserve existing template string patterns in scripts
 
 ### Pending Todos
 
@@ -74,10 +79,10 @@ None yet.
 ### Blockers/Concerns
 
 - No Sage DB access locally: SQL query changes can only be validated structurally
-- 20 modules migrated (04-01 + 04-02) -- remaining scripts in src/scripts/ need migration in 04-03
+- PaymentReconciliation.test.js has 1 pre-existing test failure unrelated to migration (fallbackExternalId logic vs test expectation)
 
 ## Session Continuity
 
-Last session: 2026-03-23T04:20:29Z
-Stopped at: Completed 04-02-PLAN.md
-Resume file: .planning/phases/04-codebase-migration/04-03-PLAN.md
+Last session: 2026-03-23T04:23:00Z
+Stopped at: Completed 04-03-PLAN.md
+Resume file: .planning/phases/05-verification/05-01-PLAN.md

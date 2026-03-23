@@ -15,7 +15,7 @@
 
 - [x] **UNIF-01**: Los 5 archivos `.env` separados se consolidan en un solo `.env` con secciones por comentarios
 - [x] **UNIF-02**: Un solo `.env.example` en la raiz documenta todas las 27 variables con valores de ejemplo y comentarios por seccion
-- [ ] **UNIF-03**: Los archivos `.env.*.example` redundantes en raiz y `dist/` se eliminan
+- [x] **UNIF-03**: Los archivos `.env.*.example` redundantes en raiz y `dist/` se eliminan
 
 ### Regression
 
@@ -50,7 +50,7 @@
 | CONF-03 | Phase 4 | Complete |
 | UNIF-01 | Phase 3 | Complete |
 | UNIF-02 | Phase 4 | Complete |
-| UNIF-03 | Phase 4 | Pending |
+| UNIF-03 | Phase 4 | Complete |
 | REGR-01 | Phase 5 | Pending |
 
 **Coverage:**
