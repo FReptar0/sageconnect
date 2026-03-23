@@ -68,12 +68,12 @@ Plans:
   3. Destructive endpoints (POST/PUT) require a valid API key in x-api-key header and return 401 without it
   4. Write endpoints are rate-limited, and all responses include security headers (helmet)
   5. Invalid inputs (bad tenant index, missing required params) return structured 400 errors with validation details (Joi)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
-- [ ] 07-03: TBD
+- [ ] 07-01-PLAN.md -- Security middleware + route restructure + config update (Wave 1)
+- [ ] 07-02-PLAN.md -- Payment routes with Joi validation + runReconciliation wrapper (Wave 2)
+- [ ] 07-03-PLAN.md -- PO routes with Joi validation + lifecycle dispatch (Wave 2)
 
 ### Phase 8: Scheduler + Real-Time Layer
 **Goal**: SageConnect runs scheduled jobs internally via node-cron (replacing Windows Task Scheduler) with real-time progress streaming and concurrency protection
@@ -135,8 +135,8 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
 | 4. Codebase Migration | v1.1 | 3/3 | Complete | 2026-03-23 |
 | 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |
-| 6. Infrastructure Foundation | 4/4 | Complete   | 2026-03-23 | - |
-| 7. REST API + Security | v2.0 | 0/? | Not started | - |
+| 6. Infrastructure Foundation | v2.0 | 4/4 | Complete | 2026-03-23 |
+| 7. REST API + Security | v2.0 | 0/3 | Not started | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/? | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/? | Not started | - |
 | 10. Servy Cutover + Retirement | v2.0 | 0/? | Not started | - |
