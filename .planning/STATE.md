@@ -27,20 +27,21 @@ See: .planning/PROJECT.md (updated 2026-03-22)
 
 Phase: 3 of 5 (Config Loader Foundation)
 Plan: 2 of 2 complete
-Status: Executing
-Last activity: 2026-03-22 -- Completed 03-02 (unified env file)
+Status: Phase 3 complete
+Last activity: 2026-03-23 -- Completed 03-01 (config loader TDD)
 
 Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 2min
-- Total execution time: 2min
+- Total plans completed: 2
+- Average duration: 2.5min
+- Total execution time: 5min
 
 | Phase | Plan | Duration | Tasks | Files |
 | ----- | ---- | -------- | ----- | ----- |
+| 03    | 01   | 3min     | 1     | 2     |
 | 03    | 02   | 2min     | 2     | 4     |
 
 ## Accumulated Context
@@ -54,6 +55,9 @@ Progress: [█████░░░░░] 50%
 - [03-02]: Real values from .env.credentials.focaltec and .env.path preserved in unified .env
 - [03-02]: DATABASE and MAILING sections left empty (no real credential files on disk)
 - [03-02]: Old .env.*.example files kept in root for Phase 4 cleanup (UNIF-03)
+- [03-01]: Config exported as plain module.exports object, not a function -- require('./config') returns structured object directly
+- [03-01]: Mailing section returns empty object when MAIL_TRANSPORT not set, fully populated when present
+- [03-01]: dotenv mocked in tests to avoid .env file dependency
 
 ### Pending Todos
 
@@ -66,6 +70,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-23T01:12:07.092Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-03-23T01:11:15Z
+Stopped at: Completed 03-01-PLAN.md (Phase 3 now fully complete: 2/2 plans done)
 Resume file: None

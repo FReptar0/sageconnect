@@ -7,8 +7,8 @@
 
 ### Config Loader
 
-- [ ] **CONF-01**: Un modulo centralizado `src/config.js` carga un solo `.env` al arranque y exporta un objeto estructurado con secciones: `database`, `portal`, `mailing`, `paths`, `app`
-- [ ] **CONF-02**: El config loader valida que todas las variables requeridas esten presentes al arranque; si falta alguna, imprime lista de variables faltantes y termina con `process.exit(1)`
+- [x] **CONF-01**: Un modulo centralizado `src/config.js` carga un solo `.env` al arranque y exporta un objeto estructurado con secciones: `database`, `portal`, `mailing`, `paths`, `app`
+- [x] **CONF-02**: El config loader valida que todas las variables requeridas esten presentes al arranque; si falta alguna, imprime lista de variables faltantes y termina con `process.exit(1)`
 - [ ] **CONF-03**: Las 25+ llamadas `dotenv.config()` dispersas en el codebase se reemplazan por `require` del config loader centralizado
 
 ### Unification
@@ -45,8 +45,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 3 | Pending |
-| CONF-02 | Phase 3 | Pending |
+| CONF-01 | Phase 3 | Complete |
+| CONF-02 | Phase 3 | Complete |
 | CONF-03 | Phase 4 | Pending |
 | UNIF-01 | Phase 3 | Complete |
 | UNIF-02 | Phase 4 | Pending |
@@ -60,4 +60,4 @@
 
 ---
 *Requirements defined: 2026-03-22*
-*Last updated: 2026-03-22 after roadmap creation*
+*Last updated: 2026-03-23 after 03-01 completion*

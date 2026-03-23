@@ -39,8 +39,8 @@ See: `.planning/milestones/v1.0-ROADMAP.md` for full details.
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 03-01-PLAN.md -- TDD: Build config loader with validation (CONF-01, CONF-02)
-- [ ] 03-02-PLAN.md -- Create unified .env, .env.example, and archive old files (UNIF-01)
+- [x] 03-01-PLAN.md -- TDD: Build config loader with validation (CONF-01, CONF-02)
+- [x] 03-02-PLAN.md -- Create unified .env, .env.example, and archive old files (UNIF-01)
 
 ### Phase 4: Codebase Migration
 **Goal**: Every module in the codebase obtains configuration from the centralized config loader instead of loading dotenv independently
@@ -78,6 +78,6 @@ Plans:
 |-------|-----------|----------------|--------|-----------|
 | 1. Reconciliation Classification | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 2. Batch Upload Robustness | v1.0 | 2/2 | Complete | 2026-03-22 |
-| 3. Config Loader Foundation | 2/2 | Complete   | 2026-03-23 | - |
+| 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
 | 4. Codebase Migration | v1.1 | 0/TBD | Not started | - |
 | 5. Regression Verification | v1.1 | 0/TBD | Not started | - |
