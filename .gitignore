@@ -28,6 +28,7 @@ dist/
 .env.production.local
 .env.credentials.*
 .env.path
+.env.legacy/
 !.env.*.example
 
 # Logs and generated files
