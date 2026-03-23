@@ -6,6 +6,7 @@ const { getProviderByExternalId } = require('../utils/GetProviders');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const axios = require('axios');
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);
@@ -64,6 +65,7 @@ function oneYearAgoDashed() {
  * @returns {Promise<{categories: Object, autoResolvedCount: number, autoResolvedSet: Set}>}
  */
 async function classifyPayments(deduped, portalUuidMap, index, db) {
+    const startTime = Date.now();
     const categories = {
         ready: [],
         no_providerid: [],
@@ -245,7 +247,15 @@ WHERE DP.BATCHTYPE = 'PY'
         });
     }
 
-    return { categories, autoResolvedCount, autoResolvedSet };
+    const totalProcessed = categories.ready.length + categories.no_providerid.length
+        + categories.no_uuid.length + categories.not_in_portal.length
+        + categories.provider_mismatch.length;
+
+    return successResult(
+        { categories, autoResolvedCount, autoResolvedSet },
+        `Classified ${totalProcessed} payments: ${categories.ready.length} ready, ${categories.no_providerid.length} no_providerid, ${categories.no_uuid.length} no_uuid, ${categories.not_in_portal.length} not_in_portal, ${categories.provider_mismatch.length} provider_mismatch, ${autoResolvedCount} auto-resolved`,
+        { tenant: tenantIds[index], startTime }
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -268,18 +278,27 @@ WHERE DP.BATCHTYPE = 'PY'
  * @param {string} options.URL - Portal base URL.
  */
 async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFileName, tenantIds, apiKeys, apiSecrets, database, URL }) {
+    const startTime = Date.now();
     if (!shouldUpload) {
         if (categories.ready.length > 0) {
             console.log(`\nUse --upload to send the ${categories.ready.length} ready payments to the portal.`);
         }
-        return;
+        return successResult(
+            { mode: 'report', ready: categories.ready.length, sent: 0, success: 0, errors: 0 },
+            `Report mode: ${categories.ready.length} payments ready (use --upload to send)`,
+            { tenant: tenantIds[index], startTime }
+        );
     }
 
     // UPLOAD mode: empty guard (BTCH-02)
     if (categories.ready.length === 0) {
         console.log('\nNo payments ready to upload.');
         logGenerator(logFileName, 'info', 'Upload skipped: no payments ready to upload');
-        return;
+        return successResult(
+            { mode: 'upload', ready: 0, sent: 0, success: 0, errors: 0 },
+            'No payments ready to upload',
+            { tenant: tenantIds[index], startTime }
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -459,6 +478,12 @@ VALUES
     if (categories.ready.length > batchLimit) {
         console.log(`  Remaining: ${categories.ready.length - batchLimit} (run again to process next batch)`);
     }
+
+    return successResult(
+        { mode: 'upload', ready: categories.ready.length, sent: toUpload.length, success: successCount, errors: errorCount, missing: missingCount },
+        `Upload complete: ${toUpload.length} sent, ${successCount} success, ${errorCount} errors${missingCount > 0 ? `, ${missingCount} missing` : ''}`,
+        { tenant: tenantIds[index], startTime }
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -604,7 +629,8 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
     // -----------------------------------------------------------------------
     console.log('\n[Step 3-4] Fetching invoices and categorizing...');
 
-    const { categories, autoResolvedCount, autoResolvedSet } = await classifyPayments(deduped, portalUuidMap, index, database[index]);
+    const classifyResult = await classifyPayments(deduped, portalUuidMap, index, database[index]);
+    const { categories, autoResolvedCount, autoResolvedSet } = classifyResult.data;
 
     // -----------------------------------------------------------------------
     // Step 5: Generate report

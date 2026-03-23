@@ -2,6 +2,7 @@
 
 const config = require('../config');
 const { runQuery } = require('../utils/SQLServerConnection');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 const databases = config.portal.tenants.map(t => t.database);
 
@@ -11,6 +12,7 @@ const databases = config.portal.tenants.map(t => t.database);
  * @param {string} database - Base de datos a consultar (opcional, default: primer database configurado)
  */
 async function diagnosticPaymentForm(poNumber, database = null) {
+    const startTime = Date.now();
     const dbToUse = database || databases[0];
     
     console.log(`\n${'='.repeat(60)}`);
@@ -38,7 +40,11 @@ async function diagnosticPaymentForm(poNumber, database = null) {
         
         if (existsResult.recordset.length === 0) {
             console.log(`❌ ERROR: La PO ${poNumber} no existe en ${dbToUse}.dbo.POPORH1`);
-            return;
+            return errorResult(
+                [`PO ${poNumber} does not exist in ${dbToUse}.dbo.POPORH1`],
+                `Payment form diagnostic aborted: PO ${poNumber} not found`,
+                { startTime }
+            );
         }
         
         console.table(existsResult.recordset);
@@ -170,39 +176,46 @@ async function diagnosticPaymentForm(poNumber, database = null) {
         console.log('FIN DEL DIAGNÓSTICO');
         console.log(`${'='.repeat(60)}\n`);
 
+        return successResult(
+            { poNumber, database: dbToUse, calculatedValue, isValid },
+            `Payment form diagnostic for ${poNumber}: value="${calculatedValue}", valid=${isValid}`,
+            { startTime }
+        );
+
     } catch (error) {
         console.error('❌ Error durante el diagnóstico:', error.message);
-        throw error;
-    }
-}
-
-// CLI
-async function main() {
-    const args = process.argv.slice(2);
-
-    if (args.length === 0) {
-        console.log('❌ ERROR: Debes proporcionar un número de PO');
-        console.log('\n📋 Uso:');
-        console.log('  node src/scripts/po-payment-form-diagnostic.js <PO_NUMBER> [DATABASE]');
-        console.log('\n📝 Ejemplos:');
-        console.log('  node src/scripts/po-payment-form-diagnostic.js PO0081005');
-        console.log('  node src/scripts/po-payment-form-diagnostic.js PO0081005 COPDAT');
-        process.exit(1);
-    }
-
-    const poNumber = args[0];
-    const database = args[1] || null;
-
-    try {
-        await diagnosticPaymentForm(poNumber, database);
-    } catch (error) {
-        console.error('\n❌ ERROR FATAL:', error.message);
-        process.exit(1);
+        return errorResult(
+            [error.message],
+            `Payment form diagnostic failed for ${poNumber}`,
+            { startTime }
+        );
     }
 }
 
 module.exports = { diagnosticPaymentForm };
 
 if (require.main === module) {
-    main().catch(console.error);
+    (async () => {
+        const args = process.argv.slice(2);
+
+        if (args.length === 0) {
+            console.log('ERROR: Debes proporcionar un numero de PO');
+            console.log('\nUso:');
+            console.log('  node src/scripts/po-payment-form-diagnostic.js <PO_NUMBER> [DATABASE]');
+            console.log('\nEjemplos:');
+            console.log('  node src/scripts/po-payment-form-diagnostic.js PO0081005');
+            console.log('  node src/scripts/po-payment-form-diagnostic.js PO0081005 COPDAT');
+            process.exit(1);
+        }
+
+        const poNumber = args[0];
+        const database = args[1] || null;
+
+        try {
+            await diagnosticPaymentForm(poNumber, database);
+        } catch (error) {
+            console.error('\nERROR FATAL:', error.message);
+            process.exit(1);
+        }
+    })();
 }

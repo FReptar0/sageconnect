@@ -192,8 +192,8 @@ describe('RSOL-01: Auto-resolve missing PROVIDERID', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.no_providerid).toHaveLength(1);
-        expect(result.categories.no_providerid[0].reason).toMatch(/auto-resolution failed/i);
+        expect(result.data.categories.no_providerid).toHaveLength(1);
+        expect(result.data.categories.no_providerid[0].reason).toMatch(/auto-resolution failed/i);
     });
 
     test('should push to no_providerid when provider_external_id is empty', async () => {
@@ -205,8 +205,8 @@ describe('RSOL-01: Auto-resolve missing PROVIDERID', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.no_providerid).toHaveLength(1);
-        expect(result.categories.no_providerid[0].reason).toMatch(/no IDVEND/i);
+        expect(result.data.categories.no_providerid).toHaveLength(1);
+        expect(result.data.categories.no_providerid[0].reason).toMatch(/no IDVEND/i);
     });
 });
 
@@ -228,8 +228,8 @@ describe('RSOL-02: Same-run reclassification after successful resolution', () =>
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.ready).toHaveLength(1);
-        expect(result.autoResolvedCount).toBe(1);
+        expect(result.data.categories.ready).toHaveLength(1);
+        expect(result.data.autoResolvedCount).toBe(1);
     });
 
     test('should continue to mismatch check after auto-resolution', async () => {
@@ -245,8 +245,8 @@ describe('RSOL-02: Same-run reclassification after successful resolution', () =>
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.provider_mismatch).toHaveLength(1);
-        expect(result.categories.ready).toHaveLength(0);
+        expect(result.data.categories.provider_mismatch).toHaveLength(1);
+        expect(result.data.categories.ready).toHaveLength(0);
     });
 });
 
@@ -271,7 +271,7 @@ describe('PROV-01: Validate metadata.provider_id matches PROVIDERID', () => {
         // This test may PASS with current code (regression baseline) because
         // the current code does not check provider_id at all -- it classifies
         // as READY if invoices are in portal.
-        expect(result.categories.ready).toHaveLength(1);
+        expect(result.data.categories.ready).toHaveLength(1);
     });
 
     test('should classify as PROVIDER MISMATCH when an invoice provider_id differs', async () => {
@@ -285,9 +285,9 @@ describe('PROV-01: Validate metadata.provider_id matches PROVIDERID', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.provider_mismatch).toHaveLength(1);
-        expect(result.categories.provider_mismatch[0].mismatchDetails).toBeDefined();
-        expect(result.categories.ready).toHaveLength(0);
+        expect(result.data.categories.provider_mismatch).toHaveLength(1);
+        expect(result.data.categories.provider_mismatch[0].mismatchDetails).toBeDefined();
+        expect(result.data.categories.ready).toHaveLength(0);
     });
 
     test('should treat null/empty provider_id as mismatch', async () => {
@@ -301,8 +301,8 @@ describe('PROV-01: Validate metadata.provider_id matches PROVIDERID', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.provider_mismatch).toHaveLength(1);
-        expect(result.categories.ready).toHaveLength(0);
+        expect(result.data.categories.provider_mismatch).toHaveLength(1);
+        expect(result.data.categories.ready).toHaveLength(0);
     });
 
     test('should compare provider_ids case-insensitively', async () => {
@@ -317,8 +317,8 @@ describe('PROV-01: Validate metadata.provider_id matches PROVIDERID', () => {
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
         // Should be READY, not mismatch (case-insensitive comparison)
-        expect(result.categories.ready).toHaveLength(1);
-        expect(result.categories.provider_mismatch).toHaveLength(0);
+        expect(result.data.categories.ready).toHaveLength(1);
+        expect(result.data.categories.provider_mismatch).toHaveLength(0);
     });
 });
 
@@ -338,8 +338,8 @@ describe('PROV-02: PROVIDER MISMATCH category with detail', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.provider_mismatch).toHaveLength(1);
-        const entry = result.categories.provider_mismatch[0];
+        expect(result.data.categories.provider_mismatch).toHaveLength(1);
+        const entry = result.data.categories.provider_mismatch[0];
         expect(entry.mismatchDetails).toBeDefined();
         expect(entry.mismatchDetails).toHaveLength(1);
         expect(entry.mismatchDetails[0]).toMatchObject({
@@ -364,8 +364,8 @@ describe('PROV-02: PROVIDER MISMATCH category with detail', () => {
 
         const result = await classifyPayments([hdr], portalUuidMap, 0, 'TESTDB');
 
-        expect(result.categories.provider_mismatch).toHaveLength(1);
-        const entry = result.categories.provider_mismatch[0];
+        expect(result.data.categories.provider_mismatch).toHaveLength(1);
+        const entry = result.data.categories.provider_mismatch[0];
         expect(entry.mismatchDetails).toHaveLength(2);
     });
 });

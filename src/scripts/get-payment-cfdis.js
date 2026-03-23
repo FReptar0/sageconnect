@@ -4,6 +4,7 @@
 const axios = require('axios');
 const config = require('../config');
 const { logGenerator } = require('../utils/LogGenerator');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 const url = config.portal.url;
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -14,6 +15,7 @@ const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cf
 const urlPayments = (index, paymentId) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments/${paymentId}`;
 
 async function getTypePTest(index) {
+    const startTime = Date.now();
     const logFileName = 'GetTypePTest';
     let date = new Date();
     let dateFrom = new Date(date.setMonth(date.getMonth() - 1)).toISOString().slice(0, 7);
@@ -37,7 +39,11 @@ async function getTypePTest(index) {
 
         if (response.data.total === 0) {
             console.log('[INFO] No hay CFDI de tipo P');
-            return [];
+            return successResult(
+                [],
+                'No CFDI Type P found',
+                { tenant: tenantIds[index], startTime }
+            );
         }
 
         const data = [];
@@ -81,11 +87,19 @@ async function getTypePTest(index) {
         }
 
         console.log('[INFO] CFDI de tipo P procesados:', data);
-        return data;
+        return successResult(
+            data,
+            `Processed ${data.length} CFDI Type P`,
+            { tenant: tenantIds[index], startTime }
+        );
     } catch (error) {
         console.log('[ERROR] Error al obtener CFDI de tipo P:', error.message);
         logGenerator(logFileName, 'error', `Error al obtener CFDI de tipo P: ${error.message}`);
-        return [];
+        return errorResult(
+            [error.message],
+            'Failed to fetch CFDI Type P',
+            { tenant: tenantIds[index], startTime }
+        );
     }
 }
 
@@ -111,6 +125,6 @@ if (require.main === module) {
 
         const result = await getTypePTest(index);
         console.log('\n[RESULT] Resultado final:', JSON.stringify(result, null, 2));
-        console.log(`\nTotal CFDIs procesados: ${result.length}`);
+        console.log(`\nTotal CFDIs procesados: ${result.data ? result.data.length : 0}`);
     })();
 }
