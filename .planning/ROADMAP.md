@@ -71,7 +71,7 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 07-01-PLAN.md -- Security middleware + route restructure + config update (Wave 1)
+- [x] 07-01-PLAN.md -- Security middleware + route restructure + config update (Wave 1)
 - [ ] 07-02-PLAN.md -- Payment routes with Joi validation + runReconciliation wrapper (Wave 2)
 - [ ] 07-03-PLAN.md -- PO routes with Joi validation + lifecycle dispatch (Wave 2)
 

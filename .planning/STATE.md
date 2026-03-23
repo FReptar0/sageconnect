@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: completed
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-23T21:53:35.763Z"
-last_activity: 2026-03-23 -- Completed 06-04 function extraction + envelope contract test (Phase 6 DONE)
+status: executing
+stopped_at: Completed 07-01-PLAN.md
+last_updated: "2026-03-23T22:25:35.885Z"
+last_activity: 2026-03-23 -- Completed 07-01 security middleware, route restructure, integration tests
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 20
+  total_plans: 7
+  completed_plans: 5
+  percent: 28
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.0 Always-On Service -- Phase 6 executing
+**Current focus:** v2.0 Always-On Service -- Phase 7 executing
 
 ## Current Position
 
-Phase: 6 of 10 (Infrastructure Foundation) -- COMPLETE
-Plan: 4 of 4 complete
-Status: Phase Complete
-Last activity: 2026-03-23 -- Completed 06-04 function extraction + envelope contract test (Phase 6 DONE)
+Phase: 7 of 10 (REST API + Security)
+Plan: 1 of 3 complete
+Status: Executing
+Last activity: 2026-03-23 -- Completed 07-01 security middleware, route restructure, integration tests
 
-Progress: [████░░░░░░] 20%
+Progress: [███░░░░░░░] 28%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [████░░░░░░] 20%
 |-------|-------|-------|----------|
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
+| 7 (rest-api-security) | 1/3 | 8min | 8min |
 
 ## Accumulated Context
 
@@ -68,6 +69,10 @@ Progress: [████░░░░░░] 20%
 - [06-04]: Options parameter pattern: exported functions accept options={} instead of positional args for API readiness
 - [06-04]: CLI arg parsing fully separated from business logic in all 5 hard scripts
 - [06-04]: Envelope contract test covers all 14 modules (65 structural tests)
+- [07-01]: SAGECONNECT_API_KEY is optional -- missing key warns but does not crash the app
+- [07-01]: Helmet CSP disabled for dashboard inline scripts
+- [07-01]: draft-7 standard headers for rate limiting (ratelimit + ratelimit-policy)
+- [07-01]: Test app builder pattern avoids config.js process.exit during security tests
 
 ### Pending Todos
 
@@ -80,6 +85,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T21:53:35.751Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-rest-api-security/07-CONTEXT.md
+Last session: 2026-03-23T22:25:35.881Z
+Stopped at: Completed 07-01-PLAN.md
+Resume file: None

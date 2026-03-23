@@ -46,10 +46,10 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 
 ### Security
 
-- [ ] **SEC-01**: helmet middleware for HTTP security headers
-- [ ] **SEC-02**: cors middleware configured for internal network
-- [ ] **SEC-03**: express-rate-limit on write endpoints
-- [ ] **SEC-04**: API key middleware for destructive operations (POST/PUT/DELETE)
+- [x] **SEC-01**: helmet middleware for HTTP security headers
+- [x] **SEC-02**: cors middleware configured for internal network
+- [x] **SEC-03**: express-rate-limit on write endpoints
+- [x] **SEC-04**: API key middleware for destructive operations (POST/PUT/DELETE)
 
 ### Web UI
 
@@ -126,10 +126,10 @@ Deferred to future release. Tracked but not in current roadmap.
 | SYS-03 | Phase 8 | Pending |
 | SYS-04 | Phase 8 | Pending |
 | SYS-05 | Phase 8 | Pending |
-| SEC-01 | Phase 7 | Pending |
-| SEC-02 | Phase 7 | Pending |
-| SEC-03 | Phase 7 | Pending |
-| SEC-04 | Phase 7 | Pending |
+| SEC-01 | Phase 7 | Complete |
+| SEC-02 | Phase 7 | Complete |
+| SEC-03 | Phase 7 | Complete |
+| SEC-04 | Phase 7 | Complete |
 | UI-01 | Phase 9 | Pending |
 | UI-02 | Phase 9 | Pending |
 | UI-03 | Phase 9 | Pending |
