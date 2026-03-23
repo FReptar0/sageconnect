@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
 status: executing
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-03-23T20:22:19Z"
-last_activity: 2026-03-23 -- Completed 06-01 infrastructure foundation utilities
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-23T20:41:03.447Z"
+last_activity: 2026-03-23 -- Completed 06-02 remove process.exit from always-on code paths
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 2
   percent: 5
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 6 of 10 (Infrastructure Foundation)
-Plan: 1 of 4 complete
+Plan: 2 of 4 complete
 Status: Executing
-Last activity: 2026-03-23 -- Completed 06-01 infrastructure foundation utilities
+Last activity: 2026-03-23 -- Completed 06-02 remove process.exit from always-on code paths
 
 Progress: [█░░░░░░░░░] 5%
 
@@ -45,6 +45,7 @@ Progress: [█░░░░░░░░░] 5%
 |-------|-------|-------|----------|
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
 | 6 (infra-foundation) | 1/4 | 3min | 3min |
+| Phase 06 P02 | 13min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -58,6 +59,10 @@ Progress: [█░░░░░░░░░] 5%
 - [v2.0 Roadmap]: AutoShutdownService removal sequenced as last action (Pitfall 3)
 - [06-01]: Pool error listener logs but does not exit/rethrow -- always-on stability
 - [06-01]: USE [database] comparison uses config.database.database, not hardcoded 'FESA'
+- [Phase 06]: PortalOC_StatusUpdater refactored to return ResultEnvelope with require.main CLI guard for backward compatibility
+- [Phase 06]: background.js returns control to index.js instead of calling process.exit -- index.js owns server lifecycle
+- [Phase 06]: routes.js shutdown endpoint returns 403 in always-on mode with Servy guidance
+- [Phase 06]: AutoShutdownService uses setShutdownHandler callback instead of direct process.exit
 
 ### Pending Todos
 
@@ -71,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T20:22:19Z
-Stopped at: Completed 06-01-PLAN.md
-Resume file: .planning/phases/06-infrastructure-foundation/06-01-SUMMARY.md
+Last session: 2026-03-23T20:41:03.408Z
+Stopped at: Completed 06-02-PLAN.md
+Resume file: None

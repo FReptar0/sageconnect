@@ -10,7 +10,7 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 ### Infrastructure
 
 - [x] **INFRA-01**: Scripts return structured data objects instead of only console.log output
-- [ ] **INFRA-02**: All process.exit() calls removed or guarded from always-on code paths
+- [x] **INFRA-02**: All process.exit() calls removed or guarded from always-on code paths
 - [x] **INFRA-03**: Shared SQL connection pool (singleton) replacing per-query pool creation/destruction
 - [ ] **INFRA-04**: node-cron v4 scheduler replaces Windows Task Scheduler with noOverlap guard
 - [ ] **INFRA-05**: Background process loop refactored from "run once and exit" to "scheduled recurring job"
@@ -102,7 +102,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INFRA-01 | Phase 6 | Complete |
-| INFRA-02 | Phase 6 | Pending |
+| INFRA-02 | Phase 6 | Complete |
 | INFRA-03 | Phase 6 | Complete |
 | INFRA-04 | Phase 8 | Pending |
 | INFRA-05 | Phase 8 | Pending |
