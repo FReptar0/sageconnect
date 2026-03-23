@@ -33,7 +33,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 
 **Milestone Goal:** Transform SageConnect from batch runner (every 15 min) to always-on service with REST API, internal scheduling, and operational web UI for payments and POs.
 
-- [ ] **Phase 6: Infrastructure Foundation** - Refactor scripts to return structured data, eliminate process.exit, create shared SQL pool
+- [x] **Phase 6: Infrastructure Foundation** - Refactor scripts to return structured data, eliminate process.exit, create shared SQL pool (completed 2026-03-23)
 - [ ] **Phase 7: REST API + Security** - Expose all 15 payment/PO scripts as secured REST endpoints with validation
 - [ ] **Phase 8: Scheduler + Real-Time Layer** - Internal node-cron scheduling with SSE progress streams and operation concurrency control
 - [ ] **Phase 9: Operational Web UI** - Payment audit, PO management, schedule dashboard, and tenant switcher views
@@ -135,7 +135,7 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
 | 4. Codebase Migration | v1.1 | 3/3 | Complete | 2026-03-23 |
 | 5. Regression Verification | v1.1 | 1/1 | Complete | 2026-03-23 |
-| 6. Infrastructure Foundation | v2.0 | 0/4 | Planning | - |
+| 6. Infrastructure Foundation | 4/4 | Complete   | 2026-03-23 | - |
 | 7. REST API + Security | v2.0 | 0/? | Not started | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/? | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/? | Not started | - |

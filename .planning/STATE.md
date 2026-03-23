@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: executing
-stopped_at: Completed 06-03-PLAN.md
-last_updated: "2026-03-23T20:43:28Z"
-last_activity: 2026-03-23 -- Completed 06-03 envelope returns for 8 easy scripts
+status: phase-complete
+stopped_at: Completed 06-04-PLAN.md (Phase 6 complete)
+last_updated: "2026-03-23T20:59:44Z"
+last_activity: 2026-03-23 -- Completed 06-04 function extraction + envelope contract test (Phase 6 DONE)
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 10
+  completed_plans: 4
+  percent: 20
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 
 ## Current Position
 
-Phase: 6 of 10 (Infrastructure Foundation)
-Plan: 3 of 4 complete
-Status: Executing
-Last activity: 2026-03-23 -- Completed 06-03 envelope returns for 8 easy scripts
+Phase: 6 of 10 (Infrastructure Foundation) -- COMPLETE
+Plan: 4 of 4 complete
+Status: Phase Complete
+Last activity: 2026-03-23 -- Completed 06-04 function extraction + envelope contract test (Phase 6 DONE)
 
-Progress: [██░░░░░░░░] 10%
+Progress: [████░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -44,7 +44,7 @@ Progress: [██░░░░░░░░] 10%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
-| 6 (infra-foundation) | 3/4 | 33min | 11min |
+| 6 (infra-foundation) | 4/4 | 44min | 11min |
 
 ## Accumulated Context
 
@@ -65,6 +65,9 @@ Progress: [██░░░░░░░░] 10%
 - [06-03]: Dual-output pattern: console output preserved alongside envelope returns for backward CLI compatibility
 - [06-03]: searchPOInFESA internal caller updated to use envelope.data, keeping both function exports consistent
 - [06-03]: PaymentReconciliation test assertions updated from result.categories to result.data.categories
+- [06-04]: Options parameter pattern: exported functions accept options={} instead of positional args for API readiness
+- [06-04]: CLI arg parsing fully separated from business logic in all 5 hard scripts
+- [06-04]: Envelope contract test covers all 14 modules (65 structural tests)
 
 ### Pending Todos
 
@@ -73,11 +76,10 @@ None.
 ### Blockers/Concerns
 
 - No Sage DB access locally: SQL query changes can only be validated structurally
-- 9 scripts return undefined from main flow -- must be refactored in Phase 6 before any route
 - Servy production server environment (service account, firewall, paths) not yet verified
 
 ## Session Continuity
 
-Last session: 2026-03-23T20:43:28Z
-Stopped at: Completed 06-03-PLAN.md
-Resume file: .planning/phases/06-infrastructure-foundation/06-03-SUMMARY.md
+Last session: 2026-03-23T20:59:44Z
+Stopped at: Completed 06-04-PLAN.md (Phase 6 complete)
+Resume file: .planning/phases/06-infrastructure-foundation/06-04-SUMMARY.md
