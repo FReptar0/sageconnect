@@ -202,23 +202,17 @@ async function startBackgroundProcesses() {
         await startChildProcess();
         logGenerator(logFileName, 'info', '[COMPLETE] Child process completado, todos los procesos finalizados');
         
-        // Auto-terminate after all processes complete (for scheduled tasks)
+        // Auto-terminate lifecycle: background.js signals completion, index.js handles server close + exit
         if (config.app.autoTerminate) {
-            logGenerator(logFileName, 'info', '[AUTO-TERMINATE] Finalizando proceso automáticamente después de completar todas las tareas');
-            setTimeout(() => {
-                process.exit(0);
-            }, 2000); // Brief delay to ensure logs are written
+            logGenerator(logFileName, 'info', '[AUTO-TERMINATE] Proceso completado -- control devuelto a index.js');
         }
     } catch (error) {
         console.log(error);
         logGenerator(logFileName, 'error', `[ERROR] Error en proceso principal: ${error.message}`);
         
-        // Exit on error if auto-terminate is enabled
+        // Auto-terminate error lifecycle: background.js signals error, index.js handles server close + exit
         if (config.app.autoTerminate) {
-            setTimeout(() => {
-                logGenerator(logFileName, 'error', '[AUTO-TERMINATE] Finalizando proceso debido a error');
-                process.exit(1);
-            }, 2000);
+            logGenerator(logFileName, 'error', '[AUTO-TERMINATE] Error en proceso -- control devuelto a index.js');
         }
     }
 }

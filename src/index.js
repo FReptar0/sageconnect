@@ -18,19 +18,22 @@ const server = startServer(3030, webOnlyMode);
 if (!webOnlyMode) {
     // Start background processes (now async)
     startBackgroundProcesses().then(() => {
-        // Background processes completed successfully
+        // In autoTerminate mode (legacy scheduled task): close server and exit.
+        // In always-on mode (autoTerminate=false): process stays alive serving web requests.
         if (config.app.autoTerminate) {
             console.log('[AUTO-TERMINATE] Cerrando servidor y finalizando proceso');
             server.close(() => {
-                process.exit(0);
+                process.exit(0); // Only reachable when autoTerminate=true
             });
         }
     }).catch((error) => {
         console.error('[ERROR] Error en procesos de background:', error);
+        // In autoTerminate mode: close server and exit with error code.
+        // In always-on mode: log error, process stays alive for web requests.
         if (config.app.autoTerminate) {
             console.log('[AUTO-TERMINATE] Cerrando servidor debido a error');
             server.close(() => {
-                process.exit(1);
+                process.exit(1); // Only reachable when autoTerminate=true
             });
         }
     });

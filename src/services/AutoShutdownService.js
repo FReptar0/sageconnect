@@ -11,12 +11,22 @@ class AutoShutdownService {
         this.shutdownTimer = null;
         this.warningTimer = null;
         this.isShutdownScheduled = false;
+        this.onShutdown = null;
         this.logFileName = 'AutoShutdown';
-        
+
         // Shutdown 30 seconds before scheduled time
         this.SHUTDOWN_ADVANCE_SECONDS = 30;
         // Warning 2 minutes before shutdown
         this.WARNING_ADVANCE_SECONDS = 120;
+    }
+
+    /**
+     * Registers a shutdown handler to be called instead of process.exit.
+     * In always-on mode, this should call server.close() or similar graceful shutdown.
+     * @param {Function} fn - Shutdown handler function
+     */
+    setShutdownHandler(fn) {
+        this.onShutdown = fn;
     }
 
     /**
@@ -143,10 +153,14 @@ class AutoShutdownService {
         // Store shutdown message for dashboard
         global.shutdownMessage = message;
         
-        // Graceful shutdown
+        // Graceful shutdown via registered handler (no direct process.exit in always-on mode)
         setTimeout(() => {
-            logGenerator(this.logFileName, 'info', '[SHUTDOWN] Servidor web cerrado automáticamente para evitar conflictos');
-            process.exit(0);
+            logGenerator(this.logFileName, 'info', '[SHUTDOWN] Servidor web cerrado automaticamente para evitar conflictos');
+            if (this.onShutdown) {
+                this.onShutdown();
+            } else {
+                console.warn('[AutoShutdown] No shutdown handler registered -- process.exit skipped in always-on mode');
+            }
         }, 2000);
     }
 
