@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Env Unification
-status: completed
-stopped_at: Phase 4 context gathered
-last_updated: "2026-03-23T03:22:51.543Z"
-last_activity: 2026-03-23 -- Completed 03-01 (config loader TDD)
+status: in-progress
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-03-23T04:14:30Z"
+last_activity: 2026-03-23 -- Completed 04-01 (core module migration)
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  total_plans: 5
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -21,28 +21,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-22)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable.
-**Current focus:** v1.1 Env Unification -- Phase 3 complete, Phase 4 next
+**Current focus:** v1.1 Env Unification -- Phase 4 in progress (plan 01 of 03 complete)
 
 ## Current Position
 
-Phase: 3 of 5 (Config Loader Foundation)
-Plan: 2 of 2 complete
-Status: Phase 3 complete
-Last activity: 2026-03-23 -- Completed 03-01 (config loader TDD)
+Phase: 4 of 5 (Codebase Migration)
+Plan: 1 of 3 complete
+Status: Phase 4 in progress
+Last activity: 2026-03-23 -- Completed 04-01 (core module migration)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 2.5min
-- Total execution time: 5min
+- Total plans completed: 3
+- Average duration: 2.7min
+- Total execution time: 8min
 
 | Phase | Plan | Duration | Tasks | Files |
 | ----- | ---- | -------- | ----- | ----- |
 | 03    | 01   | 3min     | 1     | 2     |
 | 03    | 02   | 2min     | 2     | 4     |
+| 04    | 01   | 3min     | 2     | 14    |
 
 ## Accumulated Context
 
@@ -58,6 +59,10 @@ Progress: [█████░░░░░] 50%
 - [03-01]: Config exported as plain module.exports object, not a function -- require('./config') returns structured object directly
 - [03-01]: Mailing section returns empty object when MAIL_TRANSPORT not set, fully populated when present
 - [03-01]: dotenv mocked in tests to avoid .env file dependency
+- [04-01]: Renamed USER to DB_USER and PASSWORD to DB_PASSWORD to avoid OS env var collision
+- [04-01]: All 11 core modules use require('../config') direct import pattern
+- [04-01]: EmailSender loads own config; routes.js no longer needs dotenv
+- [04-01]: Tenant arrays built via config.portal.tenants.map() replacing manual split+push
 
 ### Pending Todos
 
@@ -66,10 +71,10 @@ None yet.
 ### Blockers/Concerns
 
 - No Sage DB access locally: SQL query changes can only be validated structurally
-- 25+ files reference dotenv directly -- migration must be careful not to break imports
+- 11 core modules migrated (04-01) -- remaining controllers/scripts need migration in 04-02
 
 ## Session Continuity
 
-Last session: 2026-03-23T03:22:51.527Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-codebase-migration/04-CONTEXT.md
+Last session: 2026-03-23T04:14:30Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: .planning/phases/04-codebase-migration/04-02-PLAN.md

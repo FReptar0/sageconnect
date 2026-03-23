@@ -9,12 +9,12 @@
 
 - [x] **CONF-01**: Un modulo centralizado `src/config.js` carga un solo `.env` al arranque y exporta un objeto estructurado con secciones: `database`, `portal`, `mailing`, `paths`, `app`
 - [x] **CONF-02**: El config loader valida que todas las variables requeridas esten presentes al arranque; si falta alguna, imprime lista de variables faltantes y termina con `process.exit(1)`
-- [ ] **CONF-03**: Las 25+ llamadas `dotenv.config()` dispersas en el codebase se reemplazan por `require` del config loader centralizado
+- [x] **CONF-03**: Las 25+ llamadas `dotenv.config()` dispersas en el codebase se reemplazan por `require` del config loader centralizado
 
 ### Unification
 
 - [x] **UNIF-01**: Los 5 archivos `.env` separados se consolidan en un solo `.env` con secciones por comentarios
-- [ ] **UNIF-02**: Un solo `.env.example` en la raiz documenta todas las 27 variables con valores de ejemplo y comentarios por seccion
+- [x] **UNIF-02**: Un solo `.env.example` en la raiz documenta todas las 27 variables con valores de ejemplo y comentarios por seccion
 - [ ] **UNIF-03**: Los archivos `.env.*.example` redundantes en raiz y `dist/` se eliminan
 
 ### Regression
@@ -47,9 +47,9 @@
 |-------------|-------|--------|
 | CONF-01 | Phase 3 | Complete |
 | CONF-02 | Phase 3 | Complete |
-| CONF-03 | Phase 4 | Pending |
+| CONF-03 | Phase 4 | Complete |
 | UNIF-01 | Phase 3 | Complete |
-| UNIF-02 | Phase 4 | Pending |
+| UNIF-02 | Phase 4 | Complete |
 | UNIF-03 | Phase 4 | Pending |
 | REGR-01 | Phase 5 | Pending |
 
