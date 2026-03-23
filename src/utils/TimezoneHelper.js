@@ -1,11 +1,11 @@
-require('dotenv').config();
+const config = require('../config');
 
 /**
  * Timezone utility to handle date operations with proper timezone support
- * Uses TIMEZONE from environment variables, defaults to America/Mexico_City
+ * Uses TIMEZONE from config, defaults to America/Mexico_City
  */
 
-const TIMEZONE = process.env.TIMEZONE || 'America/Mexico_City';
+const TIMEZONE = config.app.timezone || 'America/Mexico_City';
 
 /**
  * Creates a new Date object adjusted to the configured timezone

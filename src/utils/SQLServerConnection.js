@@ -1,11 +1,11 @@
 const sql = require('mssql');
-require('dotenv').config({ path: '.env.credentials.database' });
+const config = require('../config');
 
 const dbConfig = {
-    user: process.env.USER,
-    password: process.env.PASSWORD,
-    server: process.env.SERVER,
-    database: process.env.DATABASE, // By default, the database is FESA
+    user: config.database.user,
+    password: config.database.password,
+    server: config.database.server,
+    database: config.database.database, // By default, the database is FESA
     connectionTimeout: 15000,          // 15 s para conectarse
     requestTimeout: 60000,             // 60 s para cada query (aumentado para queries complejas)
 };

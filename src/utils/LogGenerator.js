@@ -1,15 +1,14 @@
 const winston = require('winston');
 const { getCurrentDate, getCurrentDateFormatted, getCurrentDateString } = require('./TimezoneHelper');
-const dotenv = require('dotenv');
+const config = require('../config');
 const fs = require('fs');
 const path = require('path');
-const path_env = dotenv.config({ path: '.env.path' });
 
 const logGenerator = (fileName, logLevel, logMessage) => {
     const isoDate = getCurrentDateString(); // YYYY-MM-DD format for folder structure
     
     // Create folder path: logs/sageconnect/YYYY-MM-DD/
-    const logDir = path.join(path_env.parsed.LOG_PATH, 'sageconnect', isoDate);
+    const logDir = path.join(config.paths.logs, 'sageconnect', isoDate);
     
     // Ensure directory exists
     try {
@@ -19,7 +18,7 @@ const logGenerator = (fileName, logLevel, logMessage) => {
     } catch (error) {
         console.error(`[ERROR] No se pudo crear el directorio de logs: ${logDir}`, error);
         // Fallback to basic path without date folder if directory creation fails
-        const fallbackPath = path.join(path_env.parsed.LOG_PATH, 'sageconnect');
+        const fallbackPath = path.join(config.paths.logs, 'sageconnect');
         if (!fs.existsSync(fallbackPath)) {
             fs.mkdirSync(fallbackPath, { recursive: true });
         }

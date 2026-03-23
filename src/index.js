@@ -1,4 +1,5 @@
 const { startServer } = require('./server');
+const config = require('./config');
 const { startBackgroundProcesses } = require('./background');
 
 /**
@@ -18,7 +19,7 @@ if (!webOnlyMode) {
     // Start background processes (now async)
     startBackgroundProcesses().then(() => {
         // Background processes completed successfully
-        if (process.env.AUTO_TERMINATE === 'true') {
+        if (config.app.autoTerminate) {
             console.log('[AUTO-TERMINATE] Cerrando servidor y finalizando proceso');
             server.close(() => {
                 process.exit(0);
@@ -26,7 +27,7 @@ if (!webOnlyMode) {
         }
     }).catch((error) => {
         console.error('[ERROR] Error en procesos de background:', error);
-        if (process.env.AUTO_TERMINATE === 'true') {
+        if (config.app.autoTerminate) {
             console.log('[AUTO-TERMINATE] Cerrando servidor debido a error');
             server.close(() => {
                 process.exit(1);

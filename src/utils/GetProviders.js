@@ -1,27 +1,16 @@
 const notifier = require('node-notifier');
-require('dotenv').config({ path: '.env.credentials.focaltec' });
+const config = require('../config');
 const axios = require('axios');
 const { getCurrentDateString } = require('./TimezoneHelper');
 const { logGenerator } = require('./LogGenerator');
 
-const url = process.env.URL;
+const url = config.portal.url;
 
 // Arrays para soportar múltiples tenants
-const tenantIds = [];
-const apiKeys = [];
-const apiSecrets = [];
-const databases = [];
-
-// Separar los valores de las variables de entorno
-const tenantIdValues = process.env.TENANT_ID.split(',');
-const apiKeyValues = process.env.API_KEY.split(',');
-const apiSecretValues = process.env.API_SECRET.split(',');
-const databaseValues = process.env.DATABASES.split(',');
-
-tenantIds.push(...tenantIdValues);
-apiKeys.push(...apiKeyValues);
-apiSecrets.push(...apiSecretValues);
-databases.push(...databaseValues);
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/providers`;
 

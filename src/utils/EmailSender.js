@@ -1,6 +1,6 @@
 // src/utils/EmailSender.js
 const nodeMailer = require('nodemailer');
-require('dotenv').config({ path: '.env.credentials.mailing' });
+const config = require('../config');
 const { logGenerator } = require('./LogGenerator');
 
 async function sendMail(data) {
@@ -13,9 +13,9 @@ async function sendMail(data) {
     </table>`;
 
     // lee tus vars
-    const host = process.env.eServer;
-    const port = parseInt(process.env.ePuerto, 10);
-    const secure = (process.env.eSSL === 'TRUE');
+    const host = config.mailing.server;
+    const port = config.mailing.port;
+    const secure = config.mailing.ssl;
 
     // construye la config mínima
     const transportConfig = {
@@ -23,24 +23,23 @@ async function sendMail(data) {
         port,
         secure,
     };
-    if (process.env.ePass) {
+    if (config.mailing.password) {
         transportConfig.auth = {
-            user: process.env.eFrom,
-            pass: process.env.ePass
+            user: config.mailing.from,
+            pass: config.mailing.password
         };
     }
 
     try {
         const transport = nodeMailer.createTransport(transportConfig);
-        const to = process.env.MAILING_NOTICES
-            .split(',')[data.position]
-            || process.env.MAILING_NOTICES.split(',')[0];
+        const to = config.mailing.notices[data.position]
+            || config.mailing.notices[0];
 
-        // Obtener correos de copia (CC) desde las variables de entorno
-        const cc = process.env.MAILING_CC ? process.env.MAILING_CC.split(',') : [];
+        // Obtener correos de copia (CC) desde la configuración centralizada
+        const cc = config.mailing.cc || [];
 
         const mailOptions = {
-            from: process.env.eFrom,
+            from: config.mailing.from,
             to,
             cc,
             subject: `${data.idCia || 'NOT FOUND'} - ${data.h1}`,

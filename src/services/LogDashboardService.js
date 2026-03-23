@@ -2,9 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { getCurrentDateString } = require('../utils/TimezoneHelper');
 const { logGenerator } = require('../utils/LogGenerator');
-const dotenv = require('dotenv');
-
-const path_env = dotenv.config({ path: '.env.path' });
+const config = require('../config');
 
 /**
  * Log Dashboard Service
@@ -44,7 +42,7 @@ const LOG_TYPES = [
  */
 function getLogDirectory(date = null) {
     const logDate = date || getCurrentDateString();
-    return path.join(path_env.parsed.LOG_PATH, 'sageconnect', logDate);
+    return path.join(config.paths.logs, 'sageconnect', logDate);
 }
 
 /**
@@ -236,7 +234,7 @@ async function getAvailableLogDates() {
     const logFileName = 'LogDashboardService';
     
     try {
-        const sageConnectDir = path.join(path_env.parsed.LOG_PATH, 'sageconnect');
+        const sageConnectDir = path.join(config.paths.logs, 'sageconnect');
         
         if (!fs.existsSync(sageConnectDir)) {
             return [];
@@ -303,7 +301,7 @@ async function getStorageOverview() {
     const logFileName = 'LogDashboardService';
     
     try {
-        const sageConnectDir = path.join(path_env.parsed.LOG_PATH, 'sageconnect');
+        const sageConnectDir = path.join(config.paths.logs, 'sageconnect');
         
         if (!fs.existsSync(sageConnectDir)) {
             return {
