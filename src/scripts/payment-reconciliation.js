@@ -5,15 +5,12 @@ const { getPendingToPayInvoices } = require('../utils/GetTypesCFDI');
 const { getProviderByExternalId } = require('../utils/GetProviders');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../../config');
 
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const { DATABASES, TENANT_ID, API_KEY, API_SECRET, URL } = credentials;
-
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const database = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const database = config.portal.tenants.map(t => t.database);
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -692,7 +689,7 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
 
     await uploadBatch(categories, {
         shouldUpload, batchLimit, index, logFileName,
-        tenantIds, apiKeys, apiSecrets, database, URL
+        tenantIds, apiKeys, apiSecrets, database, URL: config.portal.url
     });
 }
 

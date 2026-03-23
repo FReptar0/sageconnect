@@ -7,10 +7,9 @@
  *   node src/scripts/payment-uuid-diagnostic.js --all-failing     (checks all PYs not in control table)
  */
 const { runQuery } = require('../utils/SQLServerConnection');
-const dotenv = require('dotenv');
+const config = require('../../config');
 
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const database = credentials.DATABASES.split(',');
+const database = config.portal.tenants.map(t => t.database);
 const DB = database[0]; // Use first database by default
 
 async function diagnosePayment(docNbr) {

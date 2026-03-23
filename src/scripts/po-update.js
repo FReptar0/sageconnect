@@ -1,30 +1,16 @@
-// tests/PO_Update.test.js
+// src/scripts/po-update.js
 
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../../config');
 
-// Load credentials for Portal de Proveedores
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const config = dotenv.config({ path: '.env' }).parsed;
-
-const {
-  TENANT_ID,
-  API_KEY,
-  API_SECRET,
-  URL,
-  DATABASES,
-  EXTERNAL_IDS
-} = creds;
-
-// Address configuration variables
-const DEFAULT_ADDRESS_CITY = config?.DEFAULT_ADDRESS_CITY || '';
-const DEFAULT_ADDRESS_COUNTRY = config?.DEFAULT_ADDRESS_COUNTRY || '';
-const DEFAULT_ADDRESS_IDENTIFIER = config?.DEFAULT_ADDRESS_IDENTIFIER || '';
-const DEFAULT_ADDRESS_MUNICIPALITY = config?.DEFAULT_ADDRESS_MUNICIPALITY || '';
-const DEFAULT_ADDRESS_STATE = config?.DEFAULT_ADDRESS_STATE || '';
-const DEFAULT_ADDRESS_STREET = config?.DEFAULT_ADDRESS_STREET || '';
-const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
-const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
+// Default address values from centralized config
+const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
+const DEFAULT_ADDRESS_COUNTRY = config.app.defaultAddress.country;
+const DEFAULT_ADDRESS_IDENTIFIER = config.app.defaultAddress.identifier;
+const DEFAULT_ADDRESS_MUNICIPALITY = config.app.defaultAddress.municipality;
+const DEFAULT_ADDRESS_STATE = config.app.defaultAddress.state;
+const DEFAULT_ADDRESS_STREET = config.app.defaultAddress.street;
+const DEFAULT_ADDRESS_ZIP = config.app.defaultAddress.zip;
 
 // Utilities
 const { runQuery } = require('../utils/SQLServerConnection');
@@ -34,13 +20,13 @@ const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrder
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // Prepare arrays of tenants/keys/etc.
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
-const externalIds = EXTERNAL_IDS.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
+const externalIds = config.portal.tenants.map(t => t.externalId);
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 /**
  * Tests purchase order updates by searching FESA, retrieving Sage data, and updating Portal
@@ -205,7 +191,7 @@ async function searchPOInFESA(poNumber, database) {
  */
 async function retrieveFromSage(poNumber, database, tenantIndex) {
   // Prepare skip condition for locations
-  const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
+  const skipIdentifiers = config.app.addressIdentifiersSkip.filter(id => id.length > 0);
   const skipCondition = skipIdentifiers.length > 0
     ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
     : '';

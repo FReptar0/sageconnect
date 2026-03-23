@@ -29,7 +29,7 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateString } = require('../utils/TimezoneHelper');
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../../config');
 const fs = require('fs');
 const path = require('path');
 
@@ -37,13 +37,11 @@ const LOG_FILE = 'PaymentUUIDRepair';
 const STATE_FILE = path.join(__dirname, 'data', 'repair-state.json');
 
 // --- Credentials ---
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const { DATABASES, TENANT_ID, API_KEY, API_SECRET, URL } = credentials;
-
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
+const URL = config.portal.url;
 
 // --- CLI parsing ---
 function parseArgs() {
