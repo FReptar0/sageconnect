@@ -1,4 +1,28 @@
 // tests/GetPaymentCFDI.test.js - Unit tests for Payment CFDI (Type P) fetching
+
+// Mock config to prevent process.exit(1) from config validation
+jest.mock('../src/config', () => ({
+    portal: {
+        url: 'http://localhost',
+        tenants: [
+            { id: 'tenant1', key: 'key1', secret: 'secret1', database: 'TESTDB', externalId: 'ext1' }
+        ]
+    },
+    database: { user: '', password: '', server: '', database: '' },
+    mailing: {},
+    paths: { downloads: '', providers: '', logs: '' },
+    app: {
+        importRoute: '', arg: '', company: '', rfc: '', regimen: '', timezone: 'America/Mexico_City',
+        autoTerminate: false,
+        defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
+        addressIdentifiersSkip: []
+    }
+}));
+
+jest.mock('../src/utils/LogGenerator', () => ({
+    logGenerator: jest.fn()
+}));
+
 const axios = require('axios');
 const config = require('../src/config');
 const { logGenerator } = require('../src/utils/LogGenerator');
