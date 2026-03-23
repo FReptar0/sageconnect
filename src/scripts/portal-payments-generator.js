@@ -1,18 +1,16 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const axios = require('axios');
-const dotenv = require('dotenv');
-
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const { DATABASES, TENANT_ID, API_KEY, API_SECRET, URL } = credentials;
+const config = require('../config');
 
 // preparamos arrays de credenciales
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
 
 // preparamos array de bases de datos (usamos índice 0 para pruebas)
-const database = DATABASES.split(',');
+const database = config.portal.tenants.map(t => t.database);
+const URL = config.portal.url;
 const index = 0;
 
 async function testGeneratePaymentJson() {

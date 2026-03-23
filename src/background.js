@@ -9,17 +9,13 @@ const { buildProvidersXML } = require('./controller/Providers_Downloader');
 const { sendMail } = require('./utils/EmailSender');
 const { logGenerator } = require('./utils/LogGenerator');
 const { getCurrentDate } = require('./utils/TimezoneHelper');
-const dotenv = require('dotenv');
+const config = require('./config');
 const notifier = require('node-notifier');
 
 /**
  * SageConnect Background Processes
  * Handles all CFDI processing, imports, and background tasks
  */
-
-// Load environment variables
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
-const env = dotenv.config({ path: '.env' });
 
 /**
  * Main background process that handles all CFDI operations
@@ -29,7 +25,7 @@ async function forResponse() {
     const date = getCurrentDate();
     logGenerator(logFileName, 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
 
-    const tenantIds = credentials.parsed.TENANT_ID.split(',');
+    const tenantIds = config.portal.tenants.map(t => t.id);
     for (let i = 0; i < tenantIds.length; i++) {
         try {
             logGenerator(logFileName, 'info', `[INFO] Procesando tenant con índice ${i}`);
@@ -88,12 +84,12 @@ function startChildProcess() {
     return new Promise((resolve, reject) => {
         const logFileName = 'ChildProcess';
         
-        console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${env.parsed.IMPORT_CFDIS_ROUTE}`);
-        console.log(`[INFO] ARG: ${env.parsed.ARG}`);
-        logGenerator(logFileName, 'info', `[INFO] Iniciando proceso de importación - ROUTE: ${env.parsed.IMPORT_CFDIS_ROUTE}, ARG: ${env.parsed.ARG}`);
+        console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${config.app.importRoute}`);
+        console.log(`[INFO] ARG: ${config.app.arg}`);
+        logGenerator(logFileName, 'info', `[INFO] Iniciando proceso de importación - ROUTE: ${config.app.importRoute}, ARG: ${config.app.arg}`);
 
-        if (typeof env.parsed.IMPORT_CFDIS_ROUTE !== "undefined" && typeof env.parsed.ARG !== "undefined") {
-            const childProcess = spawn(env.parsed.IMPORT_CFDIS_ROUTE, [env.parsed.ARG]);
+        if (config.app.importRoute && config.app.arg) {
+            const childProcess = spawn(config.app.importRoute, [config.app.arg]);
             logGenerator(logFileName, 'info', `[INFO] Child process iniciado con PID: ${childProcess.pid}`);
 
             // Stdout is used to capture the data messages
@@ -207,7 +203,7 @@ async function startBackgroundProcesses() {
         logGenerator(logFileName, 'info', '[COMPLETE] Child process completado, todos los procesos finalizados');
         
         // Auto-terminate after all processes complete (for scheduled tasks)
-        if (process.env.AUTO_TERMINATE === 'true') {
+        if (config.app.autoTerminate) {
             logGenerator(logFileName, 'info', '[AUTO-TERMINATE] Finalizando proceso automáticamente después de completar todas las tareas');
             setTimeout(() => {
                 process.exit(0);
@@ -218,7 +214,7 @@ async function startBackgroundProcesses() {
         logGenerator(logFileName, 'error', `[ERROR] Error en proceso principal: ${error.message}`);
         
         // Exit on error if auto-terminate is enabled
-        if (process.env.AUTO_TERMINATE === 'true') {
+        if (config.app.autoTerminate) {
             setTimeout(() => {
                 logGenerator(logFileName, 'error', '[AUTO-TERMINATE] Finalizando proceso debido a error');
                 process.exit(1);

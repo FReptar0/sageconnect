@@ -1,8 +1,6 @@
 const { getTypeE, getTypeI } = require('../utils/GetTypesCFDI');
 const axios = require('axios');
-const dotenv = require('dotenv');
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' });
-const path_env = dotenv.config({ path: '.env.path' });
+const config = require('../config');
 const fs = require('fs');
 const path = require('path');
 const { runQuery } = require('../utils/SQLServerConnection');
@@ -10,19 +8,11 @@ const parser = require('xml2js').parseString;
 const xmlBuilder = require('xml2js').Builder;
 const { logGenerator } = require('../utils/LogGenerator');
 
-const url = credentials.parsed.URL;
+const url = config.portal.url;
 
-const tenantIds = [];
-const apiKeys = [];
-const apiSecrets = [];
-
-const tenantIdValues = credentials.parsed.TENANT_ID.split(',');
-const apiKeyValues = credentials.parsed.API_KEY.split(',');
-const apiSecretValues = credentials.parsed.API_SECRET.split(',');
-
-tenantIds.push(...tenantIdValues);
-apiKeys.push(...apiKeyValues);
-apiSecrets.push(...apiSecretValues);
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
 
 /**
  * Función auxiliar para extraer OrdenCompra, AFE y datos adicionales desde additional_info y additional_amount.
@@ -106,8 +96,8 @@ async function downloadCFDI(index) {
     const urls = [];
     const outPathWFileNames = [];
 
-    // En Windows, se espera que path_env.parsed.PATH ya sea una ruta absoluta, por ejemplo "C:\XMLSFOCALTEC"
-    const downloadsDir = path_env.parsed.PATH;
+    // En Windows, se espera que la ruta ya sea absoluta, por ejemplo "C:\XMLSFOCALTEC"
+    const downloadsDir = config.paths.downloads;
     // Crear el directorio si no existe
     if (!fs.existsSync(downloadsDir)) {
         fs.mkdirSync(downloadsDir, { recursive: true });

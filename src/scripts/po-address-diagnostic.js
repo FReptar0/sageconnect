@@ -5,20 +5,16 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
-const dotenv = require('dotenv');
+const config = require('../config');
 
-// Load config like in PortalOC_Creation.js
-const config = dotenv.config({ path: '.env' }).parsed;
-
-// Default address values (simulating what happens when not set)
-const DEFAULT_ADDRESS_CITY = config?.DEFAULT_ADDRESS_CITY || '';
-const DEFAULT_ADDRESS_COUNTRY = config?.DEFAULT_ADDRESS_COUNTRY || '';
-const DEFAULT_ADDRESS_IDENTIFIER = config?.DEFAULT_ADDRESS_IDENTIFIER || '';
-const DEFAULT_ADDRESS_MUNICIPALITY = config?.DEFAULT_ADDRESS_MUNICIPALITY || '';
-const DEFAULT_ADDRESS_STATE = config?.DEFAULT_ADDRESS_STATE || '';
-const DEFAULT_ADDRESS_STREET = config?.DEFAULT_ADDRESS_STREET || '';
-const DEFAULT_ADDRESS_ZIP = config?.DEFAULT_ADDRESS_ZIP || '';
-const ADDRESS_IDENTIFIERS_SKIP = config?.ADDRESS_IDENTIFIERS_SKIP || '';
+// Default address values from centralized config
+const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
+const DEFAULT_ADDRESS_COUNTRY = config.app.defaultAddress.country;
+const DEFAULT_ADDRESS_IDENTIFIER = config.app.defaultAddress.identifier;
+const DEFAULT_ADDRESS_MUNICIPALITY = config.app.defaultAddress.municipality;
+const DEFAULT_ADDRESS_STATE = config.app.defaultAddress.state;
+const DEFAULT_ADDRESS_STREET = config.app.defaultAddress.street;
+const DEFAULT_ADDRESS_ZIP = config.app.defaultAddress.zip;
 
 /**
  * Diagnóstico completo para analizar direcciones de una OC específica
@@ -43,12 +39,12 @@ async function diagnosticPOAddress(poNumber, database = 'COPDAT') {
             DEFAULT_ADDRESS_STATE: DEFAULT_ADDRESS_STATE || '(VACÍO)',
             DEFAULT_ADDRESS_STREET: DEFAULT_ADDRESS_STREET || '(VACÍO)',
             DEFAULT_ADDRESS_ZIP: DEFAULT_ADDRESS_ZIP || '(VACÍO)',
-            ADDRESS_IDENTIFIERS_SKIP: ADDRESS_IDENTIFIERS_SKIP || '(VACÍO)'
+            ADDRESS_IDENTIFIERS_SKIP: config.app.addressIdentifiersSkip.join(',') || '(VACÍO)'
         };
         console.table([defaultConfig]);
 
         // 2. Preparar filtro de skip (como en PortalOC_Creation.js)
-        const skipIdentifiers = ADDRESS_IDENTIFIERS_SKIP.split(',').map(id => id.trim()).filter(id => id.length > 0);
+        const skipIdentifiers = config.app.addressIdentifiersSkip.filter(id => id.length > 0);
         const skipCondition = skipIdentifiers.length > 0
             ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
             : '';

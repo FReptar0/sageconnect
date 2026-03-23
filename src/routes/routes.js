@@ -11,10 +11,8 @@ const {
     LOG_TYPES 
 } = require('../services/LogDashboardService');
 const { autoShutdownService } = require('../services/AutoShutdownService');
-const dotenv = require('dotenv');
 
 router.post('/send-mail', (req, res) => {
-    dotenv.config({ path: '.env.credentials.mailing' });
 
     const { data } = req.body;
 

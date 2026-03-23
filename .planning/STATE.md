@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
+milestone: v1.1
+milestone_name: Env Unification
 status: completed
-stopped_at: Completed 02-02-PLAN.md (all plans complete)
-last_updated: "2026-03-12T19:00:55.075Z"
-last_activity: 2026-03-12 -- Completed 02-02-PLAN.md
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-23T05:57:04.278Z"
+last_activity: 2026-03-23 -- Completed 05-01 (regression verification)
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -18,73 +18,76 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-12)
+See: .planning/PROJECT.md (updated 2026-03-22)
 
-**Core value:** Los pagos conciliados deben ser correctos antes de subirse al portal: proveedor validado, datos completos, y errores trazables.
-**Current focus:** All phases complete - Milestone v1.0 finished
+**Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable.
+**Current focus:** v1.1 Env Unification -- Complete (all phases finished)
 
 ## Current Position
 
-Phase: 2 of 2 (Batch Upload Robustness) -- COMPLETE
-Plan: 2 of 2 in current phase -- COMPLETE
-Status: All phases and plans complete
-Last activity: 2026-03-12 -- Completed 02-02-PLAN.md
+Phase: 5 of 5 (Regression Verification)
+Plan: 1 of 1 complete
+Status: Milestone complete
+Last activity: 2026-03-23 -- Completed 05-01 (regression verification)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 3.8min
-- Total execution time: 0.25 hours
+- Total plans completed: 6
+- Average duration: 3.7min
+- Total execution time: 22min
 
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1. Reconciliation Classification | 2/2 | 9min | 4.5min |
-| 2. Batch Upload Robustness | 2/2 | 6min | 3min |
-
-**Recent Trend:**
-- Last 5 plans: 01-01 (6min), 01-02 (3min), 02-01 (4min), 02-02 (2min)
-- Trend: Stable/Improving
-
-*Updated after each plan completion*
-| Phase 01 P01 | 6min | 2 tasks | 2 files |
-| Phase 01 P02 | 3min | 2 tasks | 1 files |
-| Phase 02 P01 | 4min | 2 tasks | 2 files |
-| Phase 02 P02 | 2min | 1 tasks | 1 files |
+| Phase | Plan | Duration | Tasks | Files |
+| ----- | ---- | -------- | ----- | ----- |
+| 03    | 01   | 3min     | 1     | 2     |
+| 03    | 02   | 2min     | 2     | 4     |
+| 04    | 01   | 3min     | 2     | 14    |
+| 04    | 02   | 3min     | 1     | 9     |
+| 04    | 03   | 7min     | 2     | 20    |
+| 05    | 01   | 4min     | 2     | 5     |
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [Init]: Use `external_id` (not RFC) for PROVIDERID resolution -- RFC can have duplicates (e.g., XEXX010101000 for foreign vendors)
-- [Init]: `metadata.provider_id` from CFDI is the PDP internal ID -- direct comparison against PROVIDERID from Sage APVENO table
-- [Phase 01]: Extracted classifyPayments uses module-scope runQuery (no need to pass as parameter)
-- [Phase 01]: Added provider_mismatch category and autoResolvedSet tracking proactively in extracted function
-- [Phase 01]: Auto-resolution does two-step: getProviderByExternalId for ID lookup, then resolveProviderIdByExternalId for Sage DB write
-- [Phase 01]: Provider mismatch check runs after allInPortal check -- only portal-matched invoices are checked for provider_id consistency
-- [Phase 01]: Case-insensitive comparison for provider_id matching via .toLowerCase()
-- [Phase 02]: uploadBatch receives categories and config as explicit parameters (same extraction pattern as classifyPayments)
-- [Phase 02]: Upload hint in report mode already guarded by ready.length > 0 -- no change needed for BTCH-02 baseline
-- [Phase 02]: Missing scan uses results.length > 0 guard (not respondedIds.size > 0) to handle item:null edge case
-- [Phase 02]: Missing results NOT inserted into fesaPagosFocaltec -- remain eligible for retry on next run
+- [v1.1 Init]: Single .env file + centralized config loader (not YAML) -- zero new dependencies, Node.js standard
+- [v1.1 Init]: Fail-fast validation of required vars at startup
+- [v1.1 Init]: Production only (no multi-environment switching for now)
+- [v1.1 Init]: Backup files in /reports/ kept as-is
+- [03-02]: Real values from .env.credentials.focaltec and .env.path preserved in unified .env
+- [03-02]: DATABASE and MAILING sections left empty (no real credential files on disk)
+- [03-02]: Old .env.*.example files kept in root for Phase 4 cleanup (UNIF-03)
+- [03-01]: Config exported as plain module.exports object, not a function -- require('./config') returns structured object directly
+- [03-01]: Mailing section returns empty object when MAIL_TRANSPORT not set, fully populated when present
+- [03-01]: dotenv mocked in tests to avoid .env file dependency
+- [04-01]: Renamed USER to DB_USER and PASSWORD to DB_PASSWORD to avoid OS env var collision
+- [04-01]: All 11 core modules use require('../config') direct import pattern
+- [04-01]: EmailSender loads own config; routes.js no longer needs dotenv
+- [04-01]: Tenant arrays built via config.portal.tenants.map() replacing manual split+push
+- [Phase 04]: PortalOC_ContentUpdater and LifecycleManager preserve addressConfig object shape for PayloadBuilder compatibility
+- [Phase 04]: All 9 controllers use require('../config') -- zero dotenv/process.env references remain in src/controller/
+- [04-03]: Scripts use require('../config') not ../../config -- plan had wrong path depth, corrected during execution
+- [04-03]: PaymentReconciliation.test.js mocks '../src/config' with full config shape instead of dotenv
+- [04-03]: EmailSender.test.js needs no config require -- EmailSender loads config internally
+- [04-03]: Module-level URL constants preserve existing template string patterns in scripts
+- [05-01]: Config mock shape reuses PaymentReconciliation.test.js proven pattern with timezone set to America/Mexico_City
+- [05-01]: EmailSender.test.js converted to test.skip (integration test) with config mock for graceful failure
+- [05-01]: process.exit spy used for PortalOC_StatusUpdater which auto-executes main() on require
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-- No Sage DB access locally: SQL query changes can only be validated structurally, not executed. API-side behavior can be tested against sandbox.
+- No Sage DB access locally: SQL query changes can only be validated structurally
+- PaymentReconciliation.test.js has 1 pre-existing test failure unrelated to migration (fallbackExternalId logic vs test expectation)
+- TransformTime.test.js has 2 pre-existing test failures (function uses notifier, not throw)
 
 ## Session Continuity
 
-Last session: 2026-03-12T18:55:53Z
-Stopped at: Completed 02-02-PLAN.md (all plans complete)
+Last session: 2026-03-23T05:22:50Z
+Stopped at: Completed 05-01-PLAN.md
 Resume file: N/A (milestone complete)

@@ -1,24 +1,14 @@
-require('dotenv').config({ path: '.env.credentials.focaltec' });
+const config = require('../config');
 const axios = require('axios');
 const { getOneMonthAgoString } = require('./TimezoneHelper');
 const { runQuery } = require('./SQLServerConnection');
 const { logGenerator } = require('./LogGenerator');
 
-const url = process.env.URL;
-const tenantIds = []
-const apiKeys = []
-const apiSecrets = []
-const databases = []
-
-const tenantIdValues = process.env.TENANT_ID.split(',');
-const apiKeyValues = process.env.API_KEY.split(',');
-const apiSecretValues = process.env.API_SECRET.split(',');
-const databaseValues = process.env.DATABASES.split(',');
-
-tenantIds.push(...tenantIdValues);
-apiKeys.push(...apiKeyValues);
-apiSecrets.push(...apiSecretValues);
-databases.push(...databaseValues);
+const url = config.portal.url;
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
 
 const urlBase = (index) => `${url}/api/1.0/extern/tenants/${tenantIds[index]}/cfdis`;
 

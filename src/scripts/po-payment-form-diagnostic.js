@@ -1,14 +1,9 @@
 // src/scripts/po-payment-form-diagnostic.js
 
-const dotenv = require('dotenv');
-
-// Carga configuración
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const { DATABASES } = creds;
-
+const config = require('../config');
 const { runQuery } = require('../utils/SQLServerConnection');
 
-const databases = DATABASES.split(',');
+const databases = config.portal.tenants.map(t => t.database);
 
 /**
  * Diagnostica el problema de cfdi_payment_form para una PO específica

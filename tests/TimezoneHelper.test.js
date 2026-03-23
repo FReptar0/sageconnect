@@ -1,4 +1,24 @@
 // tests/TimezoneHelper.test.js
+
+// Mock config to prevent process.exit(1) from config validation
+jest.mock('../src/config', () => ({
+    portal: {
+        url: 'http://localhost',
+        tenants: [
+            { id: 'tenant1', key: 'key1', secret: 'secret1', database: 'TESTDB', externalId: 'ext1' }
+        ]
+    },
+    database: { user: '', password: '', server: '', database: '' },
+    mailing: {},
+    paths: { downloads: '', providers: '', logs: '' },
+    app: {
+        importRoute: '', arg: '', company: '', rfc: '', regimen: '', timezone: 'America/Mexico_City',
+        autoTerminate: false,
+        defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
+        addressIdentifiersSkip: []
+    }
+}));
+
 const {
     getCurrentDate,
     getCurrentDateString,
@@ -10,15 +30,6 @@ const {
 } = require('../src/utils/TimezoneHelper');
 
 describe('TimezoneHelper utility', () => {
-    beforeAll(() => {
-        // Mock the environment variable
-        process.env.TIMEZONE = 'America/Mexico_City';
-    });
-
-    afterAll(() => {
-        // Clean up the environment variable
-        delete process.env.TIMEZONE;
-    });
 
     describe('TIMEZONE constant', () => {
         test('should return the configured timezone', () => {

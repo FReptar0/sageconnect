@@ -1,16 +1,6 @@
 // src/scripts/upload-authorized-pos.js
 // Script to upload authorized purchase orders from today to Portal de Proveedores
-const dotenv = require('dotenv');
-
-// carga las credenciales del portal de proveedores
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const {
-  TENANT_ID,
-  API_KEY,
-  API_SECRET,
-  URL,
-  DATABASES
-} = creds;
+const config = require('../config');
 
 // utilerías
 const { runQuery } = require('../utils/SQLServerConnection');
@@ -19,10 +9,11 @@ const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrder
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 
 // preparamos arrays de tenants/keys/etc. y sólo usamos el primero en este test
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
+const URL = config.portal.url;
 const index = 0;
 
 async function testQuery() {

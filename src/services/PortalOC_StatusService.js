@@ -1,29 +1,19 @@
 // src/services/PortalOC_StatusService.js
 
 const axios = require('axios');
-const dotenv = require('dotenv');
-
-// Load credentials
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES
-} = creds;
+const config = require('../config');
 
 // Utilities
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 
-// Prepare arrays
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
+// Prepare arrays from config
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 /**
  * Service for updating purchase order status via Portal de Proveedores

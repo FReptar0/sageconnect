@@ -5,23 +5,12 @@ const { logGenerator } = require('../utils/LogGenerator');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
-const dotenv = require('dotenv');
+const config = require('../config');
 
-dotenv.config({ path: '.env.credentials.focaltec' });
-const creds = process.env;
-
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES
-} = creds;
-
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
 
 const VALID_STATUSES = new Set(['OPEN', 'CLOSED', 'CANCELLED', 'GENERATED']);
 
@@ -33,7 +22,7 @@ const agentOptions = {
 const httpAgent = new http.Agent(agentOptions);
 const httpsAgent = new https.Agent(agentOptions);
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function main() {
     const [, , ocSage, status, idDatabase] = process.argv;
