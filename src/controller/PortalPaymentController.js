@@ -5,23 +5,13 @@ const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolve
 const { resolveUuidByFolio } = require('../services/UuidResolver');
 const axios = require('axios');
 const notifier = require('node-notifier');
-const dotenv = require('dotenv');
-
-const credentials = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES
-} = credentials;
+const config = require('../config');
 
 // preparamos arrays de tenants/keys/etc.
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const database = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const database = config.portal.tenants.map(t => t.database);
 
 async function uploadPayments(index) {
     const logFileName = 'PortalPaymentController';
@@ -291,7 +281,7 @@ SELECT A.* FROM (
             //console.log('  [INFO] Payload generado:', JSON.stringify(payload, null, 2));
 
             // 4.4) Enviar al portal
-            const endpoint = `${URL}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
+            const endpoint = `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
             console.log(`  [INFO] POST ${endpoint}`);
             const resp = await axios.post(endpoint, payload, {
                 headers: {

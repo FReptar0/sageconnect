@@ -1,30 +1,20 @@
 // src/controller/PortalPurchaseOrderCancellation.js
 
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../config');
 
-// carga las credenciales del portal de proveedores
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES
-} = creds;
-
-// utilería de conexión
+// utileria de conexion
 const { runQuery } = require('../utils/SQLServerConnection');
 const { getOneMonthAgoCompact } = require('../utils/TimezoneHelper');
 const { logGenerator } = require('../utils/LogGenerator');
 
 // preparamos arrays de tenants/keys/etc.
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function closePurchaseOrders(index) {
     // fecha de hoy en formato YYYYMMDD

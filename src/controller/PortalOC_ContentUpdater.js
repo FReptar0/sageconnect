@@ -1,31 +1,18 @@
 // src/controller/PortalOC_ContentUpdater.js
 
 const axios = require('axios');
-const dotenv = require('dotenv');
+const config = require('../config');
 
-// Load credentials for Portal de Proveedores
-const creds = dotenv.config({ path: '.env.credentials.focaltec' }).parsed;
-const config = dotenv.config({ path: '.env' }).parsed;
-
-const {
-    TENANT_ID,
-    API_KEY,
-    API_SECRET,
-    URL,
-    DATABASES,
-    EXTERNAL_IDS
-} = creds;
-
-// Address configuration
+// Address configuration (from centralized config)
 const addressConfig = {
-    DEFAULT_ADDRESS_CITY: config?.DEFAULT_ADDRESS_CITY || '',
-    DEFAULT_ADDRESS_COUNTRY: config?.DEFAULT_ADDRESS_COUNTRY || '',
-    DEFAULT_ADDRESS_IDENTIFIER: config?.DEFAULT_ADDRESS_IDENTIFIER || '',
-    DEFAULT_ADDRESS_MUNICIPALITY: config?.DEFAULT_ADDRESS_MUNICIPALITY || '',
-    DEFAULT_ADDRESS_STATE: config?.DEFAULT_ADDRESS_STATE || '',
-    DEFAULT_ADDRESS_STREET: config?.DEFAULT_ADDRESS_STREET || '',
-    DEFAULT_ADDRESS_ZIP: config?.DEFAULT_ADDRESS_ZIP || '',
-    ADDRESS_IDENTIFIERS_SKIP: config?.ADDRESS_IDENTIFIERS_SKIP || ''
+    DEFAULT_ADDRESS_CITY: config.app.defaultAddress.city,
+    DEFAULT_ADDRESS_COUNTRY: config.app.defaultAddress.country,
+    DEFAULT_ADDRESS_IDENTIFIER: config.app.defaultAddress.identifier,
+    DEFAULT_ADDRESS_MUNICIPALITY: config.app.defaultAddress.municipality,
+    DEFAULT_ADDRESS_STATE: config.app.defaultAddress.state,
+    DEFAULT_ADDRESS_STREET: config.app.defaultAddress.street,
+    DEFAULT_ADDRESS_ZIP: config.app.defaultAddress.zip,
+    ADDRESS_IDENTIFIERS_SKIP: config.app.addressIdentifiersSkip.join(',')
 };
 
 // Utilities
@@ -34,13 +21,13 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { PortalOCPayloadBuilder } = require('../services/PortalOC_PayloadBuilder');
 
 // Prepare arrays of tenants/keys/etc.
-const tenantIds = TENANT_ID.split(',');
-const apiKeys = API_KEY.split(',');
-const apiSecrets = API_SECRET.split(',');
-const databases = DATABASES.split(',');
-const externalIds = EXTERNAL_IDS.split(',');
+const tenantIds = config.portal.tenants.map(t => t.id);
+const apiKeys = config.portal.tenants.map(t => t.key);
+const apiSecrets = config.portal.tenants.map(t => t.secret);
+const databases = config.portal.tenants.map(t => t.database);
+const externalIds = config.portal.tenants.map(t => t.externalId);
 
-const urlBase = (index) => `${URL}/api/1.0/extern/tenants/${tenantIds[index]}`;
+const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 /**
  * Controller for updating purchase order content via PUT /purchase-orders/{id}

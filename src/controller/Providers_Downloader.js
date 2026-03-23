@@ -1,7 +1,6 @@
 // buildProvidersXML.js (o Providers_Downloader.js)
 
-require('dotenv').config({ path: '.env' });
-const dotenv = require('dotenv');
+const config = require('../config');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -9,9 +8,6 @@ const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDate } = require('../utils/TimezoneHelper');
 const { getProviders } = require('../utils/GetProviders');
-
-// Cargar la variable de entorno que contiene la ruta donde se guardarán los archivos
-const path_env = dotenv.config({ path: '.env.path' });
 
 /**
  * Formatea un timestamp a formato "dd-mm-yyyyTHH:MM:SS:MMMZ"
@@ -69,13 +65,13 @@ async function buildProvidersXML(index) {
 
     logGenerator(logFileName, 'info', `[INFO] Se encontraron ${providers.length} proveedores para procesar en el índice ${index}.`);
 
-    // 2. Datos del Emisor (tomados de .env)
+    // 2. Datos del Emisor (tomados de config)
     const emisor = {
         $: {
-            Rfc: process.env.RFC || '',
-            Nombre: process.env.NOMBRE || '',
-            RegimenFiscal: process.env.REGIMEN || '',
-            IdBase: process.env.ARG || ''
+            Rfc: config.app.rfc || '',
+            Nombre: config.app.company || '',
+            RegimenFiscal: config.app.regimen || '',
+            IdBase: config.app.arg || ''
         }
     };
 
@@ -192,7 +188,7 @@ async function buildProvidersXML(index) {
                 Rfc,
                 TipoProveedor,
                 grupo_prov,
-                RegimenFiscalReceptor: process.env.REGIMEN || '',
+                RegimenFiscalReceptor: config.app.regimen || '',
                 MetodoPago: metodoPago,
                 FormaPago: formaPago,
                 provider_id,
@@ -225,9 +221,9 @@ async function buildProvidersXML(index) {
     });
     const xml = builder.buildObject(xmlObj);
 
-    // 6. Guardar el archivo XML en la ruta definida en path_env, 
+    // 6. Guardar el archivo XML en la ruta definida en config,
     //    con el nombre "providers-yyMMdd-hhmmss.xml"
-    let downloadsDir = path_env.parsed.PATH;
+    let downloadsDir = config.paths.downloads;
     if (downloadsDir.startsWith('~')) {
         if (downloadsDir.startsWith('~/')) {
             downloadsDir = path.join(os.homedir(), downloadsDir.slice(2));
