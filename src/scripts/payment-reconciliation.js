@@ -487,6 +487,225 @@ VALUES
 }
 
 // ---------------------------------------------------------------------------
+// API-callable wrapper (options-driven, self-contained)
+// ---------------------------------------------------------------------------
+
+/**
+ * Runs the full payment reconciliation workflow using the given options.
+ * Encapsulates the same logic as main() but accepts parameters via options
+ * instead of module-level CLI variables, making it callable from the REST API.
+ *
+ * @param {Object} options
+ * @param {number} [options.tenantIndex=0] - Portal tenant index
+ * @param {string|null} [options.fromDate=null] - YYYYMMDD filter for Sage query
+ * @param {number} [options.batchLimit=20] - Max payments per upload batch
+ * @param {string|null} [options.pyFilter=null] - Specific PY document filter
+ * @param {boolean} [options.dryRun=true] - If true, report only (no upload)
+ * @returns {Promise<Object>} ResultEnvelope
+ */
+async function runReconciliation(options = {}) {
+    const startTime = Date.now();
+
+    const idx = options.tenantIndex != null ? options.tenantIndex : 0;
+    const optFromDate = options.fromDate || null;
+    const optBatchLimit = options.batchLimit != null ? options.batchLimit : 20;
+    const optPyFilter = options.pyFilter || null;
+    const optShouldUpload = options.dryRun === false; // dryRun=true -> shouldUpload=false
+
+    // Derive tenant-specific values
+    const tenant = config.portal.tenants[idx];
+    if (!tenant) {
+        return errorResult(
+            [`Invalid tenantIndex: ${idx}`],
+            'Reconciliation failed',
+            { tenant: null, startTime }
+        );
+    }
+
+    const localTenantIds = config.portal.tenants.map(t => t.id);
+    const localApiKeys = config.portal.tenants.map(t => t.key);
+    const localApiSecrets = config.portal.tenants.map(t => t.secret);
+    const localDatabase = config.portal.tenants.map(t => t.database);
+    const localLogFileName = 'PaymentReconciliation';
+
+    try {
+        const currentDate = getCurrentDateCompact();
+        const portalFrom = compactToDashed(optFromDate) || oneYearAgoDashed();
+        const portalTo = compactToDashed(currentDate);
+
+        console.log('=== PAYMENT RECONCILIATION ===');
+        console.log(`Tenant: ${localTenantIds[idx]} | DB: ${localDatabase[idx]} | Today: ${currentDate}`);
+        console.log(`Mode: ${optShouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: PENDING_TO_PAY from ${portalFrom} to ${portalTo}`);
+        if (optFromDate) console.log(`Sage --from: ${optFromDate}`);
+        if (optPyFilter) console.log(`Sage --py: ${optPyFilter}`);
+        console.log('');
+
+        // Step 1: Fetch portal PENDING_TO_PAY invoices
+        console.log('[Step 1] Fetching portal PENDING_TO_PAY invoices...');
+        const portalItems = await getPendingToPayInvoices(idx, {
+            from: portalFrom,
+            to: portalTo,
+            pageSize: 200
+        });
+
+        const portalUuidMap = new Map();
+        for (const item of portalItems) {
+            const uuid = item.cfdi?.timbre?.uuid;
+            if (uuid) {
+                portalUuidMap.set(uuid.toUpperCase(), {
+                    folio: item.cfdi.folio,
+                    serie: item.cfdi.serie,
+                    total: item.cfdi.total,
+                    currency: item.cfdi.moneda,
+                    provider_id: item.metadata?.provider_id
+                });
+            }
+        }
+        console.log(`  Portal PENDING_TO_PAY invoices: ${portalUuidMap.size}`);
+
+        // Step 2: Query Sage for PY payments
+        console.log('\n[Step 2] Querying Sage for PY payments matching portal UUIDs...');
+
+        const portalUuids = Array.from(portalUuidMap.keys());
+        if (!portalUuids.length) {
+            console.log('\n[OK] No portal UUIDs to search for in Sage.');
+            return successResult(
+                { portalInvoiceCount: 0, sagePaymentCount: 0, categories: { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] }, autoResolvedCount: 0 },
+                'No portal UUIDs found to reconcile',
+                { tenant: localTenantIds[idx], startTime }
+            );
+        }
+
+        const UUID_CHUNK_SIZE = 500;
+        const uuidChunks = [];
+        for (let i = 0; i < portalUuids.length; i += UUID_CHUNK_SIZE) {
+            uuidChunks.push(portalUuids.slice(i, i + UUID_CHUNK_SIZE));
+        }
+
+        let dateConditions = `AND P.AUDTDATE < ${currentDate}`;
+        if (optFromDate) {
+            dateConditions += `\n      AND P.AUDTDATE >= ${optFromDate}`;
+        }
+        if (optPyFilter) {
+            dateConditions += `\n      AND P.DOCNBR = '${optPyFilter}'`;
+        }
+
+        const allRows = [];
+        for (const chunk of uuidChunks) {
+            const inClause = chunk.map(u => `'${u}'`).join(',');
+            const query = `
+SELECT DISTINCT
+    P.CNTBTCH AS LotePago, P.CNTENTR AS AsientoPago,
+    RTRIM(BK.ADDR1) AS bank_account_id, B.IDBANK,
+    P.DATEBUS AS FechaAsentamiento, RTRIM(P.DOCNBR) AS external_id,
+    P.TEXTRMIT AS comments, P.TXTRMITREF AS reference,
+    CASE BK.CURNSTMT WHEN 'MXP' THEN 'MXN' ELSE BK.CURNSTMT END AS bk_currency,
+    P.DATERMIT AS payment_date, RTRIM(P.IDVEND) AS provider_external_id,
+    P.AMTRMIT AS total_amount, 'TRANSFER' AS operation_type,
+    P.RATEEXCHHC AS TipoCambioPago,
+    ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD='RFC' AND VENDORID=P.IDVEND), '') AS RFC,
+    ISNULL((SELECT [VALUE] FROM APVENO WHERE OPTFIELD='PROVIDERID' AND VENDORID=P.IDVEND), '') AS PROVIDERID
+FROM APIBHO O
+JOIN APIBH H   ON O.CNTBTCH = H.CNTBTCH AND O.CNTITEM = H.CNTITEM AND H.ERRENTRY = 0
+JOIN APIBC C   ON H.CNTBTCH = C.CNTBTCH AND C.BTCHSTTS = 3
+JOIN APTCP DP  ON DP.IDVEND = H.IDVEND AND DP.IDINVC = H.IDINVC
+               AND DP.BATCHTYPE = 'PY' AND DP.DOCTYPE = 1
+JOIN APTCR P   ON P.CNTBTCH = DP.CNTBTCH AND P.CNTENTR = DP.CNTRMIT
+JOIN APBTA B   ON B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
+JOIN BKACCT BK ON B.IDBANK = BK.BANK
+WHERE O.OPTFIELD = 'FOLIOCFD'
+  AND UPPER(RTRIM(O.[VALUE])) IN (${inClause})
+  AND B.PAYMTYPE = 'PY' AND B.BATCHSTAT = 3
+  AND P.ERRENTRY = 0 AND P.RMITTYPE = 1
+  ${dateConditions}
+  AND P.DOCNBR NOT IN (
+      SELECT NoPagoSage
+      FROM fesa.dbo.fesaPagosFocaltec
+      WHERE idCia = P.AUDTORG AND NoPagoSage = P.DOCNBR
+  )
+  AND P.DOCNBR NOT IN (
+      SELECT IDINVC
+      FROM APPYM
+      WHERE IDBANK = B.IDBANK
+        AND CNTBTCH = P.CNTBTCH
+        AND CNTITEM = P.CNTENTR
+        AND SWCHKCLRD = 2
+  )
+`;
+            const result = await runQuery(query, localDatabase[idx])
+                .catch(err => {
+                    logGenerator(localLogFileName, 'error', `Error UUID-driven query (chunk): ${err.message}`);
+                    console.error('  Error fetching Sage payments (chunk):', err.message);
+                    return { recordset: [] };
+                });
+
+            allRows.push(...result.recordset);
+        }
+
+        // Deduplicate
+        const seen = new Set();
+        const deduped = [];
+        for (const row of allRows) {
+            const key = `${row.LotePago}-${row.AsientoPago}-${row.external_id}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                deduped.push(row);
+            }
+        }
+
+        console.log(`  Sage PY payments matching portal UUIDs: ${deduped.length} (from ${uuidChunks.length} chunk(s))`);
+
+        if (!deduped.length) {
+            console.log('\n[OK] No matching payments found to reconcile.');
+            return successResult(
+                { portalInvoiceCount: portalUuidMap.size, sagePaymentCount: 0, categories: { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] }, autoResolvedCount: 0 },
+                'No matching Sage payments found to reconcile',
+                { tenant: localTenantIds[idx], startTime }
+            );
+        }
+
+        // Steps 3 & 4: Classify
+        console.log('\n[Step 3-4] Fetching invoices and categorizing...');
+        const classifyResult = await classifyPayments(deduped, portalUuidMap, idx, localDatabase[idx]);
+        const { categories, autoResolvedCount } = classifyResult.data;
+
+        // Step 5: Upload (if not dry run)
+        const uploadResult = await uploadBatch(categories, {
+            shouldUpload: optShouldUpload, batchLimit: optBatchLimit, index: idx,
+            logFileName: localLogFileName,
+            tenantIds: localTenantIds, apiKeys: localApiKeys, apiSecrets: localApiSecrets,
+            database: localDatabase, URL: config.portal.url
+        });
+
+        return successResult(
+            {
+                portalInvoiceCount: portalUuidMap.size,
+                sagePaymentCount: deduped.length,
+                categories: {
+                    ready: categories.ready.length,
+                    no_providerid: categories.no_providerid.length,
+                    no_uuid: categories.no_uuid.length,
+                    not_in_portal: categories.not_in_portal.length,
+                    provider_mismatch: categories.provider_mismatch.length
+                },
+                autoResolvedCount,
+                upload: uploadResult.data
+            },
+            `Reconciliation complete: ${deduped.length} payments classified, ${categories.ready.length} ready`,
+            { tenant: localTenantIds[idx], startTime }
+        );
+    } catch (err) {
+        console.error('[ERROR] Reconciliation failed:', err.message);
+        logGenerator(localLogFileName, 'error', `Reconciliation failed: ${err.message}\n${err.stack}`);
+        return errorResult(
+            [err.message],
+            'Reconciliation failed',
+            { tenant: tenant.id, startTime }
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -728,4 +947,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { classifyPayments, uploadBatch };
+module.exports = { classifyPayments, uploadBatch, runReconciliation };
