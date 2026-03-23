@@ -39,6 +39,7 @@ const COPY_AS_IS = [
     'public',
     '.env.example',
     '.env.credentials.example',
+    'scripts/migrate-env.js',
 ];
 
 // Carpetas cuyo JS se ofuscará
