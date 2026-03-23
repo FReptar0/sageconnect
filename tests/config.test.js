@@ -99,13 +99,14 @@ function loadConfigWithCapture() {
 // 1. Structure tests
 // ============================================================
 describe('Config Structure', () => {
-    test('config has all five top-level sections', () => {
+    test('config has all six top-level sections', () => {
         const config = loadConfig();
         expect(config).toHaveProperty('database');
         expect(config).toHaveProperty('portal');
         expect(config).toHaveProperty('mailing');
         expect(config).toHaveProperty('paths');
         expect(config).toHaveProperty('app');
+        expect(config).toHaveProperty('security');
     });
 
     test('config.database has correct keys mapped from env vars', () => {

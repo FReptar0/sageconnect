@@ -151,6 +151,15 @@ const config = {
         },
         addressIdentifiersSkip: splitCSV(process.env.ADDRESS_IDENTIFIERS_SKIP),
     },
+
+    security: {
+        apiKey: process.env.SAGECONNECT_API_KEY || null,
+    },
 };
+
+// Warn if API key protection is disabled (optional -- not fatal)
+if (!config.security.apiKey) {
+    console.warn('[CONFIG WARN] SAGECONNECT_API_KEY not set -- API key protection is DISABLED');
+}
 
 module.exports = config;
