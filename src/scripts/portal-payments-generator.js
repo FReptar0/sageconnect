@@ -318,6 +318,11 @@ WHERE DP.BATCHTYPE = 'PY'
   }
 }
 
-testGeneratePaymentJson().catch(err => {
-  console.error('❌ Error en testGeneratePaymentJson:', err);
-});
+module.exports = { testGeneratePaymentJson };
+
+// CLI execution
+if (require.main === module) {
+  testGeneratePaymentJson().catch(err => {
+    console.error('Error en testGeneratePaymentJson:', err);
+  });
+}

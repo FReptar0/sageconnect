@@ -1204,8 +1204,13 @@ async function main() {
     process.exit(0);
 }
 
-main().catch(err => {
-    console.error('Fatal error:', err);
-    logGenerator(LOG_FILE, 'error', `Fatal error: ${err.message}`);
-    process.exit(1);
-});
+module.exports = { modeScan, modeRepair, modeUpload };
+
+// CLI execution
+if (require.main === module) {
+    main().catch(err => {
+        console.error('Fatal error:', err);
+        logGenerator(LOG_FILE, 'error', `Fatal error: ${err.message}`);
+        process.exit(1);
+    });
+}

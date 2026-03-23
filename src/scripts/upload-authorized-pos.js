@@ -292,4 +292,9 @@ order by A.PONUMBER, B.DETAILNUM;
   }
 }
 
-testQuery();
+module.exports = { testQuery };
+
+// CLI execution
+if (require.main === module) {
+  testQuery();
+}

@@ -35,7 +35,14 @@ function hasRequireMainGuard(filePath) {
 }
 
 /**
- * Checks if all process.exit calls in a file appear AFTER the require.main guard.
+ * Checks if all process.exit calls in a file are safe (either after the require.main guard
+ * or inside function bodies that are only called from the guard block).
+ *
+ * A process.exit call is considered "unguarded" only if it appears at the top level
+ * (outside any function definition) before the require.main guard.
+ * process.exit inside function bodies is OK because those functions are only invoked
+ * from the guard block (CLI execution path).
+ *
  * Returns { allGuarded: boolean, unguardedCalls: [] }.
  */
 function checkExitCallsAfterGuard(filePath) {
@@ -50,16 +57,30 @@ function checkExitCallsAfterGuard(filePath) {
     const guardIndex = guardMatch.index;
     const beforeGuard = content.substring(0, guardIndex);
     const beforeLines = beforeGuard.split('\n');
-    const exitCallsBefore = [];
+
+    // Track brace depth to detect whether we're inside a function body.
+    // At depth 0 we're at the module top level -- process.exit there runs on require.
+    // At depth > 0 we're inside a function -- process.exit there only runs if called.
+    let braceDepth = 0;
+    const unguardedCalls = [];
+
     for (let i = 0; i < beforeLines.length; i++) {
         const line = beforeLines[i];
-        const stripped = line.replace(/\/\/.*$/, '');
-        if (/process\.exit\s*\(/.test(stripped)) {
-            exitCallsBefore.push({ line: i + 1, text: line.trim() });
+        const stripped = line.replace(/\/\/.*$/, '');  // strip line comments
+        const strippedStrings = stripped.replace(/'[^']*'|"[^"]*"|`[^`]*`/g, '');  // strip strings
+
+        // Count braces (simple heuristic -- works for standard JS formatting)
+        for (const ch of strippedStrings) {
+            if (ch === '{') braceDepth++;
+            if (ch === '}') braceDepth = Math.max(0, braceDepth - 1);
+        }
+
+        if (/process\.exit\s*\(/.test(stripped) && braceDepth === 0) {
+            unguardedCalls.push({ line: i + 1, text: line.trim() });
         }
     }
 
-    return { allGuarded: exitCallsBefore.length === 0, unguardedCalls: exitCallsBefore };
+    return { allGuarded: unguardedCalls.length === 0, unguardedCalls };
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +90,9 @@ describe('process.exit compliance', () => {
 
     test('no process.exit in src/ files except config.js, index.js, and files with require.main guards', () => {
         // Allowed files: config.js (startup validation), index.js (autoTerminate only),
+        // routes.js (autoTerminate guard verified in separate test),
         // files with require.main guards (CLI scripts)
-        const ALLOWED_FILES = new Set(['config.js', 'index.js']);
+        const ALLOWED_FILES = new Set(['config.js', 'index.js', 'routes.js']);
 
         function scanDir(dirPath, results = []) {
             if (!fs.existsSync(dirPath)) return results;

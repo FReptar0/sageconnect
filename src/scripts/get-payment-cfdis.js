@@ -66,8 +66,8 @@ async function getTypePTest(index) {
                             };
                         }
                     } catch (error) {
-                        console.log(`[ERROR] No se pudo obtener información del pago con ID ${paymentId}:`, error.message);
-                        logGenerator(logFileName, 'error', `Error al obtener información del pago con ID ${paymentId}: ${error.message}`);
+                        console.log(`[ERROR] No se pudo obtener informacion del pago con ID ${paymentId}:`, error.message);
+                        logGenerator(logFileName, 'error', `Error al obtener informacion del pago con ID ${paymentId}: ${error.message}`);
                         continue;
                     }
                 } else {
@@ -89,26 +89,28 @@ async function getTypePTest(index) {
     }
 }
 
-// Main execution
-(async () => {
-    const args = process.argv.slice(2);
-
-    // Parse tenant index from arguments (default to 0)
-    let index = 0;
-    const indexArg = args.find(arg => arg.startsWith('--index='));
-    if (indexArg) {
-        index = parseInt(indexArg.split('=')[1]) || 0;
-    } else if (args.length > 0 && !isNaN(args[0])) {
-        index = parseInt(args[0]);
-    }
-
-    console.log(`📊 Fetching CFDI Type P for tenant index: ${index} (${tenantIds[index]})`);
-    console.log('==================================================\n');
-
-    const result = await getTypePTest(index);
-    console.log('\n[RESULT] Resultado final:', JSON.stringify(result, null, 2));
-    console.log(`\n✅ Total CFDIs procesados: ${result.length}`);
-})();
-
 // Export for use in other modules
 module.exports = { getTypePTest };
+
+// CLI execution
+if (require.main === module) {
+    (async () => {
+        const args = process.argv.slice(2);
+
+        // Parse tenant index from arguments (default to 0)
+        let index = 0;
+        const indexArg = args.find(arg => arg.startsWith('--index='));
+        if (indexArg) {
+            index = parseInt(indexArg.split('=')[1]) || 0;
+        } else if (args.length > 0 && !isNaN(args[0])) {
+            index = parseInt(args[0]);
+        }
+
+        console.log(`Fetching CFDI Type P for tenant index: ${index} (${tenantIds[index]})`);
+        console.log('==================================================\n');
+
+        const result = await getTypePTest(index);
+        console.log('\n[RESULT] Resultado final:', JSON.stringify(result, null, 2));
+        console.log(`\nTotal CFDIs procesados: ${result.length}`);
+    })();
+}

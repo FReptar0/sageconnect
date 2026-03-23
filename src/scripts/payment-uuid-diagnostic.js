@@ -265,7 +265,12 @@ async function main() {
     process.exit(0);
 }
 
-main().catch(err => {
-    console.error('Fatal error:', err);
-    process.exit(1);
-});
+module.exports = { diagnosePayment, getAllFailingPayments };
+
+// CLI execution
+if (require.main === module) {
+    main().catch(err => {
+        console.error('Fatal error:', err);
+        process.exit(1);
+    });
+}
