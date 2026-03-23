@@ -2,11 +2,11 @@
 
 ## What This Is
 
-SageConnect es un sistema de integración entre Sage 300 ERP y Portal de Proveedores (portaldeproveedores.mx) que automatiza la gestión de CFDIs, pagos, y órdenes de compra.
+SageConnect es un servicio always-on de integración entre Sage 300 ERP y Portal de Proveedores (portaldeproveedores.mx). Automatiza la gestión de CFDIs, pagos, y órdenes de compra, y expone una interfaz web operativa para auditoría de pagos, gestión de POs, y diagnósticos.
 
 ## Core Value
 
-La integración Sage-Portal debe ser confiable, mantenible, y operable: configuración centralizada, datos validados, y errores trazables.
+La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
 
 ## Current State (post v1.1)
 
@@ -36,28 +36,48 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: configur
 
 ### Active
 
+- [ ] Servicio always-on con scheduling interno (node-cron) reemplazando Windows Task Scheduler
+- [ ] Servy como process manager reemplazando PM2 (Windows Service nativo)
+- [ ] Eliminar AutoShutdownService y AUTO_TERMINATE (ya no necesarios)
+- [ ] API REST para operaciones de pago (reconciliación, diagnóstico, reparación UUID, generación)
+- [ ] API REST para operaciones de PO (query, upload, update, diagnósticos, lifecycle)
+- [ ] Web UI operativa sobre dashboard existente (pagos, POs, diagnósticos)
 - [ ] Eliminar columna RFC residual de la query de conciliación (CONS-01)
 - [ ] Auto-resolución de UUIDs faltantes en flujo de conciliación (CONS-02)
-- [ ] Soporte multi-ambiente sandbox/production vía NODE_ENV (MENV-01)
 
 ### Out of Scope
 
 - SQL injection en CLI args — script ejecutado localmente por equipo técnico
 - Migración a queries parametrizadas — patrón establecido en todo el codebase
 - Migración a YAML config — .env es el estándar Node.js
+- Autenticación/autorización en web UI — uso interno en red local
+- Soporte multi-ambiente sandbox/production — deferido, no necesario para always-on
+
+## Current Milestone: v2.0 Always-On Service
+
+**Goal:** Transformar SageConnect de batch runner (cada 15 min) a servicio always-on con interfaz web operativa para pagos y POs.
+
+**Target features:**
+- Servicio continuo con scheduling interno (node-cron) y Servy como Windows Service
+- API REST exponiendo las 13 operaciones existentes (scripts → endpoints)
+- Web UI operativa: auditoría de pagos, gestión de POs, diagnósticos
+- Eliminación de AutoShutdownService, AUTO_TERMINATE, y dependencia de Windows Task Scheduler
 
 ## Context
 
-- **Rama activa:** `refactor/unify-env-files`
+- **Rama activa:** `feat/always-on-service`
 - **Config pattern:** `const config = require('../config')` → `config.section.property`
 - **Multi-tenant:** `config.portal.tenants[index].id/key/secret/database/externalId`
 - **Mailing:** `MAIL_TRANSPORT=smtp|gmail` selector en .env
+- **Scripts existentes:** 13 scripts en `src/scripts/` ya implementan toda la lógica de negocio
+- **Dashboard existente:** Express + Bootstrap 5.3 en port 3030 (read-only monitoring)
 
 ## Constraints
 
 - **Sin BD Sage local:** Queries SQL se validan por estructura, no por ejecución
-- **Zero nuevas dependencias:** dotenv ya instalado
-- **Backward-compatible:** Todos los CLI flags y funcionalidad existente intactos
+- **Reusar scripts existentes:** La lógica de negocio ya está en src/scripts/ — exponer, no reescribir
+- **Windows Server:** Servy para service management (PM2 tiene bugs en Windows Server 2025)
+- **Backward-compatible:** Background processes y flujo automático deben seguir funcionando
 
 ## Key Decisions
 
@@ -71,6 +91,9 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: configur
 | Renombrar USER→DB_USER, PATH→DOWNLOADS_PATH | dotenv no sobreescribe vars del OS | ✓ Good |
 | Multi-tenant como array de objetos (no arrays paralelos) | Más limpio, agrupa datos por tenant | ✓ Good |
 | Mailing opcional en validación | No todos los deployments usan email | ✓ Good |
+| Servy en vez de PM2 para Windows Service | PM2 tiene bugs wmic en Win Server 2025, no soporta startup nativo | — Pending |
+| node-cron para scheduling interno | Reemplaza Windows Task Scheduler, permite always-on | — Pending |
+| Scripts como base para API endpoints | Lógica ya probada, exponer sin reescribir | — Pending |
 
 ---
-*Last updated: 2026-03-23 after v1.1 milestone*
+*Last updated: 2026-03-23 after v2.0 milestone start*
