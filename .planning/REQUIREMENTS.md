@@ -15,7 +15,7 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 - [ ] **INFRA-04**: node-cron v4 scheduler replaces Windows Task Scheduler with noOverlap guard
 - [ ] **INFRA-05**: Background process loop refactored from "run once and exit" to "scheduled recurring job"
 
-### API — Payments
+### API -- Payments
 
 - [ ] **PAY-01**: POST /api/payments/reconciliation runs payment reconciliation with tenant/date/batch filters
 - [ ] **PAY-02**: GET /api/payments/uuid-diagnostic returns UUID diagnostic for specific PY document numbers
@@ -25,7 +25,7 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 - [ ] **PAY-06**: POST /api/payments/generate generates payment JSON and optionally posts to portal
 - [ ] **PAY-07**: GET /api/payments/cfdis fetches CFDI Type P invoices from portal
 
-### API — Purchase Orders
+### API -- Purchase Orders
 
 - [ ] **PO-01**: GET /api/pos/diagnostic returns comprehensive PO diagnostic
 - [ ] **PO-02**: GET /api/pos/query validates specific POs without posting (dry-run)
@@ -36,7 +36,7 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 - [ ] **PO-07**: POST /api/pos/upload-authorized uploads today's authorized POs
 - [ ] **PO-08**: POST /api/pos/lifecycle manages PO lifecycle (analyze/process/tenant modes)
 
-### API — System
+### API -- System
 
 - [ ] **SYS-01**: GET /api/schedule returns all scheduled tasks with next run times
 - [ ] **SYS-02**: POST /api/schedule/:taskId/trigger manually triggers a scheduled task
@@ -101,52 +101,52 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | — | Pending |
-| INFRA-02 | — | Pending |
-| INFRA-03 | — | Pending |
-| INFRA-04 | — | Pending |
-| INFRA-05 | — | Pending |
-| PAY-01 | — | Pending |
-| PAY-02 | — | Pending |
-| PAY-03 | — | Pending |
-| PAY-04 | — | Pending |
-| PAY-05 | — | Pending |
-| PAY-06 | — | Pending |
-| PAY-07 | — | Pending |
-| PO-01 | — | Pending |
-| PO-02 | — | Pending |
-| PO-03 | — | Pending |
-| PO-04 | — | Pending |
-| PO-05 | — | Pending |
-| PO-06 | — | Pending |
-| PO-07 | — | Pending |
-| PO-08 | — | Pending |
-| SYS-01 | — | Pending |
-| SYS-02 | — | Pending |
-| SYS-03 | — | Pending |
-| SYS-04 | — | Pending |
-| SYS-05 | — | Pending |
-| SEC-01 | — | Pending |
-| SEC-02 | — | Pending |
-| SEC-03 | — | Pending |
-| SEC-04 | — | Pending |
-| UI-01 | — | Pending |
-| UI-02 | — | Pending |
-| UI-03 | — | Pending |
-| UI-04 | — | Pending |
-| UI-05 | — | Pending |
-| UI-06 | — | Pending |
-| UI-07 | — | Pending |
-| UI-08 | — | Pending |
-| DEPLOY-01 | — | Pending |
-| DEPLOY-02 | — | Pending |
-| DEPLOY-03 | — | Pending |
+| INFRA-01 | Phase 6 | Pending |
+| INFRA-02 | Phase 6 | Pending |
+| INFRA-03 | Phase 6 | Pending |
+| INFRA-04 | Phase 8 | Pending |
+| INFRA-05 | Phase 8 | Pending |
+| PAY-01 | Phase 7 | Pending |
+| PAY-02 | Phase 7 | Pending |
+| PAY-03 | Phase 7 | Pending |
+| PAY-04 | Phase 7 | Pending |
+| PAY-05 | Phase 7 | Pending |
+| PAY-06 | Phase 7 | Pending |
+| PAY-07 | Phase 7 | Pending |
+| PO-01 | Phase 7 | Pending |
+| PO-02 | Phase 7 | Pending |
+| PO-03 | Phase 7 | Pending |
+| PO-04 | Phase 7 | Pending |
+| PO-05 | Phase 7 | Pending |
+| PO-06 | Phase 7 | Pending |
+| PO-07 | Phase 7 | Pending |
+| PO-08 | Phase 7 | Pending |
+| SYS-01 | Phase 8 | Pending |
+| SYS-02 | Phase 8 | Pending |
+| SYS-03 | Phase 8 | Pending |
+| SYS-04 | Phase 8 | Pending |
+| SYS-05 | Phase 8 | Pending |
+| SEC-01 | Phase 7 | Pending |
+| SEC-02 | Phase 7 | Pending |
+| SEC-03 | Phase 7 | Pending |
+| SEC-04 | Phase 7 | Pending |
+| UI-01 | Phase 9 | Pending |
+| UI-02 | Phase 9 | Pending |
+| UI-03 | Phase 9 | Pending |
+| UI-04 | Phase 9 | Pending |
+| UI-05 | Phase 9 | Pending |
+| UI-06 | Phase 9 | Pending |
+| UI-07 | Phase 9 | Pending |
+| UI-08 | Phase 9 | Pending |
+| DEPLOY-01 | Phase 10 | Pending |
+| DEPLOY-02 | Phase 10 | Pending |
+| DEPLOY-03 | Phase 10 | Pending |
 
 **Coverage:**
 - v2.0 requirements: 40 total
-- Mapped to phases: 0
-- Unmapped: 40
+- Mapped to phases: 40
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-23*
-*Last updated: 2026-03-23 after initial definition*
+*Last updated: 2026-03-23 after roadmap creation*
