@@ -9,8 +9,7 @@ router.use(require('./dashboard-routes'));
 router.use('/api/system', require('./system-routes'));
 
 // API routes -- API key required (per user decision: all /api/payments and /api/pos)
-// Payment and PO route files will be added in Plans 02 and 03
 // router.use('/api/payments', requireApiKey, require('./payment-routes'));
-// router.use('/api/pos', requireApiKey, require('./po-routes'));
+router.use('/api/pos', requireApiKey, require('./po-routes'));
 
 module.exports = router;
