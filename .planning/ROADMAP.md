@@ -66,10 +66,10 @@ Plans:
   1. Payment reconciliation script (`payment-reconciliation.js`) runs successfully with `--classify` and `--upload` flags, producing the same output categories as before migration
   2. All 24 existing tests pass without modification (tests validate business logic is unchanged)
   3. CFDI import, order processing, and email notification modules load configuration correctly and execute without errors
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 05-01: TBD
+- [ ] 05-01-PLAN.md -- Fix test infrastructure regressions and verify all modules load correctly (REGR-01)
 
 ## Progress
 
@@ -81,4 +81,4 @@ Plans:
 | 2. Batch Upload Robustness | v1.0 | 2/2 | Complete | 2026-03-22 |
 | 3. Config Loader Foundation | v1.1 | 2/2 | Complete | 2026-03-23 |
 | 4. Codebase Migration | v1.1 | 0/3 | Not started | - |
-| 5. Regression Verification | v1.1 | 0/TBD | Not started | - |
+| 5. Regression Verification | v1.1 | 0/1 | Not started | - |
