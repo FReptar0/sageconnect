@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
 status: executing
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-03-23T20:41:03.447Z"
-last_activity: 2026-03-23 -- Completed 06-02 remove process.exit from always-on code paths
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-03-23T20:43:28Z"
+last_activity: 2026-03-23 -- Completed 06-03 envelope returns for 8 easy scripts
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
-  percent: 5
+  completed_plans: 3
+  percent: 10
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 6 of 10 (Infrastructure Foundation)
-Plan: 2 of 4 complete
+Plan: 3 of 4 complete
 Status: Executing
-Last activity: 2026-03-23 -- Completed 06-02 remove process.exit from always-on code paths
+Last activity: 2026-03-23 -- Completed 06-03 envelope returns for 8 easy scripts
 
-Progress: [█░░░░░░░░░] 5%
+Progress: [██░░░░░░░░] 10%
 
 ## Performance Metrics
 
@@ -44,8 +44,7 @@ Progress: [█░░░░░░░░░] 5%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
-| 6 (infra-foundation) | 1/4 | 3min | 3min |
-| Phase 06 P02 | 13min | 2 tasks | 12 files |
+| 6 (infra-foundation) | 3/4 | 33min | 11min |
 
 ## Accumulated Context
 
@@ -63,6 +62,9 @@ Progress: [█░░░░░░░░░] 5%
 - [Phase 06]: background.js returns control to index.js instead of calling process.exit -- index.js owns server lifecycle
 - [Phase 06]: routes.js shutdown endpoint returns 403 in always-on mode with Servy guidance
 - [Phase 06]: AutoShutdownService uses setShutdownHandler callback instead of direct process.exit
+- [06-03]: Dual-output pattern: console output preserved alongside envelope returns for backward CLI compatibility
+- [06-03]: searchPOInFESA internal caller updated to use envelope.data, keeping both function exports consistent
+- [06-03]: PaymentReconciliation test assertions updated from result.categories to result.data.categories
 
 ### Pending Todos
 
@@ -76,6 +78,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T20:41:03.408Z
-Stopped at: Completed 06-02-PLAN.md
-Resume file: None
+Last session: 2026-03-23T20:43:28Z
+Stopped at: Completed 06-03-PLAN.md
+Resume file: .planning/phases/06-infrastructure-foundation/06-03-SUMMARY.md
