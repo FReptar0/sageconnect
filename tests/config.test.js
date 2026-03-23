@@ -13,8 +13,8 @@ const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals
 // Full set of required env vars for a valid config
 const VALID_ENV = {
     // database
-    USER: 'db_user',
-    PASSWORD: 'db_pass',
+    DB_USER: 'db_user',
+    DB_PASSWORD: 'db_pass',
     SERVER: 'localhost',
     DATABASE: 'FESA',
     // portal
@@ -297,13 +297,13 @@ describe('Config Mailing Structure', () => {
 // ============================================================
 describe('Config Validation', () => {
     test('missing required database var exits with code 1 and includes var name and (database)', () => {
-        delete process.env.USER;
+        delete process.env.DB_USER;
         const { exitSpy, errorSpy } = loadConfigWithCapture();
 
         expect(exitSpy).toHaveBeenCalledWith(1);
         // Check that error message includes the var name and section
         const errorOutput = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-        expect(errorOutput).toContain('USER');
+        expect(errorOutput).toContain('DB_USER');
         expect(errorOutput).toContain('(database)');
     });
 
@@ -338,30 +338,30 @@ describe('Config Validation', () => {
     });
 
     test('empty string for required var treated as missing', () => {
-        process.env.PASSWORD = '   ';
+        process.env.DB_PASSWORD = '   ';
         const { exitSpy, errorSpy } = loadConfigWithCapture();
 
         expect(exitSpy).toHaveBeenCalledWith(1);
         const errorOutput = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-        expect(errorOutput).toContain('PASSWORD');
+        expect(errorOutput).toContain('DB_PASSWORD');
         expect(errorOutput).toContain('(database)');
     });
 
     test('multiple missing vars all listed in single error message', () => {
-        delete process.env.USER;
+        delete process.env.DB_USER;
         delete process.env.TENANT_ID;
         delete process.env.LOG_PATH;
         const { exitSpy, errorSpy } = loadConfigWithCapture();
 
         expect(exitSpy).toHaveBeenCalledWith(1);
         const errorOutput = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-        expect(errorOutput).toContain('USER');
+        expect(errorOutput).toContain('DB_USER');
         expect(errorOutput).toContain('TENANT_ID');
         expect(errorOutput).toContain('LOG_PATH');
     });
 
     test('error message format starts with [CONFIG ERROR]', () => {
-        delete process.env.USER;
+        delete process.env.DB_USER;
         const { errorSpy } = loadConfigWithCapture();
 
         const errorOutput = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');
@@ -369,7 +369,7 @@ describe('Config Validation', () => {
     });
 
     test('error message ends with .env.example reference and Process exiting', () => {
-        delete process.env.USER;
+        delete process.env.DB_USER;
         const { errorSpy } = loadConfigWithCapture();
 
         const errorOutput = errorSpy.mock.calls.map((c) => c.join(' ')).join('\n');

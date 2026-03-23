@@ -18,7 +18,7 @@ dotenv.config();
 // Required variables by section
 // ---------------------------------------------------------------------------
 const REQUIRED = {
-    database: ['USER', 'PASSWORD', 'SERVER', 'DATABASE'],
+    database: ['DB_USER', 'DB_PASSWORD', 'SERVER', 'DATABASE'],
     portal: ['URL', 'TENANT_ID', 'API_KEY', 'API_SECRET', 'DATABASES', 'EXTERNAL_IDS'],
     paths: ['PATH', 'PROVIDERS_PATH', 'LOG_PATH'],
     app: [
@@ -113,8 +113,8 @@ function buildMailing() {
 // ---------------------------------------------------------------------------
 const config = {
     database: {
-        user: process.env.USER,
-        password: process.env.PASSWORD,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
         server: process.env.SERVER,
         database: process.env.DATABASE,
     },
