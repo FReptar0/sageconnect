@@ -27,14 +27,14 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 
 ### API -- Purchase Orders
 
-- [ ] **PO-01**: GET /api/pos/diagnostic returns comprehensive PO diagnostic
-- [ ] **PO-02**: GET /api/pos/query validates specific POs without posting (dry-run)
-- [ ] **PO-03**: POST /api/pos/upload posts POs to Portal de Proveedores
-- [ ] **PO-04**: PUT /api/pos/update updates PO in portal (dry-run by default)
-- [ ] **PO-05**: GET /api/pos/address-diagnostic returns address configuration diagnostic
-- [ ] **PO-06**: GET /api/pos/payment-form-diagnostic returns CFDI payment form diagnostic
-- [ ] **PO-07**: POST /api/pos/upload-authorized uploads today's authorized POs
-- [ ] **PO-08**: POST /api/pos/lifecycle manages PO lifecycle (analyze/process/tenant modes)
+- [x] **PO-01**: GET /api/pos/diagnostic returns comprehensive PO diagnostic
+- [x] **PO-02**: GET /api/pos/query validates specific POs without posting (dry-run)
+- [x] **PO-03**: POST /api/pos/upload posts POs to Portal de Proveedores
+- [x] **PO-04**: PUT /api/pos/update updates PO in portal (dry-run by default)
+- [x] **PO-05**: GET /api/pos/address-diagnostic returns address configuration diagnostic
+- [x] **PO-06**: GET /api/pos/payment-form-diagnostic returns CFDI payment form diagnostic
+- [x] **PO-07**: POST /api/pos/upload-authorized uploads today's authorized POs
+- [x] **PO-08**: POST /api/pos/lifecycle manages PO lifecycle (analyze/process/tenant modes)
 
 ### API -- System
 
@@ -113,14 +113,14 @@ Deferred to future release. Tracked but not in current roadmap.
 | PAY-05 | Phase 7 | Complete |
 | PAY-06 | Phase 7 | Complete |
 | PAY-07 | Phase 7 | Complete |
-| PO-01 | Phase 7 | Pending |
-| PO-02 | Phase 7 | Pending |
-| PO-03 | Phase 7 | Pending |
-| PO-04 | Phase 7 | Pending |
-| PO-05 | Phase 7 | Pending |
-| PO-06 | Phase 7 | Pending |
-| PO-07 | Phase 7 | Pending |
-| PO-08 | Phase 7 | Pending |
+| PO-01 | Phase 7 | Complete |
+| PO-02 | Phase 7 | Complete |
+| PO-03 | Phase 7 | Complete |
+| PO-04 | Phase 7 | Complete |
+| PO-05 | Phase 7 | Complete |
+| PO-06 | Phase 7 | Complete |
+| PO-07 | Phase 7 | Complete |
+| PO-08 | Phase 7 | Complete |
 | SYS-01 | Phase 8 | Pending |
 | SYS-02 | Phase 8 | Pending |
 | SYS-03 | Phase 8 | Pending |

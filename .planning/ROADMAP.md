@@ -34,7 +34,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 **Milestone Goal:** Transform SageConnect from batch runner (every 15 min) to always-on service with REST API, internal scheduling, and operational web UI for payments and POs.
 
 - [x] **Phase 6: Infrastructure Foundation** - Refactor scripts to return structured data, eliminate process.exit, create shared SQL pool (completed 2026-03-23)
-- [ ] **Phase 7: REST API + Security** - Expose all 15 payment/PO scripts as secured REST endpoints with validation
+- [x] **Phase 7: REST API + Security** - Expose all 15 payment/PO scripts as secured REST endpoints with validation (completed 2026-03-23)
 - [ ] **Phase 8: Scheduler + Real-Time Layer** - Internal node-cron scheduling with SSE progress streams and operation concurrency control
 - [ ] **Phase 9: Operational Web UI** - Payment audit, PO management, schedule dashboard, and tenant switcher views
 - [ ] **Phase 10: Servy Cutover + Retirement** - Register as Windows Service via Servy, remove AutoShutdownService and Task Scheduler dependency
@@ -73,7 +73,7 @@ Plans:
 Plans:
 - [x] 07-01-PLAN.md -- Security middleware + route restructure + config update (Wave 1)
 - [ ] 07-02-PLAN.md -- Payment routes with Joi validation + runReconciliation wrapper (Wave 2)
-- [ ] 07-03-PLAN.md -- PO routes with Joi validation + lifecycle dispatch (Wave 2)
+- [x] 07-03-PLAN.md -- PO routes with Joi validation + lifecycle dispatch (Wave 2)
 
 ### Phase 8: Scheduler + Real-Time Layer
 **Goal**: SageConnect runs scheduled jobs internally via node-cron (replacing Windows Task Scheduler) with real-time progress streaming and concurrency protection
