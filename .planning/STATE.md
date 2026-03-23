@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: phase-complete
+status: completed
 stopped_at: Completed 06-04-PLAN.md (Phase 6 complete)
-last_updated: "2026-03-23T20:59:44Z"
+last_updated: "2026-03-23T21:07:33.276Z"
 last_activity: 2026-03-23 -- Completed 06-04 function extraction + envelope contract test (Phase 6 DONE)
 progress:
   total_phases: 5
