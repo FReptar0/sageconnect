@@ -102,12 +102,13 @@ Plans:
   3. Schedule dashboard displays next run times, last results per task, and manual trigger buttons that fire the corresponding API endpoint
   4. Tenant switcher in navbar changes the active tenant context across all views without page reload
   5. Real-time progress indicators update via SSE when long-running operations are in progress
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 09-01: TBD
-- [ ] 09-02: TBD
-- [ ] 09-03: TBD
+- [ ] 09-01-PLAN.md -- Shared foundation: shared.js, server routes, /api/tenants, logs.html (Wave 1)
+- [ ] 09-02-PLAN.md -- Schedule dashboard with SSE timeline and manual trigger (Wave 2)
+- [ ] 09-03-PLAN.md -- Payment audit view with category cards and action buttons (Wave 2)
+- [ ] 09-04-PLAN.md -- PO management view with diagnostic search and authorized POs (Wave 2)
 
 ### Phase 10: Servy Cutover + Retirement
 **Goal**: SageConnect runs as a native Windows Service managed by Servy, auto-starting on reboot, with all legacy process lifecycle artifacts removed
@@ -139,5 +140,5 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 6. Infrastructure Foundation | v2.0 | 4/4 | Complete | 2026-03-23 |
 | 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/3 | Not started | - |
-| 9. Operational Web UI | v2.0 | 0/? | Not started | - |
+| 9. Operational Web UI | v2.0 | 0/4 | Not started | - |
 | 10. Servy Cutover + Retirement | v2.0 | 0/? | Not started | - |
