@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: completed
-stopped_at: Phase 9 context gathered
-last_updated: "2026-03-24T05:33:54.531Z"
-last_activity: 2026-03-24 -- Completed 08-03 Schedule & Operations routes + SSE streaming
+status: in-progress
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-24T07:27:49Z"
+last_activity: 2026-03-24 -- Completed 09-01 shared.js foundation + tenant API + logs.html migration
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_plans: 14
+  completed_plans: 12
+  percent: 86
 ---
 
 # Project State
@@ -21,21 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.0 Always-On Service -- Phase 8 complete
+**Current focus:** v2.0 Always-On Service -- Phase 9 in progress
 
 ## Current Position
 
-Phase: 8 of 10 (Scheduler + Real-Time Layer)
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-03-24 -- Completed 08-03 Schedule & Operations routes + SSE streaming
+Phase: 9 of 10 (Operational Web UI)
+Plan: 1 of 4 complete
+Status: In Progress
+Last activity: 2026-03-24 -- Completed 09-01 shared.js foundation + tenant API + logs.html migration
 
-Progress: [██████████] 100%
+Progress: [████████░░] 86%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11 (v1.0: 4, v1.1: 6, v2.0: 8)
+- Total plans completed: 12 (v1.0: 4, v1.1: 6, v2.0: 9)
 - Average duration: --
 - Total execution time: --
 
@@ -47,6 +47,7 @@ Progress: [██████████] 100%
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
 | 7 (rest-api-security) | 3/3 | 20min | 7min |
 | 8 (scheduler-real-time) | 3/3 | 11min | 4min |
+| 9 (operational-web-ui) | 1/4 | 33min | 33min |
 
 ## Accumulated Context
 
@@ -90,6 +91,9 @@ Progress: [██████████] 100%
 - [08-03]: SSE endpoint uses direct res.write (no asyncHandler/sendResult) with heartbeat + auto-cleanup
 - [08-03]: Schedule/operations routes mounted without global requireApiKey -- POST trigger applies it internally
 - [08-03]: triggerSchema Joi validation restricts manual trigger to known task IDs only (background-cycle)
+- [09-01]: Tenant switcher uses localStorage key sageconnect_tenant with index-based selection
+- [09-01]: Root (/) redirects to /schedule.html as the new home page
+- [09-01]: Local formatDateTimeLocal in logs.html avoids collision with shared.js formatDateTime
 
 ### Pending Todos
 
@@ -102,6 +106,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T05:33:54.522Z
-Stopped at: Phase 9 context gathered
-Resume file: .planning/phases/09-operational-web-ui/09-CONTEXT.md
+Last session: 2026-03-24T07:27:49Z
+Stopped at: Completed 09-01-PLAN.md
+Resume file: .planning/phases/09-operational-web-ui/09-01-SUMMARY.md
