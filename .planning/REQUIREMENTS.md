@@ -53,12 +53,12 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 
 ### Web UI
 
-- [ ] **UI-01**: Payment audit view with reconciliation report showing 5 categories
-- [ ] **UI-02**: Payment status table with filtering (uploaded/pending/failed)
-- [ ] **UI-03**: Payment detail drill-down (invoices per payment)
-- [ ] **UI-04**: PO status overview table (posted/error/pending)
-- [ ] **UI-05**: PO diagnostic lookup from web (single PO search)
-- [ ] **UI-06**: Today's authorized POs list
+- [x] **UI-01**: Payment audit view with reconciliation report showing 5 categories
+- [x] **UI-02**: Payment status table with filtering (uploaded/pending/failed)
+- [x] **UI-03**: Payment detail drill-down (invoices per payment)
+- [x] **UI-04**: PO status overview table (posted/error/pending)
+- [x] **UI-05**: PO diagnostic lookup from web (single PO search)
+- [x] **UI-06**: Today's authorized POs list
 - [x] **UI-07**: Schedule dashboard with next runs, last results, manual trigger buttons
 - [x] **UI-08**: Tenant switcher dropdown in navbar
 
@@ -130,12 +130,12 @@ Deferred to future release. Tracked but not in current roadmap.
 | SEC-02 | Phase 7 | Complete |
 | SEC-03 | Phase 7 | Complete |
 | SEC-04 | Phase 7 | Complete |
-| UI-01 | Phase 9 | Pending |
-| UI-02 | Phase 9 | Pending |
-| UI-03 | Phase 9 | Pending |
-| UI-04 | Phase 9 | Pending |
-| UI-05 | Phase 9 | Pending |
-| UI-06 | Phase 9 | Pending |
+| UI-01 | Phase 9 | Complete |
+| UI-02 | Phase 9 | Complete |
+| UI-03 | Phase 9 | Complete |
+| UI-04 | Phase 9 | Complete |
+| UI-05 | Phase 9 | Complete |
+| UI-06 | Phase 9 | Complete |
 | UI-07 | Phase 9 | Complete |
 | UI-08 | Phase 9 | Complete |
 | DEPLOY-01 | Phase 10 | Pending |
