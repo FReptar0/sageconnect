@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SageConnect - Ordenes de Compra</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+        crossorigin="anonymous"></script>
+    <style>
+        body {
+            background: #f0f2f5;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .status-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        .status-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        .status-card .count {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .diagnostic-result table {
+            font-size: 0.9rem;
+        }
+        .diagnostic-result th {
+            width: 35%;
+            background: #f8f9fa;
+        }
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.75rem;
+        }
+        .action-card {
+            transition: all 0.2s ease;
+        }
+        .action-card:hover {
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+        #loading-spinner {
+            min-height: 300px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div id="sidebar"></div>
+
+        <!-- Main Content -->
+        <div class="flex-grow-1 p-4">
+            <!-- Page Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="mb-0">
+                    <i class="fas fa-file-invoice me-2 text-primary"></i>Ordenes de Compra
+                </h4>
+                <button class="btn btn-outline-primary btn-sm" onclick="refreshAll()">
+                    <i class="fas fa-sync-alt me-1"></i>Actualizar
+                </button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="d-flex justify-content-center align-items-center">
+                <div class="text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Cargando...</span>
+                    </div>
+                    <p class="text-muted">Cargando datos de ordenes de compra...</p>
+                </div>
+            </div>
+
+            <!-- Main Content (hidden until loaded) -->
+            <div id="main-content" style="display: none;">
+
+                <!-- PO Diagnostic Search Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="section-title">
+                            <i class="fas fa-search me-2"></i>Diagnostico de Orden de Compra
+                        </h6>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <div class="input-group">
+                                    <input type="text" id="search-po-input" class="form-control"
+                                        placeholder="Buscar OC por numero..." aria-label="Numero de OC"
+                                        onkeydown="if(event.key==='Enter') searchPO()">
+                                    <button class="btn btn-primary" type="button" onclick="searchPO()">
+                                        <i class="fas fa-search me-1"></i>Buscar
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="btn-group btn-group-sm" id="sub-diagnostic-buttons" style="display: none;">
+                                    <button class="btn btn-outline-secondary" onclick="searchAddressDiagnostic()">
+                                        <i class="fas fa-map-marker-alt me-1"></i>Diagnostico de Direccion
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="searchPaymentFormDiagnostic()">
+                                        <i class="fas fa-money-check-alt me-1"></i>Diagnostico Forma de Pago
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Diagnostic Results -->
+                        <div id="diagnostic-results" class="mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+
+                <!-- Status Overview Cards -->
+                <div class="mb-4">
+                    <h6 class="section-title">
+                        <i class="fas fa-chart-bar me-2"></i>Resumen de Estado
+                    </h6>
+                    <div class="row row-cols-1 row-cols-md-3 g-3" id="status-cards">
+                        <div class="col">
+                            <div class="card status-card border-success" onclick="filterByStatus('posted')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-check-circle text-success mb-2" style="font-size: 1.5rem;"></i>
+                                    <div class="count text-success" id="count-posted">--</div>
+                                    <div class="text-muted">Publicadas</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card status-card border-danger" onclick="filterByStatus('error')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-times-circle text-danger mb-2" style="font-size: 1.5rem;"></i>
+                                    <div class="count text-danger" id="count-error">--</div>
+                                    <div class="text-muted">Con Error</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col">
+                            <div class="card status-card border-warning" onclick="filterByStatus('pending')">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-clock text-warning mb-2" style="font-size: 1.5rem;"></i>
+                                    <div class="count text-warning" id="count-pending">--</div>
+                                    <div class="text-muted">Pendientes</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="status-detail" class="mt-3" style="display: none;"></div>
+                </div>
+
+                <!-- Today's Authorized POs Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="section-title">
+                            <i class="fas fa-calendar-day me-2"></i>OCs Autorizadas Hoy
+                        </h6>
+                        <p class="text-muted small mb-3">
+                            Sube las ordenes de compra autorizadas del dia al portal de proveedores.
+                        </p>
+                        <div id="authorized-results" style="display: none;"></div>
+                        <button class="btn btn-success" onclick="uploadAuthorizedPOs()">
+                            <i class="fas fa-upload me-1"></i>Subir OCs Autorizadas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action Buttons Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="section-title">
+                            <i class="fas fa-cogs me-2"></i>Acciones
+                        </h6>
+                        <div class="row g-3">
+                            <!-- Upload Specific PO -->
+                            <div class="col-md-6">
+                                <div class="card action-card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-upload text-primary me-2"></i>Subir OC Especifica
+                                        </h6>
+                                        <p class="card-text small text-muted">
+                                            Sube una o varias ordenes de compra al portal. Separa multiples numeros con coma.
+                                        </p>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <input type="text" id="upload-po-input" class="form-control"
+                                                placeholder="Ej: OC-001, OC-002">
+                                            <button class="btn btn-primary" onclick="uploadSpecificPO()">
+                                                <i class="fas fa-upload me-1"></i>Subir
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Update Specific PO -->
+                            <div class="col-md-6">
+                                <div class="card action-card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-sync text-warning me-2"></i>Actualizar OC
+                                        </h6>
+                                        <p class="card-text small text-muted">
+                                            Actualiza una orden de compra existente en el portal.
+                                        </p>
+                                        <div class="input-group input-group-sm mb-2">
+                                            <input type="text" id="update-po-input" class="form-control"
+                                                placeholder="Numero de OC">
+                                            <button class="btn btn-warning" onclick="updateSpecificPO()">
+                                                <i class="fas fa-sync me-1"></i>Actualizar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lifecycle Analysis Section -->
+                <div class="card mb-4">
+                    <div class="card-body">
+                        <h6 class="section-title">
+                            <i class="fas fa-heartbeat me-2"></i>Analisis de Ciclo de Vida
+                        </h6>
+                        <p class="text-muted small mb-3">
+                            Analiza el estado de cancelacion y ciclo de vida de una orden de compra especifica.
+                        </p>
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-5">
+                                <div class="input-group input-group-sm">
+                                    <input type="text" id="lifecycle-po-input" class="form-control"
+                                        placeholder="Numero de OC para analizar..."
+                                        onkeydown="if(event.key==='Enter') analyzeLifecycle()">
+                                    <button class="btn btn-info text-white" onclick="analyzeLifecycle()">
+                                        <i class="fas fa-microscope me-1"></i>Analizar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="lifecycle-results" class="mt-3" style="display: none;"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;"></div>
+
+    <!-- Load shared.js first -->
+    <script src="/js/shared.js"></script>
+
+    <script>
+        /* ====================================================================
+         * State
+         * ==================================================================== */
+
+        let lastSearchedPO = '';
+        let statusData = { posted: 0, error: 0, pending: 0 };
+
+        /* ====================================================================
+         * Initialization
+         * ==================================================================== */
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initPage('/pos.html');
+            await loadPOData();
+        });
+
+        window.onTenantChange = () => {
+            loadPOData();
+        };
+
+        /* ====================================================================
+         * Data Loading
+         * ==================================================================== */
+
+        async function loadPOData() {
+            const spinner = document.getElementById('loading-spinner');
+            const content = document.getElementById('main-content');
+
+            spinner.style.display = 'flex';
+            content.style.display = 'none';
+
+            try {
+                // Attempt lifecycle analyze to get status overview
+                // NOTE: The lifecycle analyze endpoint requires a ponumber for individual analysis.
+                // We render the status cards with placeholder counts and populate them
+                // when the user performs a search or analysis.
+                renderStatusCards(statusData);
+            } catch (err) {
+                console.error('Error loading PO data:', err);
+            } finally {
+                spinner.style.display = 'none';
+                content.style.display = 'block';
+            }
+        }
+
+        /* ====================================================================
+         * Refresh All
+         * ==================================================================== */
+
+        function refreshAll() {
+            // Clear diagnostic results
+            document.getElementById('diagnostic-results').style.display = 'none';
+            document.getElementById('diagnostic-results').innerHTML = '';
+            document.getElementById('sub-diagnostic-buttons').style.display = 'none';
+            document.getElementById('lifecycle-results').style.display = 'none';
+            document.getElementById('lifecycle-results').innerHTML = '';
+            document.getElementById('authorized-results').style.display = 'none';
+            document.getElementById('authorized-results').innerHTML = '';
+            lastSearchedPO = '';
+            statusData = { posted: 0, error: 0, pending: 0 };
+            loadPOData();
+            showToast('Datos actualizados', 'success');
+        }
+
+        /* ====================================================================
+         * Status Cards
+         * ==================================================================== */
+
+        function renderStatusCards(data) {
+            document.getElementById('count-posted').textContent =
+                data.posted != null ? data.posted : '--';
+            document.getElementById('count-error').textContent =
+                data.error != null ? data.error : '--';
+            document.getElementById('count-pending').textContent =
+                data.pending != null ? data.pending : '--';
+        }
+
+        function filterByStatus(status) {
+            const detail = document.getElementById('status-detail');
+            const labels = {
+                posted: 'Publicadas',
+                error: 'Con Error',
+                pending: 'Pendientes',
+            };
+            const colors = {
+                posted: 'success',
+                error: 'danger',
+                pending: 'warning',
+            };
+            detail.style.display = 'block';
+            detail.innerHTML = `
+                <div class="alert alert-${colors[status]} py-2">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>${labels[status]}:</strong> ${statusData[status] || 0} orden(es) de compra.
+                    Use el diagnostico o el analisis de ciclo de vida para inspeccionar ordenes individuales.
+                </div>
+            `;
+        }
+
+        /* ====================================================================
+         * PO Diagnostic Search
+         * ==================================================================== */
+
+        async function searchPO() {
+            const input = document.getElementById('search-po-input');
+            const poNumber = input.value.trim();
+            if (!poNumber) {
+                showToast('Ingrese un numero de orden de compra', 'warning');
+                return;
+            }
+
+            lastSearchedPO = poNumber;
+            const resultsDiv = document.getElementById('diagnostic-results');
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 text-muted">Buscando diagnostico para ${poNumber}...</span>
+                </div>
+            `;
+
+            const tenant = window.__TENANTS__[getTenantIndex()];
+            const database = tenant ? tenant.name : '';
+
+            try {
+                const params = new URLSearchParams({
+                    poNumber: poNumber,
+                    database: database,
+                });
+                const result = await apiCall('GET', `/api/pos/diagnostic?${params.toString()}`);
+
+                if (result.success) {
+                    renderDiagnosticResult(result.data, poNumber);
+                    document.getElementById('sub-diagnostic-buttons').style.display = 'inline-flex';
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.summary || result.errors?.join(', ') || 'Error en diagnostico'}
+                        </div>
+                    `;
+                    document.getElementById('sub-diagnostic-buttons').style.display = 'inline-flex';
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error al buscar diagnostico: ${err.message}
+                    </div>
+                `;
+            }
+        }
+
+        function renderDiagnosticResult(data, poNumber) {
+            const resultsDiv = document.getElementById('diagnostic-results');
+
+            if (!data || typeof data !== 'object') {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-2"></i>No se encontraron datos de diagnostico para ${poNumber}.
+                    </div>
+                `;
+                return;
+            }
+
+            // Render key-value pairs from the diagnostic response
+            let tableRows = '';
+            const renderObject = (obj, prefix = '') => {
+                for (const [key, value] of Object.entries(obj)) {
+                    const label = prefix ? `${prefix}.${key}` : key;
+                    if (value && typeof value === 'object' && !Array.isArray(value)) {
+                        renderObject(value, label);
+                    } else if (Array.isArray(value)) {
+                        tableRows += `
+                            <tr>
+                                <th class="text-nowrap">${label}</th>
+                                <td>${value.length > 0 ? renderArrayData(value) : '<span class="text-muted">Vacio</span>'}</td>
+                            </tr>
+                        `;
+                    } else {
+                        const displayValue = value != null ? String(value) : '<span class="text-muted">N/A</span>';
+                        tableRows += `
+                            <tr>
+                                <th class="text-nowrap">${label}</th>
+                                <td>${displayValue}</td>
+                            </tr>
+                        `;
+                    }
+                }
+            };
+
+            renderObject(data);
+
+            resultsDiv.innerHTML = `
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white py-2">
+                        <i class="fas fa-clipboard-list me-2"></i>Diagnostico: ${poNumber}
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-striped mb-0 diagnostic-result">
+                                <tbody>${tableRows}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderArrayData(arr) {
+            if (arr.length === 0) return '<span class="text-muted">Vacio</span>';
+            // If array of objects, render as mini-table
+            if (typeof arr[0] === 'object' && arr[0] !== null) {
+                const keys = Object.keys(arr[0]);
+                const headerRow = keys.map(k => `<th class="small">${k}</th>`).join('');
+                const bodyRows = arr.map(item => {
+                    const cells = keys.map(k => `<td class="small">${item[k] != null ? item[k] : ''}</td>`).join('');
+                    return `<tr>${cells}</tr>`;
+                }).join('');
+                return `
+                    <table class="table table-sm table-bordered mb-0">
+                        <thead><tr>${headerRow}</tr></thead>
+                        <tbody>${bodyRows}</tbody>
+                    </table>
+                `;
+            }
+            // Array of primitives
+            return arr.join(', ');
+        }
+
+        /* ====================================================================
+         * Sub-Diagnostics (Address & Payment Form)
+         * ==================================================================== */
+
+        async function searchAddressDiagnostic() {
+            if (!lastSearchedPO) {
+                showToast('Primero busque una OC', 'warning');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('diagnostic-results');
+            resultsDiv.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 text-muted">Obteniendo diagnostico de direccion para ${lastSearchedPO}...</span>
+                </div>
+            `;
+
+            const tenant = window.__TENANTS__[getTenantIndex()];
+            const database = tenant ? tenant.name : '';
+
+            try {
+                const params = new URLSearchParams({
+                    poNumber: lastSearchedPO,
+                    database: database,
+                });
+                const result = await apiCall('GET', `/api/pos/address-diagnostic?${params.toString()}`);
+
+                if (result.success) {
+                    renderDiagnosticResult(result.data, `${lastSearchedPO} - Direccion`);
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.summary || result.errors?.join(', ') || 'Error en diagnostico de direccion'}
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error: ${err.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function searchPaymentFormDiagnostic() {
+            if (!lastSearchedPO) {
+                showToast('Primero busque una OC', 'warning');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('diagnostic-results');
+            resultsDiv.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 text-muted">Obteniendo diagnostico de forma de pago para ${lastSearchedPO}...</span>
+                </div>
+            `;
+
+            const tenant = window.__TENANTS__[getTenantIndex()];
+            const database = tenant ? tenant.name : '';
+
+            try {
+                const params = new URLSearchParams({
+                    poNumber: lastSearchedPO,
+                    database: database,
+                });
+                const result = await apiCall('GET', `/api/pos/payment-form-diagnostic?${params.toString()}`);
+
+                if (result.success) {
+                    renderDiagnosticResult(result.data, `${lastSearchedPO} - Forma de Pago`);
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.summary || result.errors?.join(', ') || 'Error en diagnostico de forma de pago'}
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error: ${err.message}
+                    </div>
+                `;
+            }
+        }
+
+        /* ====================================================================
+         * Lifecycle Analysis
+         * ==================================================================== */
+
+        async function analyzeLifecycle() {
+            const input = document.getElementById('lifecycle-po-input');
+            const poNumber = input.value.trim();
+            if (!poNumber) {
+                showToast('Ingrese un numero de OC para analizar', 'warning');
+                return;
+            }
+
+            const resultsDiv = document.getElementById('lifecycle-results');
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-info" role="status"></div>
+                    <span class="ms-2 text-muted">Analizando ciclo de vida de ${poNumber}...</span>
+                </div>
+            `;
+
+            try {
+                const result = await apiCall('POST', '/api/pos/lifecycle', {
+                    mode: 'analyze',
+                    tenantIndex: getTenantIndex(),
+                    ponumber: poNumber,
+                });
+
+                if (result.success && result.data) {
+                    const data = result.data;
+                    const statusBadge = getStatusBadge(data.status);
+                    resultsDiv.innerHTML = `
+                        <div class="card border-info">
+                            <div class="card-header bg-info text-white py-2">
+                                <i class="fas fa-heartbeat me-2"></i>Analisis: ${data.ponumber || poNumber}
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <strong>Estado:</strong> ${statusBadge}
+                                    </div>
+                                    <div class="col-md-8">
+                                        <strong>Recomendacion:</strong> ${data.recommendation || 'N/A'}
+                                    </div>
+                                </div>
+                                ${data.totalOrdered !== undefined ? `
+                                <div class="row g-2 mb-2">
+                                    <div class="col-md-3">
+                                        <div class="card bg-light text-center p-2">
+                                            <div class="fw-bold">${data.totalOrdered || 0}</div>
+                                            <small class="text-muted">Total Ordenado</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light text-center p-2">
+                                            <div class="fw-bold">${data.totalCancelled || 0}</div>
+                                            <small class="text-muted">Total Cancelado</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light text-center p-2">
+                                            <div class="fw-bold">${data.lineCount || 0}</div>
+                                            <small class="text-muted">Lineas</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light text-center p-2">
+                                            <div class="fw-bold">${data.fullyCancelledLines || 0}</div>
+                                            <small class="text-muted">Lineas Canceladas</small>
+                                        </div>
+                                    </div>
+                                </div>
+                                ` : ''}
+                                ${data.error ? `
+                                <div class="alert alert-warning py-2 mt-2 mb-0">
+                                    <i class="fas fa-exclamation-circle me-2"></i>${data.error}
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.summary || result.errors?.join(', ') || 'Error en analisis de ciclo de vida'}
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error: ${err.message}
+                    </div>
+                `;
+            }
+        }
+
+        function getStatusBadge(status) {
+            if (!status) return '<span class="badge bg-secondary">Desconocido</span>';
+            const s = status.toLowerCase();
+            if (s.includes('cancel') || s.includes('error') || s.includes('fail')) {
+                return `<span class="badge bg-danger">${status}</span>`;
+            }
+            if (s.includes('active') || s.includes('posted') || s.includes('ok') || s.includes('success')) {
+                return `<span class="badge bg-success">${status}</span>`;
+            }
+            if (s.includes('partial') || s.includes('pending') || s.includes('warn')) {
+                return `<span class="badge bg-warning text-dark">${status}</span>`;
+            }
+            return `<span class="badge bg-info">${status}</span>`;
+        }
+
+        /* ====================================================================
+         * Action: Upload Authorized POs
+         * ==================================================================== */
+
+        async function uploadAuthorizedPOs() {
+            if (!confirmAction('Subir ordenes de compra autorizadas al portal?')) {
+                return;
+            }
+
+            const resultsDiv = document.getElementById('authorized-results');
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = `
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-success" role="status"></div>
+                    <span class="ms-2 text-muted">Subiendo OCs autorizadas...</span>
+                </div>
+            `;
+
+            try {
+                const result = await apiCall('POST', '/api/pos/upload-authorized', {
+                    tenantIndex: getTenantIndex(),
+                });
+
+                if (result.success) {
+                    showToast(result.summary || 'OCs autorizadas subidas correctamente', 'success');
+                    renderAuthorizedResults(result.data);
+                } else {
+                    showToast(result.summary || result.errors?.join(', ') || 'Error al subir OCs', 'error');
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-danger py-2">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            ${result.summary || result.errors?.join(', ') || 'Error al subir OCs autorizadas'}
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger py-2">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Error: ${err.message}
+                    </div>
+                `;
+            }
+        }
+
+        function renderAuthorizedResults(data) {
+            const resultsDiv = document.getElementById('authorized-results');
+
+            if (!data || typeof data !== 'object') {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-info py-2">
+                        <i class="fas fa-info-circle me-2"></i>Operacion completada. Sin datos adicionales.
+                    </div>
+                `;
+                return;
+            }
+
+            // If data has a results array or similar structure
+            if (Array.isArray(data.results || data.orders || data)) {
+                const items = data.results || data.orders || data;
+                if (items.length === 0) {
+                    resultsDiv.innerHTML = `
+                        <div class="alert alert-info py-2">
+                            <i class="fas fa-info-circle me-2"></i>No se encontraron OCs autorizadas para subir hoy.
+                        </div>
+                    `;
+                    return;
+                }
+                let rows = '';
+                items.forEach((item, i) => {
+                    const id = item.poNumber || item.PONUMBER || item.EXTERNAL_ID || item.id || (i + 1);
+                    const status = item.status || item.result || 'Procesado';
+                    const badgeClass = String(status).toLowerCase().includes('error') ? 'bg-danger' : 'bg-success';
+                    rows += `
+                        <tr>
+                            <td>${id}</td>
+                            <td><span class="badge ${badgeClass}">${status}</span></td>
+                        </tr>
+                    `;
+                });
+                resultsDiv.innerHTML = `
+                    <div class="table-responsive mt-2 mb-3">
+                        <table class="table table-sm table-striped">
+                            <thead><tr><th>OC</th><th>Estado</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            } else {
+                // Render as key-value pairs
+                let details = '';
+                for (const [key, value] of Object.entries(data)) {
+                    details += `<li><strong>${key}:</strong> ${JSON.stringify(value)}</li>`;
+                }
+                resultsDiv.innerHTML = `
+                    <ul class="list-unstyled mb-3">${details}</ul>
+                `;
+            }
+        }
+
+        /* ====================================================================
+         * Action: Upload Specific PO
+         * ==================================================================== */
+
+        async function uploadSpecificPO() {
+            const input = document.getElementById('upload-po-input');
+            const poNumbers = input.value.trim();
+            if (!poNumbers) {
+                showToast('Ingrese uno o mas numeros de OC', 'warning');
+                return;
+            }
+
+            if (!confirmAction(`Subir la(s) OC: ${poNumbers} al portal?`)) {
+                return;
+            }
+
+            const tenant = window.__TENANTS__[getTenantIndex()];
+            const database = tenant ? tenant.name : '';
+
+            try {
+                const result = await apiCall('POST', '/api/pos/upload', {
+                    poNumbers: poNumbers,
+                    database: database,
+                    tenantIndex: getTenantIndex(),
+                });
+
+                if (result.success) {
+                    showToast(result.summary || 'OC(s) subida(s) correctamente', 'success');
+                    input.value = '';
+                } else {
+                    showToast(result.summary || result.errors?.join(', ') || 'Error al subir OC(s)', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        /* ====================================================================
+         * Action: Update Specific PO
+         * ==================================================================== */
+
+        async function updateSpecificPO() {
+            const input = document.getElementById('update-po-input');
+            const poNumber = input.value.trim();
+            if (!poNumber) {
+                showToast('Ingrese un numero de OC', 'warning');
+                return;
+            }
+
+            if (!confirmAction(`Actualizar la OC ${poNumber} en el portal? Esta accion modificara datos en el portal.`)) {
+                return;
+            }
+
+            const tenant = window.__TENANTS__[getTenantIndex()];
+            const database = tenant ? tenant.name : '';
+
+            try {
+                const result = await apiCall('PUT', '/api/pos/update', {
+                    poNumber: poNumber,
+                    database: database,
+                    tenantIndex: getTenantIndex(),
+                    dryRun: false,
+                });
+
+                if (result.success) {
+                    showToast(result.summary || 'OC actualizada correctamente', 'success');
+                    input.value = '';
+                } else {
+                    showToast(result.summary || result.errors?.join(', ') || 'Error al actualizar OC', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+    </script>
+</body>
+
+</html>
