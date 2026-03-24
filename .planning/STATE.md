@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: executing
-stopped_at: Completed 10-01-PLAN.md -- all plans complete
-last_updated: "2026-03-24T18:51:20.000Z"
+status: completed
+stopped_at: Completed 10-01-PLAN.md -- all v2.0 plans done
+last_updated: "2026-03-24T18:58:37.739Z"
 last_activity: 2026-03-24 -- Completed 10-01 legacy lifecycle removal (all v2.0 plans done)
 progress:
   total_phases: 5
