@@ -141,4 +141,4 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/3 | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/4 | Not started | - |
-| 10. Servy Cutover + Retirement | v2.0 | 0/2 | Not started | - |
+| 10. Servy Cutover + Retirement | 1/2 | In Progress|  | - |
