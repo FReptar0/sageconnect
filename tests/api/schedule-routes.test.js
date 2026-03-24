@@ -101,12 +101,48 @@ jest.mock('express-rate-limit', () => ({
     rateLimit: () => (req, res, next) => next(),
 }));
 
+// Mock api-key middleware to use test key (avoids importing real config in middleware)
+jest.mock('../../src/middleware/api-key', () => {
+    const crypto = require('crypto');
+    return {
+        requireApiKey: (req, res, next) => {
+            const configuredKey = 'test-api-key';
+            const providedKey = req.headers['x-api-key'];
+
+            if (!providedKey) {
+                return res.status(401).json({
+                    success: false,
+                    data: null,
+                    errors: ['Invalid or missing API key'],
+                    summary: 'Unauthorized',
+                    meta: { duration: 0, timestamp: new Date().toISOString(), tenant: null },
+                });
+            }
+
+            const configuredBuf = Buffer.from(configuredKey, 'utf8');
+            const providedBuf = Buffer.from(String(providedKey), 'utf8');
+
+            if (configuredBuf.length !== providedBuf.length ||
+                !crypto.timingSafeEqual(configuredBuf, providedBuf)) {
+                return res.status(401).json({
+                    success: false,
+                    data: null,
+                    errors: ['Invalid or missing API key'],
+                    summary: 'Unauthorized',
+                    meta: { duration: 0, timestamp: new Date().toISOString(), tenant: null },
+                });
+            }
+
+            next();
+        },
+    };
+});
+
 // ---------------------------------------------------------------------------
 // Build test app
 // ---------------------------------------------------------------------------
 const express = require('express');
 const request = require('supertest');
-const crypto = require('crypto');
 const { errorResult } = require('../../src/utils/ResultEnvelope');
 
 const TEST_API_KEY = 'test-api-key';
@@ -114,36 +150,6 @@ const TEST_API_KEY = 'test-api-key';
 function createScheduleTestApp() {
     const app = express();
     app.use(express.json());
-
-    // Replicate requireApiKey with test key
-    function testRequireApiKey(req, res, next) {
-        const configuredKey = TEST_API_KEY;
-        const providedKey = req.headers['x-api-key'];
-
-        if (!providedKey) {
-            return res.status(401).json(
-                errorResult(['Invalid or missing API key'], 'Unauthorized')
-            );
-        }
-
-        const configuredBuf = Buffer.from(configuredKey, 'utf8');
-        const providedBuf = Buffer.from(String(providedKey), 'utf8');
-
-        if (configuredBuf.length !== providedBuf.length ||
-            !crypto.timingSafeEqual(configuredBuf, providedBuf)) {
-            return res.status(401).json(
-                errorResult(['Invalid or missing API key'], 'Unauthorized')
-            );
-        }
-
-        next();
-    }
-
-    // Make testRequireApiKey available as module-level mock for schedule-routes
-    // Schedule routes use requireApiKey internally on trigger endpoint
-    jest.mock('../../src/middleware/api-key', () => ({
-        requireApiKey: testRequireApiKey,
-    }));
 
     // Mount schedule routes (schedule-routes applies requireApiKey internally on POST)
     const scheduleRoutes = require('../../src/routes/schedule-routes');
