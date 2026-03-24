@@ -18,11 +18,17 @@ const notifier = require('node-notifier');
  */
 
 /**
- * Main background process that handles all CFDI operations
+ * Main background process that handles all CFDI operations.
+ *
+ * @param {Object} [options={}] - Optional parameters for progress emission
+ * @param {string|null} [options.operationId=null] - Unique operation ID for progress tracking
+ * @param {Object|null} [options.emitter=null] - OperationManager instance with emitProgress()
  */
-async function forResponse() {
+async function forResponse(options = {}) {
+    const { operationId = null, emitter = null } = options;
     const logFileName = 'ForResponse';
     const date = getCurrentDate();
+    const delay = config.schedule?.operationDelayMs ?? 5000;
     logGenerator(logFileName, 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
 
     const tenantIds = config.portal.tenants.map(t => t.id);
@@ -30,47 +36,139 @@ async function forResponse() {
         try {
             logGenerator(logFileName, 'info', `[INFO] Procesando tenant con índice ${i}`);
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'buildProviders',
+                    message: `Iniciando buildProvidersXML para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando buildProvidersXML para el índice ${i}`);
             await buildProvidersXML(i);
             logGenerator(logFileName, 'info', `[COMPLETE] buildProvidersXML completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'downloadCFDI',
+                    message: `Iniciando downloadCFDI para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando downloadCFDI para el índice ${i}`);
             await downloadCFDI(i);
             logGenerator(logFileName, 'info', `[COMPLETE] downloadCFDI completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'checkPayments',
+                    message: `Iniciando checkPayments para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando checkPayments para el índice ${i}`);
             await checkPayments(i);
             logGenerator(logFileName, 'info', `[COMPLETE] checkPayments completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'uploadPayments',
+                    message: `Iniciando uploadPayments para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando uploadPayments para el índice ${i}`);
             await uploadPayments(i);
             logGenerator(logFileName, 'info', `[COMPLETE] uploadPayments completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'createPurchaseOrders',
+                    message: `Iniciando createPurchaseOrders para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando createPurchaseOrders para el índice ${i}`);
             await createPurchaseOrders(i);
             logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'processOrderChanges',
+                    message: `Iniciando processOrderChanges para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando processOrderChanges para el índice ${i}`);
             await processOrderChanges(i);
             logGenerator(logFileName, 'info', `[COMPLETE] processOrderChanges completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'progress',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'closePurchaseOrders',
+                    message: `Iniciando closePurchaseOrders para tenant ${i}`,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
             await closePurchaseOrders(i);
             logGenerator(logFileName, 'info', `[COMPLETE] closePurchaseOrders completado para el índice ${i}`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            await new Promise(resolve => setTimeout(resolve, delay));
 
             logGenerator(logFileName, 'info', `[TENANT-COMPLETE] Todos los procesos completados para el tenant índice ${i}`);
         } catch (error) {
             logGenerator(logFileName, 'error', `[ERROR] Error procesando el índice ${i}: ${error.message}`);
             logGenerator(logFileName, 'error', `[ERROR] Stack trace: ${error.stack}`);
+            if (emitter && operationId) {
+                emitter.emitProgress(operationId, {
+                    type: 'error',
+                    operation: 'background-cycle',
+                    tenant: tenantIds[i],
+                    step: 'tenant-error',
+                    message: error.message,
+                    timestamp: new Date().toISOString(),
+                });
+            }
             // Continue with next tenant even if current one fails
         }
+    }
+
+    // Emit completion event
+    if (emitter && operationId) {
+        emitter.emitProgress(operationId, {
+            type: 'complete',
+            operation: 'background-cycle',
+            tenant: null,
+            step: null,
+            message: 'Proceso forResponse completado',
+            timestamp: new Date().toISOString(),
+        });
     }
 
     logGenerator(logFileName, 'info', '[END] Proceso forResponse completado.');
