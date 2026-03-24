@@ -88,9 +88,9 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md -- OperationManager service + config schedule section + node-cron install (Wave 1)
-- [ ] 08-02-PLAN.md -- CronScheduler + forResponse progress emission + index.js wiring (Wave 2)
-- [ ] 08-03-PLAN.md -- Schedule and operations REST endpoints with SSE streaming (Wave 2)
+- [x] 08-01-PLAN.md -- OperationManager service + config schedule section + node-cron install (Wave 1)
+- [x] 08-02-PLAN.md -- CronScheduler + forResponse progress emission + index.js wiring (Wave 2)
+- [x] 08-03-PLAN.md -- Schedule and operations REST endpoints with SSE streaming (Wave 2)
 
 ### Phase 9: Operational Web UI
 **Goal**: Operations team can audit payments, manage POs, monitor schedules, and switch tenants entirely from the browser -- no SSH/RDP/CLI needed for daily operations
