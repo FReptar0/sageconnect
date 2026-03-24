@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: in-progress
-stopped_at: Completed 09-01-PLAN.md
-last_updated: "2026-03-24T07:27:49Z"
-last_activity: 2026-03-24 -- Completed 09-01 shared.js foundation + tenant API + logs.html migration
+status: executing
+stopped_at: Completed 09-02-PLAN.md
+last_updated: "2026-03-24T07:34:24.629Z"
+last_activity: 2026-03-24 -- Completed 09-02 schedule dashboard with SSE timeline, manual trigger, execution history
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 14
-  completed_plans: 12
-  percent: 86
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 9 of 10 (Operational Web UI)
-Plan: 1 of 4 complete
+Plan: 2 of 4 complete
 Status: In Progress
-Last activity: 2026-03-24 -- Completed 09-01 shared.js foundation + tenant API + logs.html migration
+Last activity: 2026-03-24 -- Completed 09-02 schedule dashboard with SSE timeline, manual trigger, execution history
 
-Progress: [████████░░] 86%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 12 (v1.0: 4, v1.1: 6, v2.0: 9)
+- Total plans completed: 13 (v1.0: 4, v1.1: 6, v2.0: 10)
 - Average duration: --
 - Total execution time: --
 
@@ -47,7 +47,7 @@ Progress: [████████░░] 86%
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
 | 7 (rest-api-security) | 3/3 | 20min | 7min |
 | 8 (scheduler-real-time) | 3/3 | 11min | 4min |
-| 9 (operational-web-ui) | 1/4 | 33min | 33min |
+| 9 (operational-web-ui) | 2/4 | 35min | 18min |
 
 ## Accumulated Context
 
@@ -94,6 +94,9 @@ Progress: [████████░░] 86%
 - [09-01]: Tenant switcher uses localStorage key sageconnect_tenant with index-based selection
 - [09-01]: Root (/) redirects to /schedule.html as the new home page
 - [09-01]: Local formatDateTimeLocal in logs.html avoids collision with shared.js formatDateTime
+- [Phase 09]: Timeline uses step deduplication via Set to prevent duplicate entries from rapid SSE events
+- [Phase 09]: Trigger button disables during running state to prevent double-trigger
+- [Phase 09]: onTenantChange is no-op on schedule page since schedule data is global, not per-tenant
 
 ### Pending Todos
 
@@ -106,6 +109,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T07:27:49Z
-Stopped at: Completed 09-01-PLAN.md
-Resume file: .planning/phases/09-operational-web-ui/09-01-SUMMARY.md
+Last session: 2026-03-24T07:34:24.627Z
+Stopped at: Completed 09-02-PLAN.md
+Resume file: None

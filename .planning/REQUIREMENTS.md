@@ -59,7 +59,7 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 - [ ] **UI-04**: PO status overview table (posted/error/pending)
 - [ ] **UI-05**: PO diagnostic lookup from web (single PO search)
 - [ ] **UI-06**: Today's authorized POs list
-- [ ] **UI-07**: Schedule dashboard with next runs, last results, manual trigger buttons
+- [x] **UI-07**: Schedule dashboard with next runs, last results, manual trigger buttons
 - [x] **UI-08**: Tenant switcher dropdown in navbar
 
 ### Deployment
@@ -136,7 +136,7 @@ Deferred to future release. Tracked but not in current roadmap.
 | UI-04 | Phase 9 | Pending |
 | UI-05 | Phase 9 | Pending |
 | UI-06 | Phase 9 | Pending |
-| UI-07 | Phase 9 | Pending |
+| UI-07 | Phase 9 | Complete |
 | UI-08 | Phase 9 | Complete |
 | DEPLOY-01 | Phase 10 | Pending |
 | DEPLOY-02 | Phase 10 | Pending |
