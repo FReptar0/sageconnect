@@ -266,34 +266,21 @@ describe('OperationManager - Execution History', () => {
 // ============================================================
 // 7. Config Schedule Section
 // ============================================================
+// These tests use a separate describe block with jest.resetModules
+// to load the REAL config.js (not the mocked version above).
 describe('Config - Schedule Section', () => {
     let originalEnv;
 
     beforeEach(() => {
         originalEnv = { ...process.env };
+        setRequiredEnv();
     });
 
     afterEach(() => {
         process.env = originalEnv;
-        // Clear config cache
-        Object.keys(require.cache).forEach((key) => {
-            if (key.includes('src/config')) {
-                delete require.cache[key];
-            }
-        });
         jest.restoreAllMocks();
     });
 
-    function loadConfig() {
-        let config;
-        jest.isolateModules(() => {
-            jest.mock('dotenv', () => ({ config: jest.fn() }));
-            config = require('../../src/config');
-        });
-        return config;
-    }
-
-    // Provide all required env vars to prevent process.exit
     function setRequiredEnv() {
         Object.assign(process.env, {
             DB_USER: 'test', DB_PASSWORD: 'test', SERVER: 'localhost', DATABASE: 'TEST',
@@ -309,33 +296,41 @@ describe('Config - Schedule Section', () => {
         });
     }
 
+    function loadRealConfig() {
+        let config;
+        jest.isolateModules(() => {
+            // Override the top-level mock for this isolated load
+            jest.mock('dotenv', () => ({ config: jest.fn() }));
+            // Unmock config so we get the real module
+            jest.unmock('../../src/config');
+            config = require('../../src/config');
+        });
+        return config;
+    }
+
     test('config.schedule.cronExpression defaults to "*/15 * * * *" when CRON_SCHEDULE not set', () => {
-        setRequiredEnv();
         delete process.env.CRON_SCHEDULE;
-        const config = loadConfig();
+        const config = loadRealConfig();
         expect(config.schedule).toBeDefined();
         expect(config.schedule.cronExpression).toBe('*/15 * * * *');
     });
 
     test('config.schedule.operationDelayMs defaults to 5000 when OPERATION_DELAY_MS not set', () => {
-        setRequiredEnv();
         delete process.env.OPERATION_DELAY_MS;
-        const config = loadConfig();
+        const config = loadRealConfig();
         expect(config.schedule.operationDelayMs).toBe(5000);
     });
 
     test('config.schedule.operationDelayMs parses string env var to integer', () => {
-        setRequiredEnv();
         process.env.OPERATION_DELAY_MS = '10000';
-        const config = loadConfig();
+        const config = loadRealConfig();
         expect(config.schedule.operationDelayMs).toBe(10000);
         expect(typeof config.schedule.operationDelayMs).toBe('number');
     });
 
     test('config.schedule.cronExpression reads from CRON_SCHEDULE env var', () => {
-        setRequiredEnv();
         process.env.CRON_SCHEDULE = '0 * * * *';
-        const config = loadConfig();
+        const config = loadRealConfig();
         expect(config.schedule.cronExpression).toBe('0 * * * *');
     });
 });

@@ -26,6 +26,7 @@
     "joi": "^17.13.3",
     "log4js": "^6.9.1",
     "mssql": "^11.0.1",
+    "node-cron": "^4.2.1",
     "node-notifier": "^10.0.1",
     "nodemailer": "^6.9.16",
     "winston": "^3.17.0",

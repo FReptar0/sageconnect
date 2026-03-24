@@ -155,6 +155,11 @@ const config = {
     security: {
         apiKey: process.env.SAGECONNECT_API_KEY || null,
     },
+
+    schedule: {
+        cronExpression: process.env.CRON_SCHEDULE || '*/15 * * * *',
+        operationDelayMs: parseInt(process.env.OPERATION_DELAY_MS, 10) || 5000,
+    },
 };
 
 // Warn if API key protection is disabled (optional -- not fatal)
