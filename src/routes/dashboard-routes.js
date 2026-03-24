@@ -10,7 +10,7 @@ const {
     getStorageOverview,
     LOG_TYPES
 } = require('../services/LogDashboardService');
-const { autoShutdownService } = require('../services/AutoShutdownService');
+
 
 router.post('/send-mail', (req, res) => {
 
@@ -130,80 +130,6 @@ router.get('/api/log-dates', async (req, res) => {
             success: true,
             data: dates
         });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// Get auto-shutdown status
-router.get('/api/shutdown-status', (req, res) => {
-    try {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-        const status = autoShutdownService.getShutdownStatus();
-        const warning = global.shutdownWarning || null;
-        const shutdownMessage = global.shutdownMessage || null;
-
-        res.json({
-            success: true,
-            data: {
-                ...status,
-                warning,
-                shutdownMessage
-            }
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
-});
-
-// Shutdown server endpoint
-router.post('/api/shutdown', (req, res) => {
-    const { logGenerator } = require('../utils/LogGenerator');
-    const config = require('../config');
-
-    try {
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-
-        const logFileName = 'ServerStatus';
-
-        // In always-on mode, shutdown via dashboard is disabled -- use service manager (Servy)
-        if (!config.app.autoTerminate) {
-            logGenerator(logFileName, 'warn', '[SHUTDOWN] Shutdown manual rechazado -- modo always-on activo');
-            return res.status(403).json({
-                success: false,
-                error: 'Shutdown disabled in always-on mode. Use service manager (Servy) to stop.'
-            });
-        }
-
-        // Clear any scheduled auto-shutdown (manual shutdown takes precedence)
-        autoShutdownService.clearScheduledShutdown();
-
-        logGenerator(logFileName, 'info', '[SHUTDOWN] Shutdown manual solicitado desde dashboard - Iniciando cierre graceful del servidor');
-
-        res.json({
-            success: true,
-            message: 'Servidor detenido correctamente'
-        });
-
-        // Graceful shutdown with delay to allow response to be sent
-        setTimeout(() => {
-            console.log('[INFO] Shutdown solicitado desde dashboard...');
-            logGenerator(logFileName, 'info', '[SHUTDOWN] Servidor cerrado correctamente desde dashboard');
-
-            // Small additional delay to ensure log is written
-            setTimeout(() => {
-                process.exit(0); // Only reachable when autoTerminate=true (guarded above)
-            }, 200);
-        }, 1000);
 
     } catch (error) {
         res.status(500).json({

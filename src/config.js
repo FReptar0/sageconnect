@@ -139,7 +139,6 @@ const config = {
         rfc: process.env.RFC,
         regimen: process.env.REGIMEN,
         timezone: process.env.TIMEZONE,
-        autoTerminate: (process.env.AUTO_TERMINATE || '').toLowerCase() === 'true',
         defaultAddress: {
             city: process.env.DEFAULT_ADDRESS_CITY,
             country: process.env.DEFAULT_ADDRESS_COUNTRY,

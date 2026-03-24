@@ -3,7 +3,6 @@ const helmet = require('helmet');
 const cors = require('cors');
 const { rateLimit } = require('express-rate-limit');
 const { logGenerator } = require('./utils/LogGenerator');
-const { autoShutdownService } = require('./services/AutoShutdownService');
 const { errorResult } = require('./utils/ResultEnvelope');
 
 /**
@@ -131,21 +130,13 @@ app.use((err, req, res, _next) => {
 /**
  * Starts the Express server
  * @param {number} port - Port number to listen on
- * @param {boolean} webOnlyMode - Whether running in web-only mode
  * @returns {Object} Express server instance
  */
-function startServer(port = 3030, webOnlyMode = false) {
+function startServer(port = 3030) {
     const logFileName = 'ServerStatus';
 
     const server = app.listen(port, () => {
-        let msg = `El servidor se inició correctamente en el puerto ${port}`;
-        if (webOnlyMode) {
-            msg += ' (MODO WEB SOLAMENTE - Sin procesos automáticos)';
-
-            // Start auto-shutdown service only in web-only mode
-            logGenerator(logFileName, 'info', 'Iniciando servicio de auto-shutdown para evitar conflictos con procesos programados');
-            autoShutdownService.start();
-        }
+        const msg = `El servidor se inició correctamente en el puerto ${port}`;
         console.log(msg);
         logGenerator(logFileName, 'info', msg);
     });

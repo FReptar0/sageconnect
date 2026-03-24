@@ -290,10 +290,6 @@
                         <select class="form-select me-2" id="dateSelector" style="width: auto;">
                             <option value="">Hoy</option>
                         </select>
-                        <button class="btn btn-danger" onclick="shutdownServer()">
-                            <i class="fas fa-power-off me-1"></i>
-                            Detener Servidor
-                        </button>
                     </div>
                 </div>
             </nav>
@@ -584,8 +580,6 @@
     <script>
         let dashboardData = null;
         let countdownInterval = null;
-        let shutdownCheckInterval = null;
-        let isShutdownWarningShown = false;
 
         // Fullscreen viewer variables
         let fullscreenLogData = [];
@@ -600,9 +594,6 @@
 
             // Auto-refresh every 30 seconds
             setInterval(loadDashboard, 30000);
-
-            // Start shutdown monitoring
-            startShutdownMonitoring();
         });
 
         // Load dashboard data
@@ -1043,97 +1034,6 @@
             loadDashboard();
         }
 
-        // Shutdown server function
-        async function shutdownServer() {
-            const confirmed = confirm(
-                'Estas seguro de que quieres detener el servidor?\n\n' +
-                'Esta accion cerrara el dashboard y detendra SageConnect completamente.'
-            );
-
-            if (!confirmed) {
-                return;
-            }
-
-            try {
-                // Show shutdown message
-                document.body.innerHTML = `
-                    <div style="
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        z-index: 9999;
-                        color: white;
-                        text-align: center;
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                    ">
-                        <div>
-                            <i class="fas fa-power-off fa-4x mb-4"></i>
-                            <h2>Deteniendo Servidor...</h2>
-                            <p>SageConnect se esta cerrando correctamente</p>
-                            <div class="spinner-border mt-3" role="status">
-                                <span class="visually-hidden">Cerrando...</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                // Send shutdown request
-                const response = await fetch('/api/shutdown', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json; charset=utf-8'
-                    }
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    // Update message
-                    setTimeout(() => {
-                        document.body.innerHTML = `
-                            <div style="
-                                position: fixed;
-                                top: 0;
-                                left: 0;
-                                width: 100%;
-                                height: 100%;
-                                background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-                                display: flex;
-                                justify-content: center;
-                                align-items: center;
-                                z-index: 9999;
-                                color: white;
-                                text-align: center;
-                                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                            ">
-                                <div>
-                                    <i class="fas fa-check-circle fa-4x mb-4"></i>
-                                    <h2>Servidor Detenido</h2>
-                                    <p>SageConnect se ha cerrado correctamente</p>
-                                    <small>Puedes cerrar esta ventana del navegador</small>
-                                </div>
-                            </div>
-                        `;
-                    }, 1500);
-                } else {
-                    throw new Error(result.error || 'Error desconocido');
-                }
-
-            } catch (error) {
-                console.error('Error shutting down server:', error);
-                alert('Error al detener el servidor: ' + error.message);
-
-                // Reload the page to restore the dashboard
-                location.reload();
-            }
-        }
-
         // Auto-select default log
         function autoSelectDefaultLog() {
             const selector = document.getElementById('logTypeSelector');
@@ -1181,173 +1081,6 @@
                 }
             }
         }
-
-        // Start shutdown monitoring
-        function startShutdownMonitoring() {
-            console.log('Starting auto-shutdown monitoring...');
-
-            shutdownCheckInterval = setInterval(async () => {
-                try {
-                    const response = await fetch('/api/shutdown-status');
-                    const result = await response.json();
-
-                    if (result.success) {
-                        handleShutdownStatus(result.data);
-                    }
-                } catch (error) {
-                    console.error('Error checking shutdown status:', error);
-                }
-            }, 10000); // Check every 10 seconds
-        }
-
-        // Handle shutdown status updates
-        function handleShutdownStatus(status) {
-            // Handle shutdown warning (2 minutes before)
-            if (status.warning && !isShutdownWarningShown) {
-                showShutdownWarning(status.warning);
-                isShutdownWarningShown = true;
-            }
-
-            // Handle imminent shutdown (30 seconds before)
-            if (status.shutdownMessage) {
-                showAutoShutdownNotification(status.shutdownMessage);
-                return;
-            }
-
-            // Update shutdown info in UI if scheduled
-            if (status.scheduled) {
-                updateShutdownInfo(status);
-            }
-        }
-
-        // Show shutdown warning notification
-        function showShutdownWarning(warning) {
-            const scheduledTime = new Date(warning.scheduledTime);
-            const shutdownTime = new Date(warning.shutdownTime);
-
-            const notification = document.createElement('div');
-            notification.className = 'alert alert-warning fade show position-fixed';
-            notification.style.cssText = `
-                top: 80px;
-                right: 20px;
-                z-index: 1050;
-                min-width: 400px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            `;
-
-            notification.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <i class="fas fa-exclamation-triangle fa-2x me-3 text-warning"></i>
-                    <div class="flex-grow-1">
-                        <h6 class="mb-1"><strong>Cierre Automatico Obligatorio</strong></h6>
-                        <p class="mb-1">El servidor se cerrara automaticamente a las <strong>${shutdownTime.toLocaleTimeString('es-MX')}</strong></p>
-                        <small class="text-muted">
-                            <strong>Motivo:</strong> Evitar conflicto de puerto con proceso automatico programado para las ${scheduledTime.toLocaleTimeString('es-MX')}
-                        </small>
-                        <div class="mt-2">
-                            <small class="text-warning">
-                                <i class="fas fa-info-circle me-1"></i>
-                                <strong>Este cierre es obligatorio y no se puede cancelar</strong>
-                            </small>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(notification);
-
-            // Keep notification until shutdown
-        }
-
-        // Show auto-shutdown notification (final warning)
-        function showAutoShutdownNotification(shutdownMsg) {
-            const scheduledTime = new Date(shutdownMsg.scheduledTime);
-
-            document.body.innerHTML = `
-                <div style="
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    z-index: 9999;
-                    color: white;
-                    text-align: center;
-                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                ">
-                    <div class="container">
-                        <div class="row justify-content-center">
-                            <div class="col-md-8 col-lg-6">
-                                <i class="fas fa-server fa-4x mb-4"></i>
-                                <h2 class="mb-3">Cambio de Proceso Automatico</h2>
-                                <p class="lead mb-4">El dashboard web se esta cerrando para permitir que inicie el proceso automatico programado</p>
-                                <div class="alert alert-light text-dark mx-auto" style="max-width: 500px;">
-                                    <h6 class="mb-2"><i class="fas fa-info-circle me-2"></i>Informacion del Proceso:</h6>
-                                    <p class="mb-1"><strong>Hora programada:</strong> ${scheduledTime.toLocaleTimeString('es-MX')}</p>
-                                    <p class="mb-1"><strong>Motivo:</strong> Evitar conflicto de puerto 3030</p>
-                                    <p class="mb-0"><strong>Duracion estimada:</strong> ~1 minuto</p>
-                                </div>
-                                <div class="mt-4">
-                                    <div class="spinner-border spinner-border-lg" role="status">
-                                        <span class="visually-hidden">Cerrando servidor web...</span>
-                                    </div>
-                                    <p class="mt-3 mb-0">Cerrando servidor web...</p>
-                                </div>
-                                <div class="mt-4 text-light">
-                                    <small>
-                                        <i class="fas fa-lightbulb me-1"></i>
-                                        <strong>Consejo:</strong> Puedes volver a iniciar el dashboard con <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 4px; color: #fff; font-weight: bold;">npm run web-only</code> despues del proceso automatico
-                                    </small>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // Update shutdown info in dashboard
-        function updateShutdownInfo(status) {
-            // Add a small indicator in the navbar or status area
-            let shutdownIndicator = document.getElementById('shutdownIndicator');
-
-            if (!shutdownIndicator && status.secondsUntilShutdown > 0) {
-                shutdownIndicator = document.createElement('div');
-                shutdownIndicator.id = 'shutdownIndicator';
-                shutdownIndicator.className = 'alert alert-danger alert-sm d-none d-md-block';
-                shutdownIndicator.style.cssText = `
-                    position: fixed;
-                    bottom: 20px;
-                    right: 20px;
-                    z-index: 1040;
-                    min-width: 300px;
-                    font-size: 0.85rem;
-                `;
-
-                document.body.appendChild(shutdownIndicator);
-            }
-
-            if (shutdownIndicator && status.secondsUntilShutdown > 0) {
-                const minutes = Math.floor(status.secondsUntilShutdown / 60);
-                const seconds = status.secondsUntilShutdown % 60;
-
-                shutdownIndicator.innerHTML = `
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        <small>
-                            <strong>Cierre automatico en:</strong> ${minutes}:${seconds.toString().padStart(2, '0')}
-                        </small>
-                    </div>
-                `;
-            } else if (shutdownIndicator) {
-                shutdownIndicator.remove();
-            }
-        }
-
 
         // Handle date selector change
         document.getElementById('dateSelector').addEventListener('change', function() {
