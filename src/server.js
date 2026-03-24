@@ -90,15 +90,28 @@ app.use('/public', express.static(process.cwd() + '/public', {
 }));
 
 // ---------------------------------------------------------------------------
+// Shared JS static mount (before routes so /js/shared.js resolves)
+// ---------------------------------------------------------------------------
+
+app.use('/js', express.static(process.cwd() + '/public/js'));
+
+// ---------------------------------------------------------------------------
+// Clean URL routes for operational pages
+// ---------------------------------------------------------------------------
+
+app.get('/schedule.html', (_req, res) => res.sendFile(process.cwd() + '/public/schedule.html'));
+app.get('/payments.html', (_req, res) => res.sendFile(process.cwd() + '/public/payments.html'));
+app.get('/pos.html', (_req, res) => res.sendFile(process.cwd() + '/public/pos.html'));
+app.get('/logs.html', (_req, res) => res.sendFile(process.cwd() + '/public/logs.html'));
+
+// ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
 
 app.use(require('./routes/routes'));
 
-// index handler
-app.get('/', (req, res) => {
-    res.sendFile(process.cwd() + '/public/index.html');
-});
+// Root redirect -- schedule page is the new home
+app.get('/', (_req, res) => res.redirect('/schedule.html'));
 
 // 404 handler
 app.use(function (req, res) {

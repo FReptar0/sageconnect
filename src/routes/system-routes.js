@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const config = require('../config');
+const { successResult } = require('../utils/ResultEnvelope');
 
 /**
  * GET /health
@@ -17,6 +19,20 @@ router.get('/health', (req, res) => {
         summary: 'Service healthy',
         meta: {},
     });
+});
+
+/**
+ * GET /tenants
+ * Returns the list of configured tenants (index, name, id).
+ * No API key required -- tenant names are not secrets.
+ */
+router.get('/tenants', (_req, res) => {
+    const tenants = config.portal.tenants.map((t, i) => ({
+        index: i,
+        name: t.database || `Tenant ${i}`,
+        id: t.id,
+    }));
+    res.json(successResult({ tenants }, 'Tenant list'));
 });
 
 module.exports = router;
