@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
 status: in-progress
-stopped_at: Completed 08-01-PLAN.md
-last_updated: "2026-03-24T03:52:41Z"
-last_activity: 2026-03-24 -- Completed 08-01 OperationManager service + config schedule
+stopped_at: Completed 08-03-PLAN.md
+last_updated: "2026-03-24T04:00:24Z"
+last_activity: 2026-03-24 -- Completed 08-03 Schedule & Operations routes + SSE streaming
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.0 Always-On Service -- Phase 8 in progress
+**Current focus:** v2.0 Always-On Service -- Phase 8 complete
 
 ## Current Position
 
 Phase: 8 of 10 (Scheduler + Real-Time Layer)
-Plan: 1 of 3 complete
-Status: In Progress
-Last activity: 2026-03-24 -- Completed 08-01 OperationManager service + config schedule
+Plan: 3 of 3 complete
+Status: Phase Complete
+Last activity: 2026-03-24 -- Completed 08-03 Schedule & Operations routes + SSE streaming
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Progress: [████████░░] 80%
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
 | 7 (rest-api-security) | 3/3 | 20min | 7min |
-| 8 (scheduler-real-time) | 1/3 | 3min | 3min |
+| 8 (scheduler-real-time) | 3/3 | 11min | 4min |
 
 ## Accumulated Context
 
@@ -83,6 +83,13 @@ Progress: [████████░░] 80%
 - [08-01]: OperationManager extends EventEmitter for progress:operationId SSE pattern
 - [08-01]: Ring buffer uses array shift (max 100) for simplicity over circular buffer
 - [08-01]: _reset() method on singleton for test isolation
+- [08-02]: noOverlap + acquireLock belt-and-suspenders overlap prevention for cron cycles
+- [08-02]: forResponse uses options={} parameter pattern for backward-compatible progress emission
+- [08-02]: index.js autoTerminate branching: true=legacy run-once, false=cron scheduler always-on
+- [08-03]: Lazy CronScheduler require with try/catch handles Wave 2 parallel execution gracefully
+- [08-03]: SSE endpoint uses direct res.write (no asyncHandler/sendResult) with heartbeat + auto-cleanup
+- [08-03]: Schedule/operations routes mounted without global requireApiKey -- POST trigger applies it internally
+- [08-03]: triggerSchema Joi validation restricts manual trigger to known task IDs only (background-cycle)
 
 ### Pending Todos
 
@@ -95,6 +102,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T03:52:41Z
-Stopped at: Completed 08-01-PLAN.md
-Resume file: .planning/phases/08-scheduler-real-time-layer/08-02-PLAN.md
+Last session: 2026-03-24T04:00:24Z
+Stopped at: Completed 08-03-PLAN.md (Phase 8 complete)
+Resume file: .planning/phases/09-web-dashboard/09-01-PLAN.md
