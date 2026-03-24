@@ -119,11 +119,11 @@ Plans:
   2. AutoShutdownService is removed from the codebase and the service runs continuously without self-termination
   3. AUTO_TERMINATE flag, RunSageconnect.bat, and Windows Task Scheduler entries are removed/disabled
   4. The service remains stable (no crashes, no port conflicts, no memory leaks) for 24+ hours of continuous operation
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md -- Legacy code removal + test updates (Wave 1)
+- [ ] 10-02-PLAN.md -- Servy installation script + deployment documentation (Wave 1)
 
 ## Progress
 
@@ -141,4 +141,4 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/3 | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/4 | Not started | - |
-| 10. Servy Cutover + Retirement | v2.0 | 0/? | Not started | - |
+| 10. Servy Cutover + Retirement | v2.0 | 0/2 | Not started | - |
