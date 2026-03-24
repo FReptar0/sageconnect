@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
-status: completed
-stopped_at: Phase 8 context gathered
-last_updated: "2026-03-23T23:07:50.321Z"
-last_activity: 2026-03-23 -- Completed 07-03 PO routes, schemas, 31 integration tests
+status: in-progress
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-24T03:52:41Z"
+last_activity: 2026-03-24 -- Completed 08-01 OperationManager service + config schedule
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 7
-  completed_plans: 7
-  percent: 42
+  total_plans: 10
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -21,21 +21,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-23)
 
 **Core value:** La integracion Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.0 Always-On Service -- Phase 7 complete, ready for Phase 8
+**Current focus:** v2.0 Always-On Service -- Phase 8 in progress
 
 ## Current Position
 
-Phase: 7 of 10 (REST API + Security)
-Plan: 3 of 3 complete
-Status: Phase Complete
-Last activity: 2026-03-23 -- Completed 07-03 PO routes, schemas, 31 integration tests
+Phase: 8 of 10 (Scheduler + Real-Time Layer)
+Plan: 1 of 3 complete
+Status: In Progress
+Last activity: 2026-03-24 -- Completed 08-01 OperationManager service + config schedule
 
-Progress: [████░░░░░░] 42%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10 (v1.0: 4, v1.1: 6)
+- Total plans completed: 11 (v1.0: 4, v1.1: 6, v2.0: 8)
 - Average duration: --
 - Total execution time: --
 
@@ -46,6 +46,7 @@ Progress: [████░░░░░░] 42%
 | 1-5 (v1.0+v1.1) | 10 | -- | -- |
 | 6 (infra-foundation) | 4/4 | 44min | 11min |
 | 7 (rest-api-security) | 3/3 | 20min | 7min |
+| 8 (scheduler-real-time) | 1/3 | 3min | 3min |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Progress: [████░░░░░░] 42%
 - [Phase 07]: Local writeLimiter in po-routes.js to avoid circular dependency with server.js
 - [Phase 07]: dryRun defaults to true via Joi schema on PUT /update for destructive endpoint safety
 - [Phase 07]: Mock express-rate-limit in tests to prevent write limiter from blocking test suite
+- [08-01]: OperationManager extends EventEmitter for progress:operationId SSE pattern
+- [08-01]: Ring buffer uses array shift (max 100) for simplicity over circular buffer
+- [08-01]: _reset() method on singleton for test isolation
 
 ### Pending Todos
 
@@ -91,6 +95,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-23T23:07:50.316Z
-Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-scheduler-real-time-layer/08-CONTEXT.md
+Last session: 2026-03-24T03:52:41Z
+Stopped at: Completed 08-01-PLAN.md
+Resume file: .planning/phases/08-scheduler-real-time-layer/08-02-PLAN.md
