@@ -29,7 +29,6 @@ jest.mock('../../src/config', () => ({
     },
     app: {
         timezone: 'America/Mexico_City',
-        autoTerminate: false,
     },
     portal: {
         tenants: [{ id: 'T1' }, { id: 'T2' }],

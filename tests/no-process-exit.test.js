@@ -88,11 +88,10 @@ function checkExitCallsAfterGuard(filePath) {
 // ---------------------------------------------------------------------------
 describe('process.exit compliance', () => {
 
-    test('no process.exit in src/ files except config.js, index.js, and files with require.main guards', () => {
-        // Allowed files: config.js (startup validation), index.js (autoTerminate only),
-        // routes.js (autoTerminate guard verified in separate test),
+    test('no process.exit in src/ files except config.js and files with require.main guards', () => {
+        // Allowed files: config.js (startup validation fail-fast),
         // files with require.main guards (CLI scripts)
-        const ALLOWED_FILES = new Set(['config.js', 'index.js', 'routes.js', 'dashboard-routes.js']);
+        const ALLOWED_FILES = new Set(['config.js']);
 
         function scanDir(dirPath, results = []) {
             if (!fs.existsSync(dirPath)) return results;
@@ -196,32 +195,12 @@ describe('process.exit compliance', () => {
     });
 
     // ---------------------------------------------------------------------------
-    // Test 5: index.js process.exit calls are inside autoTerminate conditional blocks
+    // Test 5: index.js has zero process.exit calls (always-on mode)
     // ---------------------------------------------------------------------------
-    test('index.js process.exit calls are inside autoTerminate conditional blocks', () => {
+    test('index.js has zero process.exit calls', () => {
         const filePath = path.join(SRC_ROOT, 'index.js');
-        const content = fs.readFileSync(filePath, 'utf8');
-        const lines = content.split('\n');
-
         const exitCalls = findProcessExitCalls(filePath);
-        expect(exitCalls.length).toBeGreaterThan(0); // Should have some exit calls
-
-        // Each process.exit call should be preceded by an autoTerminate check
-        for (const call of exitCalls) {
-            // Look backwards from the exit call line to find the nearest autoTerminate guard
-            let foundGuard = false;
-            for (let i = call.line - 2; i >= 0; i--) {
-                if (/autoTerminate/.test(lines[i])) {
-                    foundGuard = true;
-                    break;
-                }
-                // If we hit a function boundary, stop looking
-                if (/^(async\s+)?function\s|^\}\s*$/.test(lines[i].trim())) {
-                    break;
-                }
-            }
-            expect(foundGuard).toBe(true);
-        }
+        expect(exitCalls.length).toBe(0);
     });
 
     // ---------------------------------------------------------------------------
@@ -234,34 +213,11 @@ describe('process.exit compliance', () => {
     });
 
     // ---------------------------------------------------------------------------
-    // Additional: AutoShutdownService.js has zero process.exit calls
+    // Additional: dashboard-routes.js has zero process.exit calls
     // ---------------------------------------------------------------------------
-    test('AutoShutdownService.js has zero process.exit calls', () => {
-        const filePath = path.join(SRC_ROOT, 'services', 'AutoShutdownService.js');
+    test('dashboard-routes.js has zero process.exit calls', () => {
+        const filePath = path.join(SRC_ROOT, 'routes', 'dashboard-routes.js');
         const exitCalls = findProcessExitCalls(filePath);
         expect(exitCalls.length).toBe(0);
-    });
-
-    // ---------------------------------------------------------------------------
-    // Additional: routes.js process.exit is inside autoTerminate guard
-    // ---------------------------------------------------------------------------
-    test('dashboard-routes.js process.exit is guarded by autoTerminate check', () => {
-        const filePath = path.join(SRC_ROOT, 'routes', 'dashboard-routes.js');
-        const content = fs.readFileSync(filePath, 'utf8');
-        const exitCalls = findProcessExitCalls(filePath);
-
-        // Every process.exit call should be in a code path that's only reachable when autoTerminate=true
-        // The shutdown route checks !config.app.autoTerminate and returns 403 if false
-        for (const call of exitCalls) {
-            const lines = content.split('\n');
-            let foundGuard = false;
-            for (let i = call.line - 2; i >= 0; i--) {
-                if (/autoTerminate/.test(lines[i])) {
-                    foundGuard = true;
-                    break;
-                }
-            }
-            expect(foundGuard).toBe(true);
-        }
     });
 });

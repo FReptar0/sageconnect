@@ -43,7 +43,6 @@ jest.mock('../src/config', () => ({
     paths: { downloads: '', providers: '', logs: '' },
     app: {
         importRoute: '', arg: '', company: '', rfc: '', regimen: '', timezone: '',
-        autoTerminate: false,
         defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
         addressIdentifiersSkip: []
     }

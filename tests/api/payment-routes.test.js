@@ -24,7 +24,6 @@ jest.mock('../../src/config', () => ({
     database: { user: 'u', password: 'p', server: 's', database: 'd' },
     paths: { logs: '/tmp', downloads: '/tmp', providers: '/tmp' },
     app: {
-        autoTerminate: false,
         timezone: 'America/Mexico_City',
         importRoute: '/test',
         arg: 'ARG',
@@ -138,10 +137,6 @@ jest.mock('../../src/utils/GetProviders', () => ({
 jest.mock('../../src/services/ProviderIdResolver', () => ({
     resolveProviderIdByExternalId: jest.fn().mockResolvedValue(false),
 }));
-jest.mock('../../src/services/AutoShutdownService', () => ({
-    autoShutdownService: { start: jest.fn(), stop: jest.fn() },
-}));
-
 // ---------------------------------------------------------------------------
 // Build test app
 // ---------------------------------------------------------------------------

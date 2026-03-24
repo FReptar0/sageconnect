@@ -31,7 +31,7 @@ jest.mock('../../src/config', () => ({
     },
     mailing: {},
     paths: { downloads: '/tmp', providers: '/tmp', logs: '/tmp' },
-    app: { timezone: 'UTC', autoTerminate: false },
+    app: { timezone: 'UTC' },
     security: { apiKey: 'test-api-key' },
 }));
 

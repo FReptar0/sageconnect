@@ -191,18 +191,6 @@ describe('Config Structure', () => {
         expect(config.app.addressIdentifiersSkip).toEqual(['LOC1', 'LOC2']);
     });
 
-    test('config.app.autoTerminate is boolean (defaults to false)', () => {
-        const config = loadConfig();
-        expect(typeof config.app.autoTerminate).toBe('boolean');
-        expect(config.app.autoTerminate).toBe(false);
-    });
-
-    test('config.app.autoTerminate is true when AUTO_TERMINATE=true', () => {
-        process.env.AUTO_TERMINATE = 'true';
-        const config = loadConfig();
-        expect(config.app.autoTerminate).toBe(true);
-    });
-
     test('config.app has all expected scalar keys', () => {
         const config = loadConfig();
         expect(config.app.importRoute).toBe('/usr/bin/import');

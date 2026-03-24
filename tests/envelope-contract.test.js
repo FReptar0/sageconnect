@@ -21,7 +21,6 @@ jest.mock('../src/config', () => ({
     mailing: {},
     paths: { downloads: '/tmp', logs: '/tmp' },
     app: {
-        autoTerminate: false,
         defaultAddress: {
             city: '', country: '', identifier: '', municipality: '',
             state: '', street: '', zip: ''

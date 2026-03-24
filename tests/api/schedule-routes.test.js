@@ -26,7 +26,6 @@ jest.mock('../../src/config', () => ({
     paths: { logs: '/tmp', downloads: '/tmp', providers: '/tmp' },
     schedule: { cronExpression: '*/15 * * * *', operationDelayMs: 5000 },
     app: {
-        autoTerminate: false,
         timezone: 'America/Mexico_City',
         importRoute: '/test',
         arg: 'ARG',
@@ -92,10 +91,6 @@ jest.mock('../../src/utils/TimezoneHelper', () => ({
     getCurrentDateCompact: jest.fn().mockReturnValue('20260323'),
     getCurrentDateString: jest.fn().mockReturnValue('2026-03-23'),
 }));
-jest.mock('../../src/services/AutoShutdownService', () => ({
-    autoShutdownService: { start: jest.fn(), stop: jest.fn() },
-}));
-
 // Mock express-rate-limit
 jest.mock('express-rate-limit', () => ({
     rateLimit: () => (req, res, next) => next(),
