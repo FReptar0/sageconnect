@@ -85,6 +85,3 @@ Thumbs.db
 *.bak
 *.backup
 *~
-
-# Separate projects (own repos)
-sageconnect-license/
