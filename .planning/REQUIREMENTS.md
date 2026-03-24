@@ -65,8 +65,8 @@ Requirements for always-on service milestone. Each maps to roadmap phases.
 ### Deployment
 
 - [x] **DEPLOY-01**: Servy configuration/script to register SageConnect as native Windows Service
-- [ ] **DEPLOY-02**: Remove AutoShutdownService (after cron + Servy proven stable)
-- [ ] **DEPLOY-03**: Remove AUTO_TERMINATE flag and RunSageconnect.bat
+- [x] **DEPLOY-02**: Remove AutoShutdownService (after cron + Servy proven stable)
+- [x] **DEPLOY-03**: Remove AUTO_TERMINATE flag and RunSageconnect.bat
 
 ## v3.0 Requirements
 
@@ -139,8 +139,8 @@ Deferred to future release. Tracked but not in current roadmap.
 | UI-07 | Phase 9 | Complete |
 | UI-08 | Phase 9 | Complete |
 | DEPLOY-01 | Phase 10 | Complete |
-| DEPLOY-02 | Phase 10 | Pending |
-| DEPLOY-03 | Phase 10 | Pending |
+| DEPLOY-02 | Phase 10 | Complete |
+| DEPLOY-03 | Phase 10 | Complete |
 
 **Coverage:**
 - v2.0 requirements: 40 total

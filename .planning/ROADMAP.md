@@ -37,7 +37,7 @@ See: `.planning/milestones/v1.1-ROADMAP.md` for full details.
 - [x] **Phase 7: REST API + Security** - Expose all 15 payment/PO scripts as secured REST endpoints with validation (completed 2026-03-23)
 - [ ] **Phase 8: Scheduler + Real-Time Layer** - Internal node-cron scheduling with SSE progress streams and operation concurrency control
 - [ ] **Phase 9: Operational Web UI** - Payment audit, PO management, schedule dashboard, and tenant switcher views
-- [ ] **Phase 10: Servy Cutover + Retirement** - Register as Windows Service via Servy, remove AutoShutdownService and Task Scheduler dependency
+- [x] **Phase 10: Servy Cutover + Retirement** - Register as Windows Service via Servy, remove AutoShutdownService and Task Scheduler dependency (completed 2026-03-24)
 
 ## Phase Details
 
@@ -141,4 +141,4 @@ Phases execute in numeric order: 6 -> 7 -> 8 -> 9 -> 10
 | 7. REST API + Security | v2.0 | 2/3 | In Progress | - |
 | 8. Scheduler + Real-Time Layer | v2.0 | 0/3 | Not started | - |
 | 9. Operational Web UI | v2.0 | 0/4 | Not started | - |
-| 10. Servy Cutover + Retirement | 1/2 | In Progress|  | - |
+| 10. Servy Cutover + Retirement | 2/2 | Complete   | 2026-03-24 | - |

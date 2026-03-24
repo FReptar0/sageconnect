@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Always-On Service
 status: executing
-stopped_at: Completed 10-02-PLAN.md
-last_updated: "2026-03-24T18:47:24.267Z"
-last_activity: 2026-03-24 -- Completed 10-02 Servy installation script and deployment documentation
+stopped_at: Completed 10-01-PLAN.md -- all plans complete
+last_updated: "2026-03-24T18:51:20.000Z"
+last_activity: 2026-03-24 -- Completed 10-01 legacy lifecycle removal (all v2.0 plans done)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 16
-  completed_plans: 15
-  percent: 94
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-23)
 ## Current Position
 
 Phase: 10 of 10 (Servy Cutover + Retirement)
-Plan: 1 of 2 complete (10-02 done, 10-01 pending)
-Status: In Progress
-Last activity: 2026-03-24 -- Completed 10-02 Servy installation script and deployment documentation
+Plan: 2 of 2 complete
+Status: Complete
+Last activity: 2026-03-24 -- Completed 10-01 legacy lifecycle removal (all v2.0 plans done)
 
-Progress: [█████████░] 94%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [█████████░] 94%
 | 9 (operational-web-ui) | 4/4 | 39min | 10min |
 | Phase 09 P03 | 4min | 2 tasks | 3 files |
 | Phase 10 P02 | 2min | 1 tasks | 2 files |
+| Phase 10 P01 | 8min | 2 tasks | 25 files |
 
 ## Accumulated Context
 
@@ -108,6 +109,9 @@ Progress: [█████████░] 94%
 - [Phase 10]: [10-02]: Used servy-cli instead of PowerShell module import for portability across install configurations
 - [Phase 10]: [10-02]: Script accepts parameterized defaults (InstallDir, NodePath, ServiceName, Port) for flexibility across environments
 - [Phase 10]: [10-02]: Deployment documentation written in Spanish as team language
+- [Phase 10]: [10-01]: index.js reduced from 39 lines to 14: startServer + initScheduler only, no mode switching
+- [Phase 10]: [10-01]: config.js keeps process.exit(1) in validate() for fail-fast on missing env vars
+- [Phase 10]: [10-01]: obfuscate.js COPY_FILES updated: removed RunSageconnect.bat, added scripts/install-service.ps1
 
 ### Pending Todos
 
@@ -120,6 +124,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-24T18:47:23.127Z
-Stopped at: Completed 10-02-PLAN.md
+Last session: 2026-03-24T18:51:20.000Z
+Stopped at: Completed 10-01-PLAN.md -- all v2.0 plans done
 Resume file: None
