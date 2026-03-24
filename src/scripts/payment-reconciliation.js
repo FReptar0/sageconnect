@@ -511,6 +511,7 @@ async function runReconciliation(options = {}) {
     const optBatchLimit = options.batchLimit != null ? options.batchLimit : 20;
     const optPyFilter = options.pyFilter || null;
     const optShouldUpload = options.dryRun === false; // dryRun=true -> shouldUpload=false
+    const optIncludeDetails = options.includeDetails === true;
 
     // Derive tenant-specific values
     const tenant = config.portal.tenants[idx];
@@ -569,8 +570,12 @@ async function runReconciliation(options = {}) {
         const portalUuids = Array.from(portalUuidMap.keys());
         if (!portalUuids.length) {
             console.log('\n[OK] No portal UUIDs to search for in Sage.');
+            const emptyData = { portalInvoiceCount: 0, sagePaymentCount: 0, categories: { ready: 0, no_providerid: 0, no_uuid: 0, not_in_portal: 0, provider_mismatch: 0 }, autoResolvedCount: 0 };
+            if (optIncludeDetails) {
+                emptyData.details = { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] };
+            }
             return successResult(
-                { portalInvoiceCount: 0, sagePaymentCount: 0, categories: { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] }, autoResolvedCount: 0 },
+                emptyData,
                 'No portal UUIDs found to reconcile',
                 { tenant: localTenantIds[idx], startTime }
             );
@@ -657,8 +662,12 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
 
         if (!deduped.length) {
             console.log('\n[OK] No matching payments found to reconcile.');
+            const emptyData = { portalInvoiceCount: portalUuidMap.size, sagePaymentCount: 0, categories: { ready: 0, no_providerid: 0, no_uuid: 0, not_in_portal: 0, provider_mismatch: 0 }, autoResolvedCount: 0 };
+            if (optIncludeDetails) {
+                emptyData.details = { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] };
+            }
             return successResult(
-                { portalInvoiceCount: portalUuidMap.size, sagePaymentCount: 0, categories: { ready: [], no_providerid: [], no_uuid: [], not_in_portal: [], provider_mismatch: [] }, autoResolvedCount: 0 },
+                emptyData,
                 'No matching Sage payments found to reconcile',
                 { tenant: localTenantIds[idx], startTime }
             );
@@ -677,20 +686,49 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
             database: localDatabase, URL: config.portal.url
         });
 
-        return successResult(
-            {
-                portalInvoiceCount: portalUuidMap.size,
-                sagePaymentCount: deduped.length,
-                categories: {
-                    ready: categories.ready.length,
-                    no_providerid: categories.no_providerid.length,
-                    no_uuid: categories.no_uuid.length,
-                    not_in_portal: categories.not_in_portal.length,
-                    provider_mismatch: categories.provider_mismatch.length
-                },
-                autoResolvedCount,
-                upload: uploadResult.data
+        const responseData = {
+            portalInvoiceCount: portalUuidMap.size,
+            sagePaymentCount: deduped.length,
+            categories: {
+                ready: categories.ready.length,
+                no_providerid: categories.no_providerid.length,
+                no_uuid: categories.no_uuid.length,
+                not_in_portal: categories.not_in_portal.length,
+                provider_mismatch: categories.provider_mismatch.length
             },
+            autoResolvedCount,
+            upload: uploadResult.data
+        };
+
+        if (optIncludeDetails) {
+            responseData.details = {
+                ready: categories.ready.map(p => ({
+                    hdr: { external_id: p.hdr.external_id, provider_external_id: p.hdr.provider_external_id, total_amount: p.hdr.total_amount, bk_currency: p.hdr.bk_currency, PROVIDERID: (p.hdr.PROVIDERID || '').trim(), RFC: (p.hdr.RFC || '').trim(), payment_date: p.hdr.payment_date, bank_account_id: p.hdr.bank_account_id },
+                    invoices: (p.invoices || []).map(inv => ({ invoice_external_id: inv.invoice_external_id, UUID: (inv.UUID || '').trim(), invoice_amount: inv.invoice_amount, invoice_currency: inv.invoice_currency, payment_amount: inv.payment_amount, FULL_PAID: inv.FULL_PAID, exchange_rate: inv.exchange_rate }))
+                })),
+                no_providerid: categories.no_providerid.map(p => ({
+                    hdr: { external_id: p.hdr.external_id, provider_external_id: p.hdr.provider_external_id, total_amount: p.hdr.total_amount, bk_currency: p.hdr.bk_currency, RFC: (p.hdr.RFC || '').trim() },
+                    reason: p.reason
+                })),
+                no_uuid: categories.no_uuid.map(p => ({
+                    hdr: { external_id: p.hdr.external_id, provider_external_id: p.hdr.provider_external_id, total_amount: p.hdr.total_amount, bk_currency: p.hdr.bk_currency },
+                    invoices: (p.invoices || []).map(inv => ({ invoice_external_id: inv.invoice_external_id, UUID: (inv.UUID || '').trim(), invoice_amount: inv.invoice_amount, invoice_currency: inv.invoice_currency })),
+                    missingCount: p.missingCount, totalCount: p.totalCount
+                })),
+                not_in_portal: categories.not_in_portal.map(p => ({
+                    hdr: { external_id: p.hdr.external_id, provider_external_id: p.hdr.provider_external_id, total_amount: p.hdr.total_amount, bk_currency: p.hdr.bk_currency },
+                    invoices: (p.invoices || []).map(inv => ({ invoice_external_id: inv.invoice_external_id, UUID: (inv.UUID || '').trim(), invoice_amount: inv.invoice_amount, invoice_currency: inv.invoice_currency }))
+                })),
+                provider_mismatch: categories.provider_mismatch.map(p => ({
+                    hdr: { external_id: p.hdr.external_id, provider_external_id: p.hdr.provider_external_id, total_amount: p.hdr.total_amount, bk_currency: p.hdr.bk_currency, PROVIDERID: (p.hdr.PROVIDERID || '').trim() },
+                    invoices: (p.invoices || []).map(inv => ({ invoice_external_id: inv.invoice_external_id, UUID: (inv.UUID || '').trim(), invoice_amount: inv.invoice_amount, invoice_currency: inv.invoice_currency })),
+                    mismatchDetails: p.mismatchDetails
+                }))
+            };
+        }
+
+        return successResult(
+            responseData,
             `Reconciliation complete: ${deduped.length} payments classified, ${categories.ready.length} ready`,
             { tenant: localTenantIds[idx], startTime }
         );

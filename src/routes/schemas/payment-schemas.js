@@ -19,6 +19,7 @@ const reconciliationSchema = Joi.object({
     pyFilter: Joi.string().pattern(/^PY\d+$/).optional(),
     batchLimit: Joi.number().integer().min(1).max(100).default(20),
     dryRun: Joi.boolean().default(true),
+    includeDetails: Joi.boolean().default(false),
 });
 
 // ---------------------------------------------------------------------------
