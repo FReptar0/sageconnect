@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const config = require('../config');
 const { successResult } = require('../utils/ResultEnvelope');
+const licenseValidator = require('../services/LicenseValidator');
 
 /**
  * GET /health
@@ -33,6 +34,20 @@ router.get('/tenants', (_req, res) => {
         id: t.id,
     }));
     res.json(successResult({ tenants }, 'Tenant list'));
+});
+
+/**
+ * GET /license
+ * Returns the current license validation state for UI consumption.
+ * Always accessible -- no API key or license middleware required.
+ * Includes hmacConfigured boolean for diagnostics (presence, not value).
+ */
+router.get('/license', (_req, res) => {
+    const status = licenseValidator.getStatus();
+    res.json(successResult({
+        ...status,
+        hmacConfigured: Boolean(config.license && config.license.hmacSecret),
+    }, 'License status'));
 });
 
 module.exports = router;

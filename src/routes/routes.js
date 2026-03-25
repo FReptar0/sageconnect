@@ -1,19 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { requireApiKey } = require('../middleware/api-key');
+const { requireLicense } = require('../middleware/require-license');
 
-// Dashboard routes -- no API key required (internal monitoring)
+// Unlicensed routes -- always accessible regardless of license state
 router.use(require('./dashboard-routes'));
-
-// System routes -- no API key required
 router.use('/api/system', require('./system-routes'));
 
-// Schedule + Operations routes -- no API key on mount (POST trigger applies it internally)
-router.use('/api/schedule', require('./schedule-routes'));
-router.use('/api/operations', require('./operations-routes'));
+// Licensed routes -- blocked with 503 when license invalid
+router.use('/api/schedule', requireLicense, require('./schedule-routes'));
+router.use('/api/operations', requireLicense, require('./operations-routes'));
 
-// API routes -- API key required (per user decision: all /api/payments and /api/pos)
-router.use('/api/payments', requireApiKey, require('./payment-routes'));
-router.use('/api/pos', requireApiKey, require('./po-routes'));
+// Licensed + API key routes -- requireLicense runs BEFORE requireApiKey
+router.use('/api/payments', requireLicense, requireApiKey, require('./payment-routes'));
+router.use('/api/pos', requireLicense, requireApiKey, require('./po-routes'));
 
 module.exports = router;
