@@ -1,7 +1,7 @@
 # Requirements: SageConnect v2.1
 
 **Defined:** 2026-03-25
-**Core Value:** Control remoto sobre deployments de SageConnect — kill switch confiable que no puede ser bypasseado.
+**Core Value:** Control remoto sobre deployments de SageConnect -- kill switch confiable que no puede ser bypasseado.
 
 ## v2.1 Requirements
 
@@ -42,7 +42,7 @@
 
 | Feature | Reason |
 |---------|--------|
-| Persistent license cache to disk | Would defeat kill switch — client could run indefinitely offline |
+| Persistent license cache to disk | Would defeat kill switch -- client could run indefinitely offline |
 | Grace period for revocations | Business decision: no payment = immediate block |
 | Offline validation mode | SageConnect is always-online; license server must be reachable |
 | License file/token approach | Requires secure storage; server-based validation is simpler |
@@ -52,25 +52,25 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIC-01 | — | Pending |
-| LIC-02 | — | Pending |
-| LIC-03 | — | Pending |
-| LIC-04 | — | Pending |
-| LIC-05 | — | Pending |
-| ENF-01 | — | Pending |
-| ENF-02 | — | Pending |
-| ENF-03 | — | Pending |
-| ENF-04 | — | Pending |
-| CFG-01 | — | Pending |
-| CFG-02 | — | Pending |
-| UI-09 | — | Pending |
-| UI-10 | — | Pending |
+| CFG-01 | Phase 11 | Pending |
+| CFG-02 | Phase 11 | Pending |
+| LIC-01 | Phase 12 | Pending |
+| LIC-02 | Phase 12 | Pending |
+| LIC-03 | Phase 12 | Pending |
+| LIC-04 | Phase 12 | Pending |
+| LIC-05 | Phase 12 | Pending |
+| ENF-01 | Phase 13 | Pending |
+| ENF-02 | Phase 13 | Pending |
+| ENF-03 | Phase 13 | Pending |
+| ENF-04 | Phase 13 | Pending |
+| UI-09 | Phase 14 | Pending |
+| UI-10 | Phase 14 | Pending |
 
 **Coverage:**
 - v2.1 requirements: 13 total
-- Mapped to phases: 0
-- Unmapped: 13
+- Mapped to phases: 13
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-25*
-*Last updated: 2026-03-25 after initial definition*
+*Last updated: 2026-03-25 after roadmap creation*
