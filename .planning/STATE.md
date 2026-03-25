@@ -4,7 +4,7 @@ milestone: v2.0
 milestone_name: Always-On Service
 status: completed
 stopped_at: Completed 10-01-PLAN.md -- all v2.0 plans done
-last_updated: "2026-03-24T18:58:37.739Z"
+last_updated: "2026-03-25T17:38:38.012Z"
 last_activity: 2026-03-24 -- Completed 10-01 legacy lifecycle removal (all v2.0 plans done)
 progress:
   total_phases: 5

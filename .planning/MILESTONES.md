@@ -1,5 +1,25 @@
 # Milestones
 
+## v2.0 Always-On Service (Shipped: 2026-03-25)
+
+**Phases completed:** 5 phases, 16 plans
+**Files:** 117 files changed, 20,560 insertions, 1,074 deletions
+**Git range:** `fe2cd63` → `e273659`
+
+**Key accomplishments:**
+- Singleton SQL connection pool with USE [database] switching + ResultEnvelope unified response contract across all 14 modules
+- 15 REST API endpoints (7 payment + 8 PO) with helmet, CORS, rate-limit, API key auth (SAGECONNECT_API_KEY)
+- Internal node-cron v4 scheduler replacing Windows Task Scheduler with noOverlap, OperationManager concurrency locks, SSE progress streaming
+- 4 operational web pages: schedule dashboard (home), payment audit (5-category cards + drill-down), PO management (diagnostic search + actions), logs (migrated)
+- Servy Windows Service setup with auto-start, crash recovery, log rotation + Spanish deployment guide
+- Complete legacy removal: AutoShutdownService, AUTO_TERMINATE, RunSageconnect.bat, --web-only all gone
+- 200+ tests across the codebase
+
+**Tech debt:**
+- 3 pre-existing test failures (TransformTime x2, PaymentReconciliation x1) carried from v1.1
+
+---
+
 ## v1.1 Env Unification (Shipped: 2026-03-23)
 
 **Phases completed:** 3 phases, 6 plans, 7 tasks
