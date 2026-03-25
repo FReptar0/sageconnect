@@ -7,11 +7,11 @@
 
 ### Core Validation
 
-- [ ] **LIC-01**: LicenseValidator service verifies HMAC signature of license server response using shared HMAC_SECRET
-- [ ] **LIC-02**: Timestamp freshness check rejects responses older than 5 minutes (anti-replay)
+- [x] **LIC-01**: LicenseValidator service verifies HMAC signature of license server response using shared HMAC_SECRET
+- [x] **LIC-02**: Timestamp freshness check rejects responses older than 5 minutes (anti-replay)
 - [x] **LIC-03**: Startup validation calls license API with retry+backoff (3 attempts), process.exit if all fail
-- [ ] **LIC-04**: Periodic re-validation every cron cycle (~15 min) updates cached license state
-- [ ] **LIC-05**: Three-state model: VALID (operate normally), INVALID (block everything), ERROR (use cached state)
+- [x] **LIC-04**: Periodic re-validation every cron cycle (~15 min) updates cached license state
+- [x] **LIC-05**: Three-state model: VALID (operate normally), INVALID (block everything), ERROR (use cached state)
 
 ### Enforcement
 
@@ -54,11 +54,11 @@
 |-------------|-------|--------|
 | CFG-01 | Phase 11 | Complete |
 | CFG-02 | Phase 11 | Complete |
-| LIC-01 | Phase 12 | Pending |
-| LIC-02 | Phase 12 | Pending |
+| LIC-01 | Phase 12 | Complete |
+| LIC-02 | Phase 12 | Complete |
 | LIC-03 | Phase 12 | Complete |
-| LIC-04 | Phase 12 | Pending |
-| LIC-05 | Phase 12 | Pending |
+| LIC-04 | Phase 12 | Complete |
+| LIC-05 | Phase 12 | Complete |
 | ENF-01 | Phase 13 | Pending |
 | ENF-02 | Phase 13 | Pending |
 | ENF-03 | Phase 13 | Pending |
