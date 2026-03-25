@@ -15,6 +15,7 @@ const cron = require('node-cron');
 const crypto = require('crypto');
 const config = require('../config');
 const operationManager = require('./OperationManager');
+const licenseValidator = require('./LicenseValidator');
 const { forResponse, startChildProcess } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
 
@@ -46,6 +47,23 @@ function initScheduler() {
             const locked = operationManager.acquireLock('background-cycle', operationId);
             if (!locked) {
                 logGenerator(LOG_FILE, 'warn', `[OVERLAP] background-cycle lock not acquired for ${operationId} -- skipping`);
+                return;
+            }
+
+            // License guard: skip cycle if license is invalid
+            if (!licenseValidator.isValid()) {
+                logGenerator(LOG_FILE, 'warn', '[LICENSE] Ciclo omitido: licencia inactiva -- ' + operationId);
+                console.warn('[LICENSE] Ciclo omitido: licencia inactiva');
+                operationManager.addHistory({
+                    taskId: 'background-cycle',
+                    operationId,
+                    startedAt: startedAt.toISOString(),
+                    finishedAt: new Date().toISOString(),
+                    success: false,
+                    errors: ['Licencia inactiva'],
+                    summary: 'Ciclo omitido: licencia inactiva',
+                });
+                operationManager.releaseLock('background-cycle');
                 return;
             }
 

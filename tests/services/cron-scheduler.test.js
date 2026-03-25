@@ -54,6 +54,14 @@ jest.mock('../../src/background', () => ({
     startChildProcess: mockStartChildProcess,
 }));
 
+// Mock LicenseValidator (isValid defaults to true -- pre-existing behavior before enforcement)
+jest.mock('../../src/services/LicenseValidator', () => ({
+    isValid: jest.fn(() => true),
+    validate: jest.fn(),
+    getStatus: jest.fn(),
+    _reset: jest.fn(),
+}));
+
 // Mock LogGenerator
 jest.mock('../../src/utils/LogGenerator', () => ({
     logGenerator: jest.fn(),
