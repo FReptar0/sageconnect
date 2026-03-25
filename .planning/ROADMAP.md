@@ -76,10 +76,11 @@ Plans:
   2. CronScheduler skips the background cycle and records "skipped: license invalid" when license is INVALID
   3. GET /api/system/license returns current license state (active, expiresAt, lastChecked) without requiring a valid license itself
   4. dns.resolve4() verifies the license server hostname resolves to an expected IP range, bypassing the OS hosts file (defense-in-depth against DNS redirect)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 13-01: TBD
+- [ ] 13-01-PLAN.md -- License middleware, route protection matrix, and GET /api/system/license endpoint
+- [ ] 13-02-PLAN.md -- Startup validation gate, CronScheduler guard, and DNS bypass detection
 
 ### Phase 14: License UI
 **Goal**: Operators see clear visual indicators when the license is invalid or approaching expiry, eliminating confusion about why operations are blocked
@@ -103,7 +104,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 |-------|-----------|----------------|--------|-----------|
 | 11. License Config | 1/1 | Complete    | 2026-03-25 | - |
 | 12. LicenseValidator Core | 2/2 | Complete    | 2026-03-25 | - |
-| 13. Enforcement | v2.1 | 0/? | Not started | - |
+| 13. Enforcement | v2.1 | 0/2 | Not started | - |
 | 14. License UI | v2.1 | 0/? | Not started | - |
 
 ---
