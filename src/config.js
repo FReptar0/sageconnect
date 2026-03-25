@@ -27,7 +27,7 @@ const REQUIRED = {
         'DEFAULT_ADDRESS_MUNICIPALITY', 'DEFAULT_ADDRESS_STATE', 'DEFAULT_ADDRESS_STREET',
         'DEFAULT_ADDRESS_ZIP', 'ADDRESS_IDENTIFIERS_SKIP',
     ],
-    license: ['LICENSE_API_URL', 'HMAC_SECRET'],
+    license: ['LICENSE_API_URL', 'HMAC_SECRET', 'LICENSE_ADMIN_EMAIL'],
 };
 
 // ---------------------------------------------------------------------------
@@ -159,6 +159,7 @@ const config = {
     license: {
         apiUrl: process.env.LICENSE_API_URL,
         hmacSecret: process.env.HMAC_SECRET,
+        adminEmail: process.env.LICENSE_ADMIN_EMAIL,
     },
 
     schedule: {
