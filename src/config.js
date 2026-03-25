@@ -6,7 +6,7 @@
  *
  * Usage: const config = require('./config');
  *
- * Sections: database, portal, mailing, paths, app
+ * Sections: database, portal, mailing, paths, app, license
  */
 
 const dotenv = require('dotenv');
@@ -27,6 +27,7 @@ const REQUIRED = {
         'DEFAULT_ADDRESS_MUNICIPALITY', 'DEFAULT_ADDRESS_STATE', 'DEFAULT_ADDRESS_STREET',
         'DEFAULT_ADDRESS_ZIP', 'ADDRESS_IDENTIFIERS_SKIP',
     ],
+    license: ['LICENSE_API_URL', 'HMAC_SECRET'],
 };
 
 // ---------------------------------------------------------------------------
@@ -153,6 +154,11 @@ const config = {
 
     security: {
         apiKey: process.env.SAGECONNECT_API_KEY || null,
+    },
+
+    license: {
+        apiUrl: process.env.LICENSE_API_URL,
+        hmacSecret: process.env.HMAC_SECRET,
     },
 
     schedule: {
