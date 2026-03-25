@@ -46,10 +46,10 @@ See .planning/MILESTONES.md for completed milestone details.
   2. Service exits with a clear error message if HMAC_SECRET is missing from .env
   3. `config.license.apiUrl` and `config.license.hmacSecret` are accessible via the standard config pattern (`require('../config')`)
   4. `.env.example` documents both new variables with comments explaining their purpose
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 11-01: TBD
+- [ ] 11-01-PLAN.md -- Add license config vars to config.js and .env.example
 
 ### Phase 12: LicenseValidator Core
 **Goal**: A single service module verifies license validity against the remote server with HMAC signature verification, timestamp freshness, and a three-state cached model
@@ -100,7 +100,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 11. License Config | v2.1 | 0/? | Not started | - |
+| 11. License Config | v2.1 | 0/1 | Not started | - |
 | 12. LicenseValidator Core | v2.1 | 0/? | Not started | - |
 | 13. Enforcement | v2.1 | 0/? | Not started | - |
 | 14. License UI | v2.1 | 0/? | Not started | - |
