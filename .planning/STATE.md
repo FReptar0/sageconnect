@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: License Validation
 status: completed
-stopped_at: Completed 13-02-PLAN.md (Phase 13 complete)
-last_updated: "2026-03-25T22:28:40.922Z"
-last_activity: 2026-03-25 -- Completed 13-02 (Enforcement wiring - startup, cron, DNS)
+stopped_at: Completed 14-01-PLAN.md (v2.1 milestone complete)
+last_updated: "2026-03-25T23:02:06.041Z"
+last_activity: 2026-03-25 -- Completed 14-01 (License banner and expiry badge in shared.js)
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 5
-  completed_plans: 5
+  completed_phases: 4
+  total_plans: 6
+  completed_plans: 6
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Control remoto sobre deployments de SageConnect -- kill switch confiable que no puede ser bypasseado.
-**Current focus:** v2.1 License Validation -- Phase 13 complete (all plans done), Phase 14 pending
+**Current focus:** v2.1 License Validation -- All 4 phases complete (11-14), milestone DONE
 
 ## Current Position
 
-Phase: 13 of 14 (Enforcement) -- COMPLETE
-Plan: 2 of 2 (Complete)
-Status: Phase 13 Complete
-Last activity: 2026-03-25 -- Completed 13-02 (Enforcement wiring - startup, cron, DNS)
+Phase: 14 of 14 (License UI) -- COMPLETE
+Plan: 1 of 1 (Complete)
+Status: v2.1 Milestone Complete
+Last activity: 2026-03-25 -- Completed 14-01 (License banner and expiry badge in shared.js)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
-- Average duration: 4.4min
-- Total execution time: 22min
+- Total plans completed: 6
+- Average duration: 4min
+- Total execution time: 24min
 
 **By Phase:**
 
@@ -46,9 +46,11 @@ Progress: [██████████] 100%
 | 11-license-config | 1 | 1min | 1min |
 | 12-licensevalidator-core | 2 | 6min | 3min |
 | 13-enforcement | 2 | 15min | 7.5min |
+| 14-license-ui | 1 | 2min | 2min |
 
 *Updated after each plan completion*
 | Phase 13-enforcement P02 | 13min | 2 tasks | 5 files |
+| Phase 14-license-ui P01 | 2min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -71,6 +73,9 @@ Progress: [██████████] 100%
 - [Phase 13]: DNS tests in LicenseValidator.test.js (not enforcement-wiring.test.js) due to Jest mock scoping
 - [Phase 13]: return after process.exit(1) in index.js for testability
 - [Phase 13-enforcement]: DNS check is defense-in-depth only -- warns but never blocks; HMAC is the primary gate
+- [Phase 14]: Banner placed on document.body (outside sidebar) for full-width visibility; badge inside #sidebar after hr
+- [Phase 14]: ERROR state does NOT show banner -- prevents false alarms during Vercel outages
+- [Phase 14]: Badge removed and re-created each poll cycle for clean color transitions (yellow to red)
 
 ### Pending Todos
 
@@ -85,6 +90,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T22:28:00.541Z
-Stopped at: Completed 13-02-PLAN.md (Phase 13 complete)
+Last session: 2026-03-25T23:01:53.461Z
+Stopped at: Completed 14-01-PLAN.md (v2.1 milestone complete)
 Resume file: None

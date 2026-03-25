@@ -26,14 +26,14 @@ See .planning/MILESTONES.md for completed milestone details.
 
 </details>
 
-### v2.1 License Validation (In Progress)
+### v2.1 License Validation (Complete)
 
 **Milestone Goal:** Control remoto sobre deployments de SageConnect -- kill switch confiable que no puede ser bypasseado.
 
 - [x] **Phase 11: License Config** - Add LICENSE_API_URL and HMAC_SECRET to config.js with fail-fast validation (completed 2026-03-25)
 - [x] **Phase 12: LicenseValidator Core** - HMAC-verified license validation service with three-state model and periodic re-validation (completed 2026-03-25)
 - [x] **Phase 13: Enforcement** - Wire license checks into startup, cron, API middleware, and defense-in-depth DNS verification (completed 2026-03-25)
-- [ ] **Phase 14: License UI** - Red banner and expiry countdown in web UI when license is invalid or expiring
+- [x] **Phase 14: License UI** - Red banner and expiry countdown in web UI when license is invalid or expiring (completed 2026-03-25)
 
 ## Phase Details
 
@@ -105,7 +105,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 | 11. License Config | 1/1 | Complete    | 2026-03-25 | - |
 | 12. LicenseValidator Core | 2/2 | Complete    | 2026-03-25 | - |
 | 13. Enforcement | 2/2 | Complete    | 2026-03-25 | - |
-| 14. License UI | v2.1 | 0/1 | Not started | - |
+| 14. License UI | 1/1 | Complete   | 2026-03-25 | - |
 
 ---
 *Roadmap created: 2026-03-25*

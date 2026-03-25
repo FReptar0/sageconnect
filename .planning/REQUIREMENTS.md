@@ -27,8 +27,8 @@
 
 ### Web UI
 
-- [ ] **UI-09**: Red sticky banner "Licencia inactiva" on all pages when license is INVALID
-- [ ] **UI-10**: Expiry countdown badge "Expira en X dias" when license is expiring soon
+- [x] **UI-09**: Red sticky banner "Licencia inactiva" on all pages when license is INVALID
+- [x] **UI-10**: Expiry countdown badge "Expira en X dias" when license is expiring soon
 
 ## v2.2 Requirements
 
@@ -63,8 +63,8 @@
 | ENF-02 | Phase 13 | Complete |
 | ENF-03 | Phase 13 | Complete |
 | ENF-04 | Phase 13 | Complete |
-| UI-09 | Phase 14 | Pending |
-| UI-10 | Phase 14 | Pending |
+| UI-09 | Phase 14 | Complete |
+| UI-10 | Phase 14 | Complete |
 
 **Coverage:**
 - v2.1 requirements: 13 total
