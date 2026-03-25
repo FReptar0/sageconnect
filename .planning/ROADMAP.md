@@ -90,10 +90,10 @@ Plans:
   1. A red sticky banner reading "Licencia inactiva" appears on all web UI pages when license state is INVALID
   2. The banner appears/disappears in real time (within 60 seconds) as license state changes -- no page reload required
   3. An expiry countdown badge shows "Expira en X dias" in the sidebar when the license is approaching expiration (yellow at 30 days, red at 7 days)
-**Plans**: TBD
+**Plans**: 1 plan
 
 Plans:
-- [ ] 14-01: TBD
+- [ ] 14-01-PLAN.md -- License banner and expiry countdown badge in shared.js
 
 ## Progress
 
@@ -105,7 +105,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 | 11. License Config | 1/1 | Complete    | 2026-03-25 | - |
 | 12. LicenseValidator Core | 2/2 | Complete    | 2026-03-25 | - |
 | 13. Enforcement | 2/2 | Complete    | 2026-03-25 | - |
-| 14. License UI | v2.1 | 0/? | Not started | - |
+| 14. License UI | v2.1 | 0/1 | Not started | - |
 
 ---
 *Roadmap created: 2026-03-25*
