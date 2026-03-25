@@ -22,8 +22,8 @@
 
 ### Configuration
 
-- [ ] **CFG-01**: LICENSE_API_URL added to config.js with fail-fast validation (required)
-- [ ] **CFG-02**: HMAC_SECRET added to config.js with fail-fast validation (required)
+- [x] **CFG-01**: LICENSE_API_URL added to config.js with fail-fast validation (required)
+- [x] **CFG-02**: HMAC_SECRET added to config.js with fail-fast validation (required)
 
 ### Web UI
 
@@ -52,8 +52,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CFG-01 | Phase 11 | Pending |
-| CFG-02 | Phase 11 | Pending |
+| CFG-01 | Phase 11 | Complete |
+| CFG-02 | Phase 11 | Complete |
 | LIC-01 | Phase 12 | Pending |
 | LIC-02 | Phase 12 | Pending |
 | LIC-03 | Phase 12 | Pending |
