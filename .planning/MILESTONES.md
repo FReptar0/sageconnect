@@ -1,5 +1,21 @@
 # Milestones
 
+## v2.1 License Validation (Shipped: 2026-03-25)
+
+**Phases completed:** 4 phases, 6 plans
+**Files:** 30 files changed, 4,039 insertions, 89 deletions
+**Git range:** `5b4132f` → `9f7b78b`
+
+**Key accomplishments:**
+- LicenseValidator singleton service with HMAC-SHA256 verification, 5-min timestamp freshness (anti-replay), 3x retry+backoff on startup, three-state cache (VALID/INVALID/ERROR) with 24h TTL
+- Full enforcement: Express middleware (503), cron cycle skip, startup fail-fast with process.exit
+- DNS bypass detection via dns.resolve4() (defense-in-depth against hosts file redirect)
+- Admin email notifications (LICENSE_ADMIN_EMAIL) on startup failure and license revocation
+- Web UI: red sticky "Licencia inactiva" banner + expiry countdown badge (yellow 30d, red 7d) with 60s polling
+- 3 new required env vars: LICENSE_API_URL, HMAC_SECRET, LICENSE_ADMIN_EMAIL
+
+---
+
 ## v2.0 Always-On Service (Shipped: 2026-03-25)
 
 **Phases completed:** 5 phases, 16 plans

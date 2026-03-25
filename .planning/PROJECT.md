@@ -8,13 +8,15 @@ SageConnect es un servicio always-on de integración entre Sage 300 ERP y Portal
 
 La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
 
-## Current State (post v2.0)
+## Current State (post v2.1)
 
 - **Service:** Always-on via Servy Windows Service, node-cron v4 internal scheduler (every 15 min)
-- **API:** 15 REST endpoints (7 payment + 8 PO) + 5 system endpoints, secured with helmet/cors/rate-limit/API key
-- **Web UI:** 4 pages — schedule dashboard (home), payment audit, PO management, logs. Sidebar + tenant switcher.
-- **Config:** `src/config.js` with fail-fast validation, 30+ env vars including SAGECONNECT_API_KEY, CRON_SCHEDULE, OPERATION_DELAY_MS
-- **Scripts:** All 13 scripts + PortalOC_StatusUpdater return ResultEnvelope `{ success, data, errors, summary, meta }`
+- **License:** LicenseValidator validates against external server (sageconnect-license on Vercel) with HMAC-SHA256, anti-replay, three-state cache (24h TTL)
+- **Enforcement:** Startup fail-fast, cron guard, Express middleware (503), DNS bypass detection
+- **API:** 15 REST endpoints (7 payment + 8 PO) + 6 system endpoints (health, tenants, license, schedule, history, operations)
+- **Web UI:** 4 pages + license banner (red "Licencia inactiva") + expiry countdown badge with 60s polling
+- **Config:** `src/config.js` with fail-fast validation, 33+ env vars including LICENSE_API_URL, HMAC_SECRET, LICENSE_ADMIN_EMAIL
+- **Scripts:** All 13 scripts + PortalOC_StatusUpdater return ResultEnvelope
 - **SQL:** Singleton connection pool with USE [database] switching, auto-reconnect
 - **Tests:** 200+ across the codebase
 - **Legacy removed:** AutoShutdownService, AUTO_TERMINATE, RunSageconnect.bat, --web-only all gone
@@ -46,13 +48,15 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 - ✓ Servy Windows Service con deployment guide — v2.0
 - ✓ Legacy removal (AutoShutdown, AUTO_TERMINATE, bat) — v2.0
 
+- ✓ LicenseValidator con HMAC-SHA256, timestamp freshness, retry+backoff — v2.1
+- ✓ Enforcement: startup fail-fast, cron guard, Express middleware 503 — v2.1
+- ✓ DNS bypass detection via dns.resolve4() — v2.1
+- ✓ Banner "Licencia inactiva" + expiry countdown badge en web UI — v2.1
+- ✓ Admin email (LICENSE_ADMIN_EMAIL) on failure/revocation — v2.1
+
 ### Active
 
-- [ ] Validación de licencia en startup contra servidor externo (fail-fast si inválida)
-- [ ] Re-validación periódica de licencia cada ciclo de cron
-- [ ] Verificación HMAC de respuesta del servidor de licencias
-- [ ] Banner "Licencia inactiva" en web UI cuando la licencia expira o se revoca
-- [ ] Bloqueo de todas las operaciones (API + cron) cuando licencia inválida
+(None — pending next milestone definition)
 
 ### Out of Scope
 
@@ -92,19 +96,11 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | SAGECONNECT_API_KEY (no API_KEY) | Evita colisión con portal tenant keys | ✓ Good |
 | Singleton SQL pool + USE [database] | Zero cambios en 25+ callers de runQuery | ✓ Good |
 | ResultEnvelope unificado | Contrato consistente para API layer | ✓ Good |
-| HMAC-signed license validation | Previene bypass DNS/MITM en servidores de clientes | — Pending |
-| Fail-fast en startup si licencia invalida | Sin licencia = sistema no opera | — Pending |
-
-## Current Milestone: v2.1 License Validation
-
-**Goal:** Integrar validación de licencia contra el servidor externo (sageconnect-license en Vercel) para control remoto de deployments en servidores de clientes.
-
-**Target features:**
-- Validación de SAGECONNECT_API_KEY contra LICENSE_API_URL en startup (fail-fast)
-- Re-validación periódica cada ciclo de cron
-- Verificación HMAC de la respuesta para prevenir bypass (DNS/MITM)
-- Banner "Licencia inactiva" en web UI cuando la licencia es invalida
-- Bloqueo total de operaciones si la licencia no es válida
+| HMAC-signed license validation | Previene bypass DNS/MITM en servidores de clientes | ✓ Good |
+| Fail-fast en startup si licencia invalida | Sin licencia = sistema no opera | ✓ Good |
+| Three-state model (VALID/INVALID/ERROR) | Network errors no bloquean clientes que pagan | ✓ Good |
+| dns.resolve4() para bypass detection | Defense-in-depth contra hosts file redirect | ✓ Good |
+| LICENSE_ADMIN_EMAIL separado de MAILING_NOTICES | Admin Tersoft != operaciones del cliente | ✓ Good |
 
 ---
-*Last updated: 2026-03-25 after v2.1 milestone start*
+*Last updated: 2026-03-25 after v2.1 milestone*

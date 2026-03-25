@@ -4,7 +4,7 @@ milestone: v2.1
 milestone_name: License Validation
 status: completed
 stopped_at: Completed 14-01-PLAN.md (v2.1 milestone complete)
-last_updated: "2026-03-25T23:03:28.710Z"
+last_updated: "2026-03-25T23:08:46.650Z"
 last_activity: 2026-03-25 -- Completed 14-01 (License banner and expiry badge in shared.js)
 progress:
   total_phases: 4
