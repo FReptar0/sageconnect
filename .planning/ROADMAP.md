@@ -61,10 +61,11 @@ Plans:
   3. On startup, validation retries 3 times with backoff before failing -- a single Vercel cold start timeout does not prevent the service from starting
   4. License state is re-checked every cron cycle (~15 min) and the cached state updates accordingly
   5. Three states are distinguished: VALID (operate), INVALID (block), ERROR (keep cached state) -- a Vercel outage does not falsely block a paying client
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 12-01: TBD
+- [ ] 12-01-PLAN.md -- Add LICENSE_ADMIN_EMAIL config var for failure notifications
+- [ ] 12-02-PLAN.md -- Create LicenseValidator.js core service with HMAC, retry, three-state cache
 
 ### Phase 13: Enforcement
 **Goal**: Every operational path in SageConnect is gated by license state -- invalid license means zero operations via API, cron, or manual trigger
@@ -101,7 +102,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 11. License Config | 1/1 | Complete    | 2026-03-25 | - |
-| 12. LicenseValidator Core | v2.1 | 0/? | Not started | - |
+| 12. LicenseValidator Core | v2.1 | 0/2 | Not started | - |
 | 13. Enforcement | v2.1 | 0/? | Not started | - |
 | 14. License UI | v2.1 | 0/? | Not started | - |
 
