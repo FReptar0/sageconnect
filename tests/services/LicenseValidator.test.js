@@ -57,6 +57,14 @@ jest.mock('nodemailer', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock dns (defense-in-depth DNS check)
+// ---------------------------------------------------------------------------
+const mockDnsResolve4 = jest.fn((hostname, cb) => cb(null, ['76.76.21.21']));
+jest.mock('dns', () => ({
+    resolve4: mockDnsResolve4,
+}));
+
+// ---------------------------------------------------------------------------
 // Mock axios
 // ---------------------------------------------------------------------------
 const mockAxiosGet = jest.fn();
@@ -407,4 +415,120 @@ describe('LicenseValidator - Startup Retry', () => {
         expect(mockExit).toHaveBeenCalledWith(1);
         mockExit.mockRestore();
     }, 15000);
+});
+
+// ============================================================
+// 7. DNS Bypass Detection (defense-in-depth)
+// ============================================================
+describe('LicenseValidator - DNS Bypass Detection', () => {
+    const { logGenerator: mockLogGenerator } = require('../../src/utils/LogGenerator');
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['76.76.21.21']));
+        licenseValidator = require('../../src/services/LicenseValidator');
+        licenseValidator._reset();
+    });
+
+    test('validate() calls dns.resolve4() with the license server hostname', async () => {
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        expect(mockDnsResolve4).toHaveBeenCalledWith('license.test.com', expect.any(Function));
+    });
+
+    test('logs warning when dns resolves to loopback IP (127.x)', async () => {
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['127.0.0.1']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            expect.any(String),
+            'warn',
+            expect.stringContaining('private/loopback IP')
+        );
+    });
+
+    test('logs warning when dns resolves to private IP (192.168.x)', async () => {
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['192.168.1.100']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            expect.any(String),
+            'warn',
+            expect.stringContaining('private/loopback IP')
+        );
+    });
+
+    test('logs warning when dns resolves to private IP (10.x)', async () => {
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['10.0.0.1']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            expect.any(String),
+            'warn',
+            expect.stringContaining('private/loopback IP')
+        );
+    });
+
+    test('logs warning when dns resolves to private IP (172.16-31.x)', async () => {
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['172.16.0.1']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            expect.any(String),
+            'warn',
+            expect.stringContaining('private/loopback IP')
+        );
+    });
+
+    test('does NOT log warning when dns resolves to public IP', async () => {
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['76.76.21.21']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        await licenseValidator.validate();
+
+        const warnCalls = mockLogGenerator.mock.calls.filter(function (call) {
+            return call[1] === 'warn' && String(call[2]).indexOf('private/loopback') !== -1;
+        });
+        expect(warnCalls.length).toBe(0);
+    });
+
+    test('logs warning when dns.resolve4 fails (ENOTFOUND) but validation continues', async () => {
+        const dnsError = new Error('ENOTFOUND');
+        dnsError.code = 'ENOTFOUND';
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(dnsError));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        const result = await licenseValidator.validate();
+
+        // DNS failure does NOT block validation -- HMAC is the primary gate
+        expect(result.state).toBe('VALID');
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            expect.any(String),
+            'warn',
+            expect.stringContaining('DNS check failed')
+        );
+    });
+
+    test('DNS check does NOT affect validation result -- HMAC is primary boundary', async () => {
+        // Even with a suspicious loopback IP, validation should still succeed
+        // if HMAC signature is valid
+        mockDnsResolve4.mockImplementation((hostname, cb) => cb(null, ['127.0.0.1']));
+        mockAxiosGet.mockResolvedValueOnce(buildValidResponse(true));
+
+        const result = await licenseValidator.validate();
+
+        // Result determined by HMAC, not DNS
+        expect(result.state).toBe('VALID');
+        expect(result.valid).toBe(true);
+    });
 });

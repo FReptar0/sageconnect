@@ -14,6 +14,8 @@
  */
 
 const crypto = require('crypto');
+const dns = require('dns');
+const { URL } = require('url');
 const axios = require('axios');
 const config = require('../config');
 const { logGenerator } = require('../utils/LogGenerator');
@@ -198,11 +200,68 @@ async function validate(options) {
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// DNS Bypass Detection (defense-in-depth)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check if an IPv4 address is private (RFC 1918) or loopback.
+ * @param {string} ip - IPv4 address string
+ * @returns {boolean} True if private or loopback
+ */
+function _isPrivateOrLoopback(ip) {
+    var parts = ip.split('.').map(Number);
+    // 127.0.0.0/8 (loopback)
+    if (parts[0] === 127) return true;
+    // 10.0.0.0/8
+    if (parts[0] === 10) return true;
+    // 172.16.0.0/12
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    // 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    return false;
+}
+
+/**
+ * Defense-in-depth: verify license server hostname resolves to a public IP.
+ * Uses dns.resolve4() which bypasses the OS hosts file (unlike dns.lookup()).
+ * Warns on private/loopback IPs but does NOT block -- HMAC is the primary gate.
+ */
+async function _checkDns() {
+    try {
+        var hostname = new URL(config.license.apiUrl).hostname;
+        var addresses = await new Promise(function (resolve, reject) {
+            dns.resolve4(hostname, function (err, addrs) {
+                if (err) reject(err);
+                else resolve(addrs);
+            });
+        });
+
+        for (var i = 0; i < addresses.length; i++) {
+            var addr = addresses[i];
+            if (_isPrivateOrLoopback(addr)) {
+                logGenerator(LOG_FILE, 'warn', '[LICENSE] DNS WARNING: ' + hostname + ' resolved to private/loopback IP ' + addr + ' -- possible hosts file redirect');
+                console.warn('[LICENSE] DNS WARNING: ' + hostname + ' resolved to private/loopback IP ' + addr);
+                return; // warn once, do not repeat for each address
+            }
+        }
+    } catch (err) {
+        logGenerator(LOG_FILE, 'warn', '[LICENSE] DNS check failed for license server: ' + err.message + ' (non-blocking)');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core: _doValidate()
+// ---------------------------------------------------------------------------
+
 /**
  * Internal: perform a single validation attempt.
  * @returns {Promise<{valid: boolean, expiresAt: string|null, error: string|null, state: string}>}
  */
 async function _doValidate() {
+    // Defense-in-depth DNS check (non-blocking)
+    await _checkDns();
+
     try {
         var url = config.license.apiUrl + '/api/validate?key=' + config.security.apiKey;
         var response = await licenseClient.get(url);
