@@ -360,6 +360,14 @@ describe('LicenseValidator - 24h ERROR TTL', () => {
 // 6. Startup Retry
 // ============================================================
 describe('LicenseValidator - Startup Retry', () => {
+    beforeEach(() => {
+        jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+    });
+
     test('validate with startup=true retries 3 times before giving up', async () => {
         // All calls fail
         mockAxiosGet.mockRejectedValue(new Error('ECONNREFUSED'));
@@ -367,21 +375,36 @@ describe('LicenseValidator - Startup Retry', () => {
         // Mock process.exit to prevent actual exit
         const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {});
 
-        await licenseValidator.validate({ startup: true });
+        // Start the validation in background, then advance timers
+        const validatePromise = licenseValidator.validate({ startup: true });
+
+        // Advance through backoff delays: 1s, 2s, 4s
+        await jest.advanceTimersByTimeAsync(1000);
+        await jest.advanceTimersByTimeAsync(2000);
+        await jest.advanceTimersByTimeAsync(4000);
+
+        await validatePromise;
 
         // Initial call + 3 retries = 4 total calls
         expect(mockAxiosGet).toHaveBeenCalledTimes(4);
         mockExit.mockRestore();
-    });
+    }, 15000);
 
     test('validate with startup=true calls process.exit(1) after 3 failures', async () => {
         mockAxiosGet.mockRejectedValue(new Error('ECONNREFUSED'));
 
         const mockExit = jest.spyOn(process, 'exit').mockImplementation(() => {});
 
-        await licenseValidator.validate({ startup: true });
+        const validatePromise = licenseValidator.validate({ startup: true });
+
+        // Advance through backoff delays
+        await jest.advanceTimersByTimeAsync(1000);
+        await jest.advanceTimersByTimeAsync(2000);
+        await jest.advanceTimersByTimeAsync(4000);
+
+        await validatePromise;
 
         expect(mockExit).toHaveBeenCalledWith(1);
         mockExit.mockRestore();
-    });
+    }, 15000);
 });
