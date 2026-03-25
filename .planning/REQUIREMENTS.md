@@ -9,7 +9,7 @@
 
 - [ ] **LIC-01**: LicenseValidator service verifies HMAC signature of license server response using shared HMAC_SECRET
 - [ ] **LIC-02**: Timestamp freshness check rejects responses older than 5 minutes (anti-replay)
-- [ ] **LIC-03**: Startup validation calls license API with retry+backoff (3 attempts), process.exit if all fail
+- [x] **LIC-03**: Startup validation calls license API with retry+backoff (3 attempts), process.exit if all fail
 - [ ] **LIC-04**: Periodic re-validation every cron cycle (~15 min) updates cached license state
 - [ ] **LIC-05**: Three-state model: VALID (operate normally), INVALID (block everything), ERROR (use cached state)
 
@@ -56,7 +56,7 @@
 | CFG-02 | Phase 11 | Complete |
 | LIC-01 | Phase 12 | Pending |
 | LIC-02 | Phase 12 | Pending |
-| LIC-03 | Phase 12 | Pending |
+| LIC-03 | Phase 12 | Complete |
 | LIC-04 | Phase 12 | Pending |
 | LIC-05 | Phase 12 | Pending |
 | ENF-01 | Phase 13 | Pending |

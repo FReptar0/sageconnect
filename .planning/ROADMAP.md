@@ -102,7 +102,7 @@ Phases execute in numeric order: 11 -> 12 -> 13 -> 14
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 11. License Config | 1/1 | Complete    | 2026-03-25 | - |
-| 12. LicenseValidator Core | v2.1 | 0/2 | Not started | - |
+| 12. LicenseValidator Core | 1/2 | In Progress|  | - |
 | 13. Enforcement | v2.1 | 0/? | Not started | - |
 | 14. License UI | v2.1 | 0/? | Not started | - |
 
