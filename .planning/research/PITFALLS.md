@@ -1,111 +1,482 @@
 # Domain Pitfalls
 
-**Domain:** Always-on Node.js service with operational web UI for ERP integration
-**Researched:** 2026-03-23
+**Domain:** License validation kill switch for on-premise Node.js service on untrusted client servers
+**Researched:** 2026-03-25
+**Threat model:** Client has physical access, admin rights on Windows Server, can edit hosts file, install software, inspect/modify files on disk. Client is motivated to bypass license to avoid paying.
+
+---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites or major issues.
+Mistakes that enable license bypass or cause service failure for paying clients.
 
-### Pitfall 1: Script Functions That Only Console.log (No Return Values)
-**What goes wrong:** Scripts like `payment-reconciliation.js` expose `classifyPayments` and `uploadBatch` with structured return values, but most other scripts (all PO scripts, all diagnostic scripts) have their `main()` functions that only `console.log()` and return nothing useful. Wrapping them in API endpoints produces empty responses.
-**Why it happens:** Scripts were written for CLI use where console output IS the output. The pattern was not consistent -- reconciliation was refactored to export testable functions (v1.0), but others were not.
-**Consequences:** Every script needs refactoring before it can be an API endpoint. If done poorly, you end up with two code paths.
-**Prevention:** Before building any route handler, audit each script function's return value. Refactor the function to return data AND console.log it (for CLI backward compatibility). This is the FIRST phase of work.
-**Detection:** Script function returns `undefined` or a Promise that resolves to `undefined`.
+---
 
-**Affected scripts (return nothing useful from main flow):**
-- `po-diagnostic.js` -- `diagnosticPO()` returns nothing, uses `console.table()`
-- `po-query.js` -- `testSpecificPurchaseOrders()` returns nothing
-- `po-upload.js` -- `uploadSpecificPurchaseOrders()` returns nothing visible
-- `po-address-diagnostic.js` -- `diagnosticPOAddress()` returns nothing
-- `po-payment-form-diagnostic.js` -- `diagnosticPaymentForm()` returns nothing
-- `payment-uuid-diagnostic.js` -- `diagnosePayment()` returns nothing
-- `portal-payments-generator.js` -- `testGeneratePaymentJson()` returns nothing
-- `get-payment-cfdis.js` -- `getTypePTest()` returns data but nested inconsistently
-- `upload-authorized-pos.js` -- hardcoded first tenant index, returns nothing
+### Pitfall 1: DNS/Hosts File Redirect -- Client Spoofs License Server
 
-**Scripts with usable return values already:**
-- `payment-reconciliation.js` -- `classifyPayments()` and `uploadBatch()` return structured objects
-- `po-update.js` -- `testPurchaseOrderUpdate()` returns `{ success, error, mode }`
-- `test-order-lifecycle.js` -- delegates to controller functions that return values
+**What goes wrong:** Client edits `C:\Windows\System32\drivers\etc\hosts` to point `sageconnect-license.vercel.app` to `127.0.0.1`. They run a local Express server on port 443 that returns `{ "active": true }` on every request. SageConnect validates against the fake server and runs forever without a valid license.
 
-### Pitfall 2: Scheduled Task and Manual Operation Collision
-**What goes wrong:** User triggers payment reconciliation from web UI at 10:13. At 10:15, the scheduled cron fires and also starts reconciliation. Both hit the same Sage SQL tables and Portal API simultaneously, causing duplicate payments or portal API errors.
-**Why it happens:** Cron fires on a schedule regardless of what is happening. Without concurrency control, operations overlap.
-**Consequences:** Duplicate payment uploads to portal (financial error), SQL connection pool exhaustion, confusing interleaved log entries.
-**Prevention:** OperationManager with per-type locking. If a manual operation of the same type is running when cron fires, the cron execution skips and logs the skip reason. This is NOT optional -- it must be in the initial implementation.
-**Detection:** Two log entries for the same operation starting within seconds of each other; portal API returning "duplicate external_id" errors.
+**Why it happens:** Node.js `http.request()` and `axios` use `dns.lookup()` by default, which respects the OS hosts file. This is the exact attack documented in the [bypass-license-verification](https://github.com/thibautsabot/bypass-license-verification) GitHub repo, where an After Effects plugin was defeated by redirecting its license domain to localhost and returning `status: true`.
 
-### Pitfall 3: Removing AutoShutdownService Before Scheduler Is Stable
-**What goes wrong:** AutoShutdownService exists because the current architecture runs the app via Task Scheduler, and if web-only mode is left running when the next scheduled run starts, there is a port conflict on 3030. Removing it before the new scheduler is fully working leaves you unable to use the app in either mode.
-**Why it happens:** The desire to "clean up" legacy code before the replacement is ready.
-**Consequences:** Port 3030 conflicts when Task Scheduler still fires; service crashes on startup.
-**Prevention:** Keep AutoShutdownService functional until the LAST phase. Remove it only after: (1) node-cron scheduler is working, (2) Windows Task Scheduler entries are disabled, (3) Servy is managing the always-on process. This is a specific ordering dependency.
-**Detection:** `EADDRINUSE` errors in logs; service fails to start.
+**Consequences:** Complete license bypass. Client runs SageConnect indefinitely without paying.
 
-### Pitfall 4: SSE Connections Leaking on Client Disconnect
-**What goes wrong:** Client opens SSE connection for operation progress, then navigates away or closes the browser tab. The SSE response object remains in the OperationManager subscriber list, piling up stale connections.
-**Why it happens:** Express does not automatically clean up SSE connections. The `res` object stays in memory until explicitly ended.
-**Consequences:** Memory leak proportional to number of abandoned SSE connections. Over days of always-on operation, this accumulates.
-**Prevention:** Always listen for `req.on('close')` and unsubscribe the response. Set a maximum SSE connection lifetime (e.g., 30 minutes). OperationManager must clean up subscribers when operation completes.
-**Detection:** Increasing memory usage over time; stale entries in SSE subscriber lists.
+**Why HTTPS alone does not help:** If the client controls the server, they can install a self-signed certificate for `sageconnect-license.vercel.app` in the local trust store, or set `NODE_TLS_REJECT_UNAUTHORIZED=0` in the .env file, or patch the obfuscated code to skip TLS verification. HTTPS prevents passive eavesdropping but not an active local attacker with admin rights.
+
+**Prevention (layered, all three required):**
+
+1. **HMAC-signed responses (primary defense):** The license server signs every response with an HMAC using a shared secret. The client verifies the signature. A rogue local server cannot produce valid signatures because it does not know the HMAC_SECRET. This is the only defense that survives a hosts file redirect.
+
+2. **Bypass `dns.lookup()` with `dns.resolve4()` (defense in depth):** Before making the license request, resolve the hostname using `dns.resolve4('sageconnect-license.vercel.app')` which queries actual DNS servers and ignores the hosts file. Use the resolved IP directly in the HTTPS request with the `Host` header preserved for SNI. This forces the client to intercept at the DNS server level (much harder) rather than just editing a local file.
+
+3. **TLS certificate pinning (defense in depth):** Pin the Vercel TLS certificate's public key fingerprint using `checkServerIdentity` on the `https.Agent`. If the client redirects to a local server with a different certificate, the TLS handshake fails before any HTTP exchange occurs.
+
+**What this does NOT prevent:** A determined attacker who deobfuscates the code, finds the HMAC_SECRET, and builds a fake server that produces valid HMAC signatures. See Pitfall 12 (Obfuscation Limitations).
+
+**Detection:** Log the resolved IP address and TLS certificate fingerprint on every license check. If the IP is `127.0.0.1` or the fingerprint does not match the pinned value, log a clear warning. Consider sending a silent telemetry ping if feasible.
+
+**Phase:** Must be addressed in the HMAC verification phase. DNS bypass and cert pinning are defense-in-depth additions that belong in the same phase.
+
+**Confidence:** HIGH -- this is a documented, reproducible attack vector. The HMAC defense pattern is the industry standard (Keygen.sh, JetBrains, and others use cryptographic response signing for this exact reason).
+
+---
+
+### Pitfall 2: HMAC Replay Attack -- Client Records and Replays a Valid Response
+
+**What goes wrong:** Client uses a network proxy (Fiddler, mitmproxy, Wireshark) to capture one valid license response including its HMAC signature. They then set up a local server that replays this exact response for every future request. Since the HMAC is valid (it was generated by the real server), the client verifies it successfully. The license server could have set the license to inactive months ago, but the client keeps replaying the old `active: true` response.
+
+**Why it happens:** HMAC proves authenticity (the response came from someone who knows the secret) and integrity (the response was not modified). It does NOT prove freshness. If the same HMAC payload can be used forever, a single captured response defeats the system permanently.
+
+**Consequences:** License revocation becomes impossible. Once the client has captured one valid response, they can use it indefinitely.
+
+**Prevention (timestamp validation -- mandatory):**
+
+1. **Server includes a timestamp (`ts`) in the signed payload:** `{ active: true, expiresAt: "...", ts: 1711382400 }`. The HMAC covers this timestamp.
+
+2. **Client rejects stale responses:** If `Date.now() - response.ts > ALLOWED_WINDOW`, reject the response even if the HMAC is valid. The window should be **5 minutes** (300 seconds) -- long enough to accommodate Vercel cold starts and network latency, short enough to prevent replay.
+
+3. **Client validates timestamp is not in the future:** If `response.ts > Date.now() + 60000` (more than 60s in the future), reject. Prevents an attacker from setting `ts` to a far-future value.
+
+**What about nonces?** A nonce-based approach (server generates a unique nonce per request, client checks it was never seen before) is stronger but requires maintaining a nonce store. For this use case, timestamps are sufficient because: (a) the cron interval is 15 minutes, so a 5-minute replay window limits damage to at most one cycle, and (b) nonce storage in an always-on Windows service adds complexity without proportional security gain.
+
+**Clock tampering risk:** If the client rolls back the system clock, stale responses become "fresh" again. Mitigation: on each successful validation, record the server's `ts` to a local file. On next validation, reject if the new `ts` is older than the recorded one (monotonic timestamp check). This catches clock rollbacks at the cost of one file write per cycle. See Pitfall 13 for more on clock manipulation.
+
+**Phase:** Must be addressed in the HMAC verification phase. Timestamp validation is inseparable from HMAC -- implementing HMAC without freshness checking creates a false sense of security.
+
+**Confidence:** HIGH -- replay attacks on HMAC-only systems are well-documented. The timestamp + window approach is the standard mitigation (used by AWS Signature V4, Stripe webhooks, Keygen.sh).
+
+**Sources:**
+- [HMAC + Timestamps + Nonces](https://thomasrones.com/technical/system-design/hmac-timestamp-nonce/)
+- [Replay Attack on HMAC](https://medium.com/@gowthami09027/api-pentesting-part-2-replay-attack-no-expiry-on-authentication-headers-hmac-sha-256-dd619b52cdc7)
+- [LinkedIn: Preventing HMAC Replay](https://www.linkedin.com/advice/0/how-do-you-prevent-replay-attacks-when-using-hmac-authentication)
+
+---
+
+### Pitfall 3: Treating Network Errors the Same as "License Invalid"
+
+**What goes wrong:** Vercel has occasional cold start timeouts (500ms-3s for Neon DB, up to 7s total on free tier), 502/504 errors, or brief outages. If any network failure is treated as `active: false`, a Vercel hiccup kills the client's service for 15 minutes (until next cron cycle) or permanently (if it happens at startup).
+
+**Why it happens:** Simplistic error handling: `catch (err) { return { active: false }; }`. Does not distinguish between "server deliberately said inactive" and "could not reach server."
+
+**Consequences:** Paying clients experience service outages due to Vercel infrastructure issues, not license revocation. Erodes trust in the system and creates support tickets.
+
+**Prevention -- three distinct states (mandatory):**
+
+| State | Condition | Action |
+|-------|-----------|--------|
+| VALID | Server responded `active: true`, HMAC valid, timestamp fresh | Allow operations, update cache |
+| INVALID | Server responded `active: false`, HMAC valid, timestamp fresh | Block operations immediately, zero grace period |
+| ERROR | Network timeout, 5xx, HMAC mismatch, stale timestamp | Use cached result if cache is fresh; retry on next cycle |
+
+**At startup:** Retry 3 times with exponential backoff (2s, 4s, 8s). If all retries return ERROR, check for a cached validation. If cache exists and is less than 24 hours old, start with a degraded warning banner. If no cache or cache is stale, fail with an actionable error message. Never treat ERROR as INVALID.
+
+**During cron cycle:** If license check returns ERROR, use the last known VALID/INVALID state from cache. Log the error but do not change the operational state. This means a Vercel outage lasting up to 24 hours would not affect paying clients.
+
+**Phase:** Must be addressed in the HTTP client/retry phase. The three-state model must be designed before any license-checking code is written.
+
+**Confidence:** HIGH -- Vercel cold starts are documented at 500ms-3s for Neon, and rare outages do occur.
+
+**Sources:**
+- [Vercel cold start performance](https://vercel.com/kb/guide/how-can-i-improve-serverless-function-lambda-cold-start-performance-on-vercel)
+- [Neon connection latency](https://neon.com/docs/connect/connection-latency)
+- [Vercel function timeouts](https://vercel.com/kb/guide/what-can-i-do-about-vercel-serverless-functions-timing-out)
+
+---
+
+### Pitfall 4: Startup Race Condition -- Server Starts Before License Is Validated
+
+**What goes wrong:** If `index.js` calls `startServer()` and `initScheduler()` without awaiting `validateLicense()` first, there is a window where the Express server is accepting requests and the cron scheduler is firing before the license has been checked.
+
+**Why it happens:** The current `index.js` is synchronous: `startServer(3030); initScheduler();`. Adding an async `validateLicense()` call requires making the startup sequence async. If done incorrectly (e.g., calling validateLicense without await), the server starts immediately.
+
+**Consequences:** Operations execute on an unlicensed service. Defeats the entire purpose of license validation.
+
+**Prevention:** Make `index.js` use an async `main()` function. `await validateLicense()` MUST complete before `startServer()` and `initScheduler()` are called:
+
+```javascript
+async function main() {
+    await validateLicense();  // Blocks until resolved
+    startServer(3030);
+    initScheduler();
+}
+main().catch(err => {
+    console.error('[FATAL]', err.message);
+    process.exit(1);
+});
+```
+
+**Detection:** Log timestamps show server startup and cron initialization before license validation completes.
+
+**Phase:** Must be addressed in the startup integration phase.
+
+**Confidence:** HIGH -- verified from current `src/index.js` source code.
+
+---
+
+### Pitfall 5: JSON Key Order Mismatch in HMAC Verification
+
+**What goes wrong:** The HMAC signature is computed over `JSON.stringify(payload)`. If the client reconstructs the payload with keys in a different order than the server used, the HMAC will never match -- causing ALL license checks to fail even for legitimately active licenses. The service refuses to start.
+
+**Why it happens:** JavaScript object key ordering depends on insertion order. If the server signs `{ active, expiresAt, ts }` but the client builds `{ ts, active, expiresAt }`, the `JSON.stringify` output differs and the HMAC does not match.
+
+**Consequences:** Service cannot start. Looks like a bug, not a key order issue. Extremely hard to debug.
+
+**Prevention:** Use explicit payload construction matching the server's exact field order. Never use spread operators (`...`) for HMAC payload construction. Build the payload explicitly:
+
+```javascript
+function buildPayloadForVerification(data) {
+    const payload = { active: data.active };
+    if (data.active === true) payload.expiresAt = data.expiresAt;
+    payload.ts = data.ts;
+    return payload;
+}
+```
+
+Add an integration test that verifies HMAC computation against a known server response with a known secret.
+
+**Phase:** HMAC verification phase.
+
+**Confidence:** HIGH -- `JSON.stringify` key ordering behavior is well-documented in the ECMAScript spec.
+
+---
+
+### Pitfall 6: Cached Validation File Tampering
+
+**What goes wrong:** The license client caches the last valid response to disk (for grace period during network failures). Client finds the cache file, edits it to `{ "active": true, "ts": 9999999999 }`, and the service always reads the tampered cache instead of contacting the license server.
+
+**Why it happens:** If the cache file contains plain JSON without cryptographic protection, anyone with file system access can modify it.
+
+**Consequences:** Permanent license bypass through cache file manipulation.
+
+**Prevention (layered):**
+
+1. **Store the HMAC signature alongside the cached response:** Cache file contains `{ payload, sig }`. On cache read, verify the HMAC before trusting the payload. A tampered payload will not match the signature.
+
+2. **Cache file must NOT be the primary validation path:** The cache is a fallback for network errors only. Every cron cycle MUST attempt a live server check first. The cache is only consulted when the live check returns ERROR state.
+
+3. **Monotonic timestamp enforcement:** Record the highest `ts` ever seen. Reject any cached response with a `ts` lower than the recorded maximum. This prevents replacing the cache file with an older (but legitimately signed) response that was captured when the license was still active.
+
+4. **File path obfuscation (minor):** Store the cache in a non-obvious location with a non-obvious filename. This is security-through-obscurity and NOT a defense on its own, but it raises the effort bar slightly.
+
+**Phase:** Must be addressed in the caching/grace-period phase.
+
+**Confidence:** HIGH -- file system access is guaranteed in the threat model. The HMAC-protected cache is the standard pattern (Keygen.sh uses this exact approach).
+
+**Sources:**
+- [Keygen.sh validation caching](https://github.com/keygen-sh/example-validation-caching)
+- [Keygen.sh offline licenses](https://keygen.sh/docs/choosing-a-licensing-model/offline-licenses/)
+
+---
 
 ## Moderate Pitfalls
 
-### Pitfall 5: Breaking CLI Script Backward Compatibility
-**What goes wrong:** Refactoring scripts to return structured data accidentally breaks the CLI invocation path. The `if (require.main === module)` block no longer produces console output.
-**Prevention:** Every script refactor must preserve: (1) CLI invocation produces same console output, (2) exported functions return structured data. Test both paths. The adapter should call the function, which returns data AND logs to console.
+---
 
-### Pitfall 6: Hardcoded Tenant Index in Scripts
-**What goes wrong:** Several scripts (e.g., `upload-authorized-pos.js`, `get-payment-cfdis.js`) have `const index = 0` hardcoded at module level. When exposed as API endpoints with `tenantIndex` as a parameter, the hardcoded value is used instead.
-**Prevention:** Audit every script for module-level `const index = 0`. Move tenant index into function parameters. The adapter receives tenantIndex from the route and passes it through.
+### Pitfall 7: Obfuscation Breaking HMAC Payload Construction
 
-### Pitfall 7: Long-Running Operations Timing Out
-**What goes wrong:** Payment reconciliation with `--from` spanning a full year can take 5+ minutes. Express default timeout or reverse proxy timeout kills the connection.
-**Prevention:** Use 202 Accepted + SSE pattern for any operation that might take >30 seconds. Never keep an HTTP request open waiting for completion. For Express, if needed, increase `server.timeout` for SSE routes only.
+**What goes wrong:** `javascript-obfuscator` transforms object destructuring or spread operators in ways that change property insertion order. If `const { sig, ...payload } = data` becomes something that reorders keys after obfuscation, HMAC verification works in development but breaks in the obfuscated production build.
 
-### Pitfall 8: node-cron Schedule Drift After Process Restart
-**What goes wrong:** If the always-on process restarts (crash, deploy, Servy restart) at 10:14, the :15 cron slot is missed. The next execution is at 10:30, creating a 30-minute gap instead of 15 minutes.
-**Prevention:** On startup, check when the last successful execution was (from log files or a lightweight state file). If the last run was more than 20 minutes ago, trigger an immediate execution before resuming the normal cron schedule.
+**Why it happens:** The obfuscation pipeline uses `transformObjectKeys: true` and `stringArray: true` (verified in `scripts/obfuscate.js`). These transformations can alter how object literals are constructed at runtime.
 
-### Pitfall 9: Express Static File Caching Prevents Dashboard Updates
-**What goes wrong:** After deploying new web UI code, browsers serve cached versions of HTML/CSS/JS from the existing static middleware.
-**Prevention:** Add cache-busting query parameters to CSS/JS includes in HTML (e.g., `style.css?v=2.0.1`), or set `Cache-Control: no-cache` for development and short max-age for production.
+**Prevention:**
+- Use explicit property construction (not spread operators) for HMAC payloads
+- Add HMAC verification test against a known payload to the obfuscated build CI step
+- Run `npm run obfuscate` locally and test the obfuscated output before deploying
+
+**Phase:** HMAC verification phase (testing checkpoint).
+
+**Confidence:** MEDIUM -- javascript-obfuscator documentation says property order is preserved in most cases, but `transformObjectKeys: true` introduces risk. Needs empirical validation.
+
+---
+
+### Pitfall 8: Blocking System Endpoints with License Middleware
+
+**What goes wrong:** Applying `require-license` middleware to ALL `/api/*` routes blocks `/api/system/health`, `/api/system/license`, and dashboard pages. The web UI cannot even display the "License inactive" banner because the license status endpoint itself returns 403.
+
+**Prevention:** Only apply `require-license` to operational routes: `/api/payments`, `/api/pos`, `/api/schedule`, `/api/operations`. System routes (`/api/system/*`) and static HTML/CSS/JS serving must remain accessible. Document which routes are gated and which are not.
+
+**Phase:** Middleware integration phase.
+
+**Confidence:** HIGH -- verified from current route structure in `src/routes/routes.js`.
+
+---
+
+### Pitfall 9: Cache TTL Too Short -- License Checks Fail During Vercel Outages
+
+**What goes wrong:** If the cache TTL is set to exactly 15 minutes (matching cron interval), and one cron cycle fails to reach the license server, the cache expires before the next cycle runs. The middleware starts returning 403 to all requests even though the license is active.
+
+**Prevention:** Set cache TTL to **24 hours** for ERROR states (network failures). When a deliberate INVALID response is received from the server (with valid HMAC), the cache is updated immediately with `active: false` and zero grace. This means:
+- Network outage lasting 24 hours: paying client unaffected
+- License revocation: takes effect within 15 minutes (next cron cycle)
+
+The 24-hour window is a tradeoff: a client who stops paying could theoretically run for up to 24 hours after revocation if there is simultaneously a network outage. This is acceptable given the alternative (paying clients experiencing downtime due to infrastructure issues).
+
+**Phase:** Caching/grace-period phase.
+
+**Confidence:** HIGH.
+
+---
+
+### Pitfall 10: HMAC_SECRET Mismatch Between Environments
+
+**What goes wrong:** The license server uses one `HMAC_SECRET` value, the client deployment uses a different one. Every HMAC check fails. Service cannot start.
+
+**Why it happens:** The HMAC_SECRET is configured independently in two places: the license server's `.env` (on Vercel) and each client's `.env` (on Windows Server). Copy-paste errors or encoding differences (trailing newlines, BOM characters).
+
+**Prevention:**
+- Log a truncated HMAC_SECRET prefix at startup: `[LICENSE] HMAC secret loaded (prefix: 5ba563...)`
+- Add a clear error message when HMAC fails: `"HMAC signature mismatch -- verify HMAC_SECRET matches the license server"`
+- Trim whitespace from the HMAC_SECRET value during config loading
+
+**Phase:** Config integration phase.
+
+**Confidence:** HIGH.
+
+---
+
+### Pitfall 11: Client Sets NODE_TLS_REJECT_UNAUTHORIZED=0
+
+**What goes wrong:** Client adds `NODE_TLS_REJECT_UNAUTHORIZED=0` to the .env file. This disables all TLS certificate verification globally for the Node.js process. Certificate pinning becomes useless because the TLS layer accepts any certificate, including self-signed ones from a local rogue server.
+
+**Why it happens:** This environment variable is a Node.js global that overrides TLS behavior for the entire process. It is commonly used during development and well-known to anyone who has done Node.js work.
+
+**Prevention:**
+- At startup, check `process.env.NODE_TLS_REJECT_UNAUTHORIZED`. If it is `'0'`, log a security warning and optionally refuse to start.
+- Use `rejectUnauthorized: true` explicitly on the axios httpsAgent for license requests, rather than relying on the global default.
+- Remember: this is defense-in-depth. The HMAC signature is the primary defense. Even with TLS disabled, a rogue server cannot produce valid HMAC signatures.
+
+**Phase:** HTTP client phase.
+
+**Confidence:** HIGH -- this is a well-known Node.js setting.
+
+---
+
+### Pitfall 12: Obfuscation Is Not a Security Boundary
+
+**What goes wrong:** The team relies on javascript-obfuscator as the primary defense against code inspection. A motivated attacker uses AST-based deobfuscation tools (REstringer, de4js, or LLM-based deobfuscation) to recover the source code, extracts the HMAC_SECRET from the obfuscated `.env` file or from a string in the code, and builds a perfect rogue license server.
+
+**Why it happens:** Obfuscation raises the effort bar but does not provide a security guarantee. The current obfuscation settings (`javascript-obfuscator` with `controlFlowFlattening`, `deadCodeInjection`, `stringArrayEncoding: ['base64']`) are strong but not unbreakable. Modern deobfuscation tools and LLMs (GPT-4o, DeepSeek-Coder) can simplify obfuscated code significantly. Additionally:
+- The `.env` file is deployed in plaintext on the client server
+- The HMAC_SECRET is in the `.env` file, not embedded in code
+- Even if embedded in code, string arrays with base64 encoding can be decoded
+
+**Consequences:** Complete license bypass by a technically sophisticated attacker.
+
+**Prevention (accept the limitation, mitigate the risk):**
+
+1. **HMAC_SECRET in .env is visible to anyone with server access.** This is unavoidable for symmetric HMAC. Accept this limitation.
+
+2. **Consider asymmetric signatures for future hardening:** Replace HMAC (shared secret) with Ed25519 (asymmetric keys). The license server signs with a private key; the client verifies with a public key. Even if the attacker extracts the public key, they cannot forge signatures. The `jose` library (already in the license server's dependencies) supports Ed25519 natively. This is the single most impactful security upgrade and should be considered for v2.2.
+
+3. **For v2.1 (HMAC approach), layer defenses:** HMAC + timestamp + DNS bypass + cert pinning + cache integrity. No single defense is sufficient, but the combination raises the attack effort significantly.
+
+4. **Monitor for bypass:** The license server can track validation frequency per API key. If a key stops checking in, it may indicate bypass. Alert the Tersoft team when a client's check-in frequency drops to zero.
+
+**Phase:** This is a design-level constraint that should be documented in the architecture phase. The asymmetric signature upgrade should be flagged for v2.2.
+
+**Confidence:** HIGH -- obfuscation limitations are extensively documented. The [JScrambler definitive guide](https://jscrambler.com/blog/javascript-obfuscation-the-definitive-guide) and [REstringer deobfuscator](https://github.com/HumanSecurity/restringer) demonstrate current capabilities.
+
+**Sources:**
+- [JScrambler: JavaScript Obfuscation Guide 2026](https://jscrambler.com/blog/javascript-obfuscation-the-definitive-guide)
+- [REstringer deobfuscator](https://github.com/HumanSecurity/restringer)
+- [Deobfuscation research paper](https://arxiv.org/html/2512.14070v1)
+- [jose npm (Ed25519 support)](https://www.npmjs.com/package/jose)
+
+---
+
+### Pitfall 13: System Clock Manipulation to Extend Stale Cache
+
+**What goes wrong:** Client rolls back the system clock to make a stale cached response appear fresh. If the cache file contains `{ ts: 1711382400 }` (March 25, 2026) and the client sets the system clock back to March 24, 2026, the timestamp difference `Date.now() - ts` becomes negative, passing the freshness check.
+
+**Why it happens:** All timestamp-based freshness checks depend on a trustworthy system clock. On an untrusted server, the clock is not trustworthy.
+
+**Prevention:**
+
+1. **Monotonic timestamp file:** On every successful validation, write the server's `ts` to a separate file. On the next validation, reject if the new `ts` is less than or equal to the recorded maximum. This catches clock rollbacks because the server's timestamp always increases (the server's clock is trustworthy).
+
+2. **Compare server time vs local time:** If `Math.abs(serverTs - Date.now()) > 24 * 60 * 60 * 1000` (more than 24 hours of drift), log a warning and treat the validation as ERROR (not VALID). This catches gross clock manipulation.
+
+3. **File creation/modification date cross-check:** Check the cache file's filesystem `mtime`. If `mtime` is in the future relative to `Date.now()`, the clock was rolled back.
+
+**Limitation:** A sophisticated attacker who understands the monotonic file can delete it, forcing the system to start fresh. This is an accepted limitation -- the server-side validation on each cron cycle provides the real protection.
+
+**Phase:** Caching/grace-period phase.
+
+**Confidence:** MEDIUM -- clock manipulation is a known attack vector for time-based licenses but requires understanding the specific validation logic.
+
+**Sources:**
+- [Clock Tampering Detection](https://www.codeproject.com/Articles/1101956/Check-for-Clock-Tampering-to-Extend-Licence-Durati)
+
+---
+
+### Pitfall 14: License Expiry During Long-Running Operation
+
+**What goes wrong:** A cron cycle starts at 10:00, license is valid. At 10:05, the admin toggles the license to inactive. The current cron cycle continues until 10:12 because the license was valid when it started. The next cycle at 10:15 detects the revocation.
+
+**Prevention:** This is acceptable behavior -- do NOT add mid-operation license checks. Interrupting a running reconciliation or upload midway through would leave data in an inconsistent state (partially uploaded payments, half-created POs). The 15-minute delay between revocation and enforcement is an acceptable tradeoff. Document this as expected behavior.
+
+**Phase:** Architecture documentation.
+
+**Confidence:** HIGH.
+
+---
 
 ## Minor Pitfalls
 
-### Pitfall 10: SQL Injection via API Parameters
-**What goes wrong:** API receives `poNumber` from HTTP request and passes it into raw SQL string interpolation (the pattern used throughout all scripts).
-**Prevention:** This is documented as out-of-scope in PROJECT.md (internal network tool). However, add basic input sanitization in Joi schemas: PO numbers must match `/^PO\d+$/`, payment numbers must match `/^PY\d+$/`, tenant index must be a bounded integer. This is defense-in-depth, not a security boundary.
+---
 
-### Pitfall 11: Log File Path Differences Between CLI and Always-On
-**What goes wrong:** When scripts run via CLI, `process.cwd()` is the project root. When run via Servy as a Windows Service, `process.cwd()` might be a system directory, breaking relative log paths.
-**Prevention:** All paths should use `config.paths.logs` (absolute) rather than relative paths. Verify this during Servy integration.
+### Pitfall 15: Axios Default Timeout Too Low for Vercel Cold Start
 
-### Pitfall 12: SSE Event Format Errors
-**What goes wrong:** SSE requires the exact format `data: <content>\n\n` with a double newline. Forgetting the double newline or including raw newlines in the JSON payload breaks the stream.
-**Prevention:** Always `JSON.stringify()` the event data (which escapes newlines) and always append `\n\n`.
+**What goes wrong:** Setting axios timeout to 5s. Vercel cold starts with Neon DB can take 500ms-3s for the database alone, plus function initialization. Total can reach 5-7s on first hit. First startup attempt always fails, consuming a retry.
+
+**Prevention:** Set timeout to **10s** for license requests. Vercel cold starts rarely exceed 7s, and 10s provides margin. The 10s wait at startup is a one-time cost.
+
+**Confidence:** HIGH.
+
+**Sources:**
+- [Vercel discussion on cold start delays](https://github.com/vercel/vercel/discussions/7961)
+- [Neon latency benchmarks](https://neon-latency-benchmarks.vercel.app/)
+
+---
+
+### Pitfall 16: Forgetting to Add LICENSE_API_URL and HMAC_SECRET to .env.example
+
+**What goes wrong:** New deployments use `.env.example` as a template. Missing license variables mean operators do not know they need to set them. `config.js` fail-fast produces a generic error.
+
+**Prevention:** Add both variables to `.env.example` with descriptive comments:
+```
+# License validation (required)
+# URL of the license server API
+LICENSE_API_URL=https://sageconnect-license.vercel.app/api/validate
+# HMAC secret for response verification (get from Tersoft)
+HMAC_SECRET=
+```
+
+**Phase:** Config integration phase.
+
+**Confidence:** HIGH.
+
+---
+
+### Pitfall 17: Retry Exhaustion Logging Cryptic Error
+
+**What goes wrong:** All 3 startup attempts fail. The error log shows `ETIMEDOUT` instead of an actionable message. The operator on the client's server does not know what to do.
+
+**Prevention:** Log a clear, actionable message after retry exhaustion:
+```
+[LICENSE] Failed to validate license after 3 attempts.
+  Last error: ETIMEDOUT
+  License URL: https://sageconnect-license.vercel.app/api/validate
+  Action: Check network connectivity to the license server.
+  If the problem persists, contact Tersoft support.
+```
+
+**Phase:** HTTP client/retry phase.
+
+**Confidence:** HIGH.
+
+---
+
+### Pitfall 18: Web UI License Banner Not Updating in Real Time
+
+**What goes wrong:** License becomes invalid during a cron cycle. The web UI still shows "Licensed" because the dashboard page was loaded before the state change and does not poll for updates.
+
+**Prevention:** The `/api/system/license` endpoint (exempt from license middleware, see Pitfall 8) returns current license state. The web UI should poll this endpoint every 60 seconds or use SSE. When the state transitions to INVALID, inject a prominent banner: "License inactive -- operations suspended. Contact Tersoft."
+
+**Phase:** Web UI integration phase.
+
+**Confidence:** HIGH.
+
+---
 
 ## Phase-Specific Warnings
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| Script refactoring | Breaking CLI backward compatibility (Pitfall 5) | Test every script both as CLI and via adapter after refactor |
-| Script refactoring | Hardcoded tenant index (Pitfall 6) | Grep for `const index = 0` at module level |
-| REST API creation | Console.log-only scripts (Pitfall 1) | Audit return values before writing routes |
-| REST API creation | SQL injection via params (Pitfall 10) | Joi schemas with regex patterns for IDs |
-| SSE implementation | Connection leaks (Pitfall 4) | Always handle `req.on('close')`; set max lifetime |
-| SSE implementation | Event format errors (Pitfall 12) | Use a helper function for SSE writes |
-| Scheduling implementation | Cron/manual collision (Pitfall 2) | OperationManager with per-type locking from day 1 |
-| Scheduling implementation | Schedule drift after restart (Pitfall 8) | Check last execution time on startup |
-| AutoShutdown removal | Premature removal (Pitfall 3) | Remove LAST, after scheduler + Servy are proven |
-| Always-on deployment | Log path issues (Pitfall 11) | Verify absolute paths work under Servy |
-| Dashboard UI updates | Browser caching (Pitfall 9) | Cache-busting query params on static assets |
+| Phase Topic | Likely Pitfall | Severity | Mitigation |
+|-------------|---------------|----------|------------|
+| Config additions | HMAC_SECRET mismatch (P10) | Critical | Log truncated prefix at startup |
+| Config additions | Missing .env.example (P16) | Minor | Add vars with comments |
+| HMAC verification | JSON key order mismatch (P5) | Critical | Explicit payload construction, never spread |
+| HMAC verification | Obfuscation breaking key order (P7) | Moderate | Test in obfuscated build before deploy |
+| HMAC verification | No timestamp = replay forever (P2) | Critical | Timestamp + 5-min window mandatory |
+| HTTP client / retry | Network errors = invalid (P3) | Critical | Three-state model: VALID/INVALID/ERROR |
+| HTTP client / retry | Timeout too low for cold start (P15) | Minor | Use 10s timeout |
+| HTTP client / retry | NODE_TLS_REJECT_UNAUTHORIZED=0 (P11) | Moderate | Check at startup, explicit agent config |
+| DNS/TLS hardening | Hosts file redirect (P1) | Critical | HMAC primary + dns.resolve4 + cert pinning |
+| Startup integration | Race condition (P4) | Critical | async main() with await before startServer |
+| Middleware | Blocking system endpoints (P8) | Moderate | Only gate operational routes |
+| Caching | Cache file tampering (P6) | Critical | Store HMAC with cached data |
+| Caching | TTL too short (P9) | Moderate | 24h for ERROR state, immediate for INVALID |
+| Caching | Clock manipulation (P13) | Moderate | Monotonic timestamp file |
+| Architecture | Obfuscation not a security boundary (P12) | Moderate | Plan asymmetric sigs for v2.2 |
+| Architecture | License expiry mid-operation (P14) | Minor | Accept 15-min delay, document |
+| Web UI | Banner not updating (P18) | Minor | Poll /api/system/license every 60s |
+| Error handling | Cryptic retry errors (P17) | Minor | Log actionable message with URL |
+
+---
+
+## Defense-in-Depth Summary
+
+No single defense is sufficient against an attacker with physical server access. The recommended layered approach:
+
+| Layer | Defense | Stops | Bypassed By |
+|-------|---------|-------|-------------|
+| 1 | HMAC-signed responses | Rogue server returning `{ active: true }` | Extracting HMAC_SECRET from .env |
+| 2 | Timestamp freshness check (5 min) | Replaying old valid responses | Clock manipulation |
+| 3 | Monotonic timestamp file | Clock rollback | Deleting the file |
+| 4 | `dns.resolve4()` instead of `dns.lookup()` | Hosts file redirect | Custom DNS server |
+| 5 | TLS certificate pinning | Self-signed cert on rogue server | `NODE_TLS_REJECT_UNAUTHORIZED=0` |
+| 6 | Check for `NODE_TLS_REJECT_UNAUTHORIZED` | Disabling TLS globally | Patching obfuscated code |
+| 7 | Code obfuscation | Casual code inspection | AST deobfuscation tools, LLMs |
+| 8 | HMAC-protected cache file | Cache file tampering | Extracting HMAC_SECRET |
+
+**Combined attack cost:** To fully bypass all layers, an attacker needs to: deobfuscate the code, extract the HMAC_SECRET, build a local server that produces valid signed responses with fresh timestamps, and handle the cert pinning rejection. This is feasible for a determined, technically sophisticated attacker, but raises the bar far above "edit hosts file, return true."
+
+**For v2.2, asymmetric signatures (Ed25519) would eliminate layers 1, 7, and 8 from the bypass chain** since the private key never leaves the license server. This is the single most impactful future improvement.
+
+---
 
 ## Sources
 
-- Project codebase analysis: all 13 scripts in `src/scripts/`, `src/background.js`, `src/services/AutoShutdownService.js`
-- [DigitalOcean: SSE in Node.js](https://www.digitalocean.com/community/tutorials/nodejs-server-sent-events-build-realtime-app)
-- [Better Stack: Node.js Scheduled Tasks](https://betterstack.com/community/guides/scaling-nodejs/node-cron-scheduled-tasks/)
-- [Yodaplus: Audit Trails in ERP](https://yodaplus.com/blog/audit-trails-in-erp-how-to-design-them-right/)
+### Primary (HIGH confidence)
+- SageConnect codebase: `src/index.js` (sync startup pattern), `src/config.js` (fail-fast), `src/middleware/api-key.js` (timingSafeEqual), `scripts/obfuscate.js` (obfuscation options)
+- [Node.js DNS docs v22](https://nodejs.org/docs/latest-v22.x/api/dns.html) -- `dns.lookup()` vs `dns.resolve*()` behavior
+- [Keygen.sh offline licenses](https://keygen.sh/docs/choosing-a-licensing-model/offline-licenses/) -- cryptographic validation caching architecture
+- [Keygen.sh API signatures](https://keygen.sh/docs/api/signatures/) -- response signature verification flow
+- [HMAC + Timestamps + Nonces](https://thomasrones.com/technical/system-design/hmac-timestamp-nonce/) -- replay prevention architecture
+- [License bypass via hosts file](https://github.com/thibautsabot/bypass-license-verification) -- documented attack reproducing exact threat model
+
+### Secondary (MEDIUM confidence)
+- [Snyk: SSL/TLS pinning in Node.js](https://snyk.io/blog/ssl-tls-pinning-node-js/) -- certificate fingerprint pinning implementation
+- [Vercel cold start performance](https://vercel.com/kb/guide/how-can-i-improve-serverless-function-lambda-cold-start-performance-on-vercel) -- latency expectations
+- [Neon connection latency](https://neon.com/docs/connect/connection-latency) -- database cold start timing
+- [Clock Tampering Detection](https://www.codeproject.com/Articles/1101956/Check-for-Clock-Tampering-to-Extend-Licence-Durati) -- system clock manipulation prevention
+- [jose npm](https://www.npmjs.com/package/jose) -- Ed25519 support for future asymmetric upgrade
+
+### Tertiary (LOW confidence)
+- [JScrambler: JavaScript Obfuscation Guide 2026](https://jscrambler.com/blog/javascript-obfuscation-the-definitive-guide) -- obfuscation state of the art
+- [REstringer deobfuscator](https://github.com/HumanSecurity/restringer) -- deobfuscation tool capabilities
+- [Deobfuscation via LLMs (arxiv)](https://arxiv.org/html/2512.14070v1) -- LLM-based code simplification research
+
+---
+*Pitfalls research for: SageConnect v2.1 License Validation Kill Switch*
+*Threat model: Untrusted client Windows Server with admin access*
+*Researched: 2026-03-25*

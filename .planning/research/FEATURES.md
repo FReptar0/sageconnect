@@ -1,192 +1,114 @@
 # Feature Landscape
 
-**Domain:** Always-on Node.js service with operational web UI for Sage 300 ERP integration
-**Researched:** 2026-03-23
-**Mode:** Ecosystem (features for v2.0 always-on service milestone)
+**Domain:** License validation client (kill switch) for on-premise Node.js service
+**Researched:** 2026-03-25
+**Milestone:** v2.1 License Validation
+**Existing server:** `GET /api/validate?key=X` returns HMAC-signed `{ active, expiresAt, ts, sig }`
 
 ## Table Stakes
 
-Features users expect. Missing = product feels incomplete or defeats the purpose of always-on.
+Features the license validation MUST have. Without these, the kill switch is bypassable or unreliable.
 
-### 1. CLI Scripts as REST Endpoints
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| POST endpoints for destructive operations (upload, repair, update) | Users need to trigger operations without SSH/RDP access to server | Medium | 13 scripts already have exported `main()` functions; wrap in Express route handlers |
-| GET endpoints for read-only operations (diagnostics, queries) | Diagnostics are the most frequent manual operation | Low | Pure queries, no side effects |
-| Tenant index parameter in all endpoints | Multi-tenant is core architecture; every script takes `--index=N` | Low | Already parameterized in every script |
-| Dry-run mode for destructive endpoints | Scripts already support `--dry-run`/`--upload` flags; API must preserve safety | Low | Map to query param `?dryRun=true`, default true |
-| Structured JSON responses (not console output) | CLI scripts write to `console.log/table`; API consumers need parseable JSON | Medium | Biggest adaptation: scripts currently output to stdout, need to return data objects instead |
-| Request validation with Joi | Already using Joi for PO validation; consistent validation on API inputs | Low | Extend existing Joi usage to request schemas |
-
-### 2. Real-Time Operation Feedback in Web UI
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Operation progress during long-running tasks | Payment reconciliation and PO uploads take 30s-5min; blank screen = "is it working?" | Medium | SSE (Server-Sent Events) is the right fit -- one-way server-to-client, built-in reconnect, works with Express |
-| Live log streaming for active operations | Existing dashboard shows log files; always-on service should show live output | Medium | SSE endpoint per operation, pipe log events to connected clients |
-| Operation status indicators (running/idle/error) | Users need to know if background processes are currently executing | Low | In-memory state tracker, exposed via GET endpoint |
-| Operation completion notifications | Users who triggered an operation need to know when it finishes | Low | SSE sends completion event; UI shows toast/alert |
-
-### 3. Scheduled Task Management via Web
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| View current schedule (next execution times) | Replaces Windows Task Scheduler visibility | Low | node-cron exposes schedule metadata |
-| View last execution result per task | "Did the 10:15 run succeed?" is the most asked question | Low | Store last result in memory + log |
-| Manual trigger of scheduled tasks | "Run it now" without waiting for next cycle | Low | Same endpoint as REST API, but triggered from schedule UI |
-| View execution history (last N runs) | Audit trail of what ran and when | Medium | Requires lightweight persistence -- append to daily log files or in-memory ring buffer |
-
-### 4. Payment Audit Views
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| Payment reconciliation report (5 categories) | Core business value -- categorized view of ready/missing-providerid/missing-uuid/not-in-portal/provider-mismatch | Medium | `classifyPayments` already returns structured categories; surface via API + render in UI |
-| Payment status tracking (uploaded/pending/failed) | Control table `fesaPagosFocaltec` already tracks status; expose it | Low | SQL query to control table, render as filterable table |
-| Payment detail drill-down (invoices per payment) | Each PY payment has multiple linked invoices; users need to see the breakdown | Medium | Already queried in reconciliation script; expose per-payment detail endpoint |
-| Upload history with portal response | "Was PY0061652 uploaded? What did the portal say?" | Low | Control table has `idFocaltec` column; combine with log data |
-
-### 5. PO Management Views
-
-| Feature | Why Expected | Complexity | Notes |
-|---------|--------------|------------|-------|
-| PO status overview (posted/error/pending) | `fesaOCFocaltec` control table tracks PO lifecycle | Low | SQL query + render as table with status badges |
-| PO diagnostic from web (single PO lookup) | `po-diagnostic.js` is the most-used CLI script; should be one click | Low | Already exported as `diagnosticPO()` function |
-| Today's authorized POs | `getAuthorizedPOsToday()` already exists; show in dashboard | Low | Direct function call, render as list |
-| PO validation preview before upload | `po-query.js` does dry-run validation; expose in UI | Medium | Needs structured return from `testSpecificPurchaseOrders` |
+| Feature | Why Expected | Complexity | Dependencies on SageConnect | Notes |
+|---------|--------------|------------|----------------------------|-------|
+| **Startup validation (fail-fast)** | Service must not operate without a valid license. First line of defense. If startup proceeds without validation, a client who never restarts could run forever on a revoked key. | Low | `config.js` (new `license` section), `index.js` (async init before `startServer` + `initScheduler`) | Call `GET LICENSE_API_URL?key=SAGECONNECT_API_KEY` before starting server/cron. On failure: `process.exit(1)` with clear error log. Matches existing fail-fast pattern in `config.js` validate(). |
+| **HMAC signature verification** | Without HMAC verification, a client (or their IT) could DNS-hijack `sageconnect-license.vercel.app` to a local mock server returning `{ active: true }` permanently. This is the entire security model for preventing bypass. | Low | Node.js `crypto` module (already used in `src/middleware/api-key.js`), shared `HMAC_SECRET` env var | Recompute HMAC-SHA256 over the payload fields (excluding `sig`) and compare with `sig` using `crypto.timingSafeEqual`. Must match server's `signResponse()`: `JSON.stringify({ active, expiresAt, ts })` for active, `JSON.stringify({ active, ts })` for inactive. Key ordering must be identical. |
+| **Periodic re-validation** | License can be revoked after startup via the admin dashboard toggle. Without periodic checks, a revoked client runs until its next Windows Service restart -- which could be weeks or months. | Low | `CronScheduler.js` (hook into cron cycle callback), new `LicenseGuard` service | Check license at the start of each cron cycle (every 15 min by default). If invalid, skip `forResponse()` + `startChildProcess()`. Log clearly via `LogGenerator`. |
+| **Operation blocking (cron + API)** | If license is invalid, ALL operations must stop -- not just cron. Manual triggers via `POST /api/schedule/:taskId/trigger` and data endpoints (`/api/payments/*`, `/api/pos/*`) must also refuse. Otherwise a user could manually trigger operations from the UI even after revocation. | Medium | `routes.js` (new middleware mount), `CronScheduler.js`, `schedule-routes.js` | Two enforcement points: (1) guard in `CronScheduler.js` cron callback before `forResponse()`, (2) Express middleware on `/api/payments`, `/api/pos`, `/api/schedule` routes returning 403 with `{ active: false }`. System routes (`/api/system/health`, `/api/system/tenants`) and static file serving must remain accessible. |
+| **Web UI "Licencia inactiva" banner** | Operators on the client's server need a clear visual indicator that the service is blocked and why. Without it, they see confusing empty states, silently failing triggers, or assume the system is broken rather than license-revoked. | Low | `shared.js` (initPage flow), new `GET /api/system/license` endpoint | Global non-dismissible banner on all pages, injected via `shared.js` during `initPage()`. Red bar at top: "Licencia inactiva -- contacte a Tersoft". Hides/disables operational controls (trigger button, upload buttons) since they will return 403 anyway. |
+| **New env vars: LICENSE_API_URL, HMAC_SECRET** | License server URL and HMAC secret must be configurable per deployment. Different clients may use different license server instances in the future, and HMAC_SECRET is deployment-specific. | Low | `config.js` (new `license` section in REQUIRED and config object), `.env.example` | `LICENSE_API_URL` defaults to `https://sageconnect-license.vercel.app/api/validate`. `HMAC_SECRET` must be required in fail-fast validation (no license validation possible without it). Map to `config.license.apiUrl` and `config.license.hmacSecret`. |
+| **Structured logging for license events** | Audit trail: when license was checked, result, any failures. Critical for debugging on client servers where Tersoft has limited access. | Low | `LogGenerator.js` (existing utility) | Use existing `logGenerator(logFileName, level, message)` pattern. Log file: `LicenseValidation`. Events: `[CHECK] Validating license...`, `[VALID] License active, expires YYYY-MM-DD`, `[INVALID] License inactive`, `[ERROR] Network error: ...`, `[HMAC-FAIL] Signature mismatch`. |
 
 ## Differentiators
 
-Features that set the operational UI apart from basic log viewers. Not expected from "just exposing scripts," but valued by operations team.
+Features not strictly required for the kill switch to work, but significantly improve reliability and operability in the real deployment environment (client Windows Servers, Vercel-hosted license server).
 
-| Feature | Value Proposition | Complexity | Notes |
-|---------|-------------------|------------|-------|
-| Auto-resolution dashboard (PROVIDERID fixes) | Shows auto-resolved payments in real-time; reduces manual intervention tracking | Low | `autoResolvedSet` already tracked in reconciliation; surface in payment view |
-| UUID repair workflow (scan/repair/upload pipeline) | `payment-uuid-repair.js` has 3-stage pipeline; web UI guides through stages | High | Complex state machine: scan results -> select -> repair -> verify -> upload |
-| Batch operation progress with per-item status | "3/20 payments uploaded, 2 failed, 15 remaining" in real-time | Medium | SSE + per-item result tracking during batch uploads |
-| Cross-entity diagnostic (payment -> invoices -> PO -> portal) | Trace a problem from payment through invoices to POs and portal status | High | Joins across multiple data sources; requires multiple queries |
-| Schedule override/pause | Temporarily disable the 15-minute cycle during maintenance without stopping the service | Low | Toggle flag on scheduler; useful during Sage maintenance windows |
-| Tenant switcher in UI | Multi-tenant support visible in UI; switch context without URL params | Low | Dropdown in navbar, stores selected tenant in session |
-| Operation queue with concurrency control | Prevent two users from running payment upload simultaneously | Medium | In-memory semaphore per operation type; reject with 409 if already running |
+| Feature | Value Proposition | Complexity | Dependencies on SageConnect | Notes |
+|---------|-------------------|------------|----------------------------|-------|
+| **Retry with backoff on startup** | License server on Vercel has cold starts (can take 5-10s on free tier). First request after idle may timeout. Service shouldn't fail permanently on a transient cold start. | Low | None (pure logic in LicenseGuard) | 3 retries with exponential backoff: 2s, 4s, 8s. Only for network errors (`ECONNREFUSED`, `ETIMEDOUT`, `ENOTFOUND`, HTTP 5xx). A `200 { active: false }` is NOT retried -- that is deliberate revocation. Periodic checks don't need retry (next cycle in 15 min). |
+| **Timestamp freshness check** | Prevents replay attacks where a cached valid response from a compromised proxy is served indefinitely. Also detects gross clock skew between client server and Vercel. | Low | None beyond HMAC verification logic | `Math.abs(Date.now() - response.ts) < 300_000` (5-minute window). If stale, treat as HMAC failure. Log `[STALE-RESPONSE]` with both timestamps for diagnostics. |
+| **Grace period for network errors** | If Vercel has an outage (it happens), don't immediately kill a paying client's service that was validly licensed 15 minutes ago. Distinguish between "server says inactive" (immediate kill) and "can't reach server" (temporary grace). | Medium | In-memory state in `LicenseGuard` | Track consecutive network failures. Allow continued operation for N consecutive network-error cycles (3 cycles = ~45 min with default 15-min cron). On `{ active: false }` from server (deliberate revocation): immediate block, zero grace. On service restart: always require fresh validation (no grace on startup). |
+| **License status in `/api/system/health`** | External monitoring (Servy process health checks, uptime monitors) can see license status without accessing the web UI. Enables automated alerting. | Low | `system-routes.js` existing `/health` endpoint | Add `license: { active: true/false, lastCheck: ISO, expiresAt: ISO }` to health response. Health endpoint must remain accessible even when license is invalid (monitoring must always work). |
+| **License expiry countdown in sidebar** | Proactive renewal: operators see "Licencia expira en X dias" before it actually expires. Prevents surprise service stops when license lapses due to forgotten renewal. | Low | `GET /api/system/license` endpoint, `shared.js` sidebar renderer | Yellow badge in sidebar when <= 30 days remaining. Red badge when <= 7 days. Green when > 30 days. Uses `expiresAt` from cached validation response. Only shown when license is active. |
+| **Obfuscation-safe implementation** | Production deploys use `javascript-obfuscator` in a separate repo. HMAC computation and JSON key ordering must survive obfuscation. | Low | Obfuscation build pipeline | Use explicit property construction: `JSON.stringify({ active: payload.active, expiresAt: payload.expiresAt, ts: payload.ts })` rather than rest/spread operators. HMAC_SECRET from env var (not hardcoded string). Must verify in obfuscated test build. |
 
 ## Anti-Features
 
-Features to explicitly NOT build. Based on project constraints and "Out of Scope" from PROJECT.md.
+Features to explicitly NOT build. These would add complexity without proportional value, or would undermine the kill switch's purpose.
 
 | Anti-Feature | Why Avoid | What to Do Instead |
 |--------------|-----------|-------------------|
-| Authentication/authorization system | Internal tool on local network; auth adds complexity with zero security value here | Trust network isolation; document that it must not be exposed to internet |
-| Direct database editing from UI | SQL injection risk; Sage 300 data integrity depends on business logic | Read-only views + operations through existing validated business logic in scripts |
-| Multi-environment support (dev/staging/prod) | Single deployment target (Windows Server); no staging exists | .env per deployment is sufficient |
-| CRUD admin panel for config/tenants | AdminJS-style panels are for data management apps; this is an operations dashboard | Edit `.env` file directly; service restarts on deploy |
-| WebSocket-based real-time (Socket.io) | Over-engineered for one-way progress updates; adds dependency | Use SSE (Server-Sent Events) -- native browser API, no client library needed |
-| SPA framework (React/Vue/Angular) | Current dashboard is vanilla HTML+Bootstrap; team doesn't use SPAs; build tooling overhead | Extend existing Bootstrap 5.3 dashboard with vanilla JS; use htmx for dynamic interactions if needed |
-| Persistent job queue (Redis/MongoDB) | No Redis or MongoDB in infrastructure; adding database for job queue is overkill | In-memory scheduling with node-cron; log persistence via existing log files |
-| GraphQL API | Only internal consumers; REST is simpler and team already knows Express | Stick with REST endpoints following existing route patterns |
-| Internationalization (i18n) | Team and users are Spanish-speaking; app already uses Spanish throughout | Keep Spanish; English in code comments only |
+| **Offline license caching (persistent to disk)** | Defeats the kill switch purpose entirely. If license state is cached to a file, a client can: (1) delete the file to force re-evaluation, (2) tamper with the cached value, or (3) run indefinitely if the file says "active". Writing license state to disk is the #1 mistake in kill switch implementations. | In-memory state only. Service restart always requires fresh online validation. Grace period only for network errors during operation, never persisted. |
+| **Client-side JWT/token decryption** | The license server already handles all authorization logic (key lookup, active check, expiry check). Adding JWT verification on the client means managing signing keys, token refresh, and token storage -- all for no additional security since HMAC already proves authenticity. | Keep the simple `GET + HMAC` model. Server owns authorization. Client only verifies signature authenticity. |
+| **License feature flags / tiers** | All SageConnect deployments run the same feature set. There is no "basic" vs "premium" tier. Building tier infrastructure now is pure speculation. | Single `active: true/false` model. If tiers are needed later, the server response payload can be extended without changing the client validation flow. |
+| **License management UI in SageConnect** | License management (activate, deactivate, rotate keys) belongs in the license server admin dashboard at `sageconnect-license.vercel.app/admin/dashboard`. Mixing the control plane (management) with the data plane (validation client) is a security antipattern -- a compromised client could re-activate itself. | SageConnect is read-only for license state. All management via the admin dashboard. |
+| **Auto-rotation of SAGECONNECT_API_KEY** | Key rotation requires editing `.env` and restarting the service. This is a manual maintenance operation. Auto-rotation would need write access to `.env` on the Windows Server filesystem, which is dangerous and fragile. | Key rotation via admin dashboard (generates new key) + manual deployment (update `.env`, restart service). Documented in deployment guide. |
+| **Email notification on license expiry** | Adds mailing dependency to the license code path. Mailing is optional in SageConnect (not all deployments configure it). The web UI banner handles client-side notification. Tersoft-side notification works via `lastSeenAt` going stale in the admin dashboard. | Client sees banner in web UI. Tersoft monitors `lastSeenAt` in admin dashboard -- if a client stops checking in, either their service is down or license was revoked. |
+| **Encrypted communication beyond HTTPS** | The license server is on Vercel (HTTPS enforced). HMAC verification prevents response tampering. Adding encryption layers (e.g., encrypted payloads) is redundant when transport security (TLS) and payload authentication (HMAC) are already in place. | HTTPS (Vercel-enforced) + HMAC signature verification. This is sufficient for the threat model (prevent DNS hijack bypass). |
 
 ## Feature Dependencies
 
 ```
-[Schedule Management] --> [REST API Endpoints] (scheduled tasks call the same endpoints)
-[REST API Endpoints] --> [Structured JSON Returns] (scripts must return data, not just console.log)
-[Real-Time Feedback] --> [REST API Endpoints] (SSE wraps around endpoint execution)
-[Payment Audit Views] --> [REST API: Payment Endpoints] (views consume payment API)
-[PO Management Views] --> [REST API: PO Endpoints] (views consume PO API)
-[Operation Queue] --> [REST API Endpoints] (semaphore wraps endpoint handlers)
-[UUID Repair Workflow] --> [REST API: Payment Endpoints] + [Real-Time Feedback]
-[Batch Progress] --> [Real-Time Feedback] (SSE streams per-item results)
-[Tenant Switcher] --> [REST API Endpoints] (all endpoints accept tenant parameter)
+config.js license section (LICENSE_API_URL, HMAC_SECRET)
+  |
+  v
+LicenseGuard service (core module)
+  |-- startup validation (HMAC verify + retry + freshness check)
+  |-- periodic check (called by CronScheduler)
+  |-- in-memory state (active, expiresAt, lastCheck, consecutiveFailures)
+  |
+  +---> index.js integration
+  |       Await LicenseGuard.validateOnStartup() BEFORE startServer() + initScheduler()
+  |       On failure: process.exit(1)
+  |
+  +---> CronScheduler.js integration
+  |       Call LicenseGuard.check() at start of cron callback
+  |       If invalid: skip forResponse() + startChildProcess(), log, return
+  |
+  +---> license-gate middleware (Express)
+  |       Reads LicenseGuard.isActive()
+  |       Applied to: /api/payments/*, /api/pos/*, /api/schedule/*
+  |       NOT applied to: /api/system/*, static files, HTML pages
+  |       Returns 403 { success: false, errors: ["License inactive"] }
+  |
+  +---> GET /api/system/license endpoint
+  |       Returns: { active, expiresAt, lastCheck }
+  |       Always accessible (not gated)
+  |
+  +---> GET /api/system/health enhancement
+  |       Add license.active, license.lastCheck, license.expiresAt to existing response
+  |
+  +---> shared.js UI integration
+          initPage() calls GET /api/system/license
+          If inactive: inject red banner, disable operational controls
+          If active + expiring soon: show countdown badge in sidebar
 ```
 
-**Critical dependency chain:**
-```
-1. Script refactor (return data, not console.log)
-   |
-   v
-2. REST API endpoints (wrap refactored scripts)
-   |
-   v
-3. SSE real-time layer (wraps endpoint execution)
-   |       |
-   v       v
-4a. Web UI views     4b. Schedule management
-```
+**Key ordering constraint:** `config.js` must be updated first, then `LicenseGuard` built, then all integration points wired. The LicenseGuard is the single source of truth -- all other components read from it, none write to it.
 
 ## MVP Recommendation
 
-**Phase 1 -- Foundation:** Refactor scripts to return structured data + REST API endpoints
+Prioritize (in implementation order):
 
-Prioritize:
-1. **Structured returns from scripts** -- This is the prerequisite for everything else. Scripts currently do `console.log()` and return nothing useful. They need to return result objects.
-2. **REST API for payment operations** -- Payments are the highest-value, most-frequent manual operations (reconciliation, diagnostics, UUID repair scan)
-3. **REST API for PO operations** -- PO diagnostics and queries are the second most frequent operations
-4. **Basic operation status** -- GET /api/operations/status showing running/idle per operation
+1. **config.js license section + env vars** -- Foundation; everything depends on it. Add `LICENSE_API_URL` and `HMAC_SECRET` to REQUIRED validation and config object.
+2. **LicenseGuard service** -- Core business logic: HTTP call, HMAC verification, retry logic, in-memory state. Single module with clear API: `validateOnStartup()`, `check()`, `isActive()`, `getStatus()`.
+3. **Startup fail-fast in index.js** -- Wire `await LicenseGuard.validateOnStartup()` before `startServer()` and `initScheduler()`. Immediate protection on deploy.
+4. **Periodic re-validation in CronScheduler.js** -- Add license check at start of cron callback. Revocation takes effect within one cron cycle (~15 min).
+5. **License gate middleware + route wiring** -- Block API operations when inactive. Mount in `routes.js` before payment/PO/schedule routes.
+6. **GET /api/system/license endpoint** -- Expose license status for UI consumption.
+7. **Web UI banner + control disabling** -- Modify `shared.js` `initPage()` to fetch license status and inject banner when inactive.
 
-**Phase 2 -- Real-Time + Scheduling:** SSE layer + node-cron integration
-
-Prioritize:
-1. **node-cron scheduler** replacing Windows Task Scheduler (the "always-on" core)
-2. **SSE for operation progress** during long-running tasks
-3. **Schedule management API** (view schedule, view last results, manual trigger)
-
-**Phase 3 -- Web UI:** Operational views built on the API
-
-Prioritize:
-1. **Payment audit view** -- reconciliation report + status table + drill-down
-2. **PO management view** -- status overview + diagnostic + authorized today
-3. **Schedule dashboard** -- next runs, last results, manual trigger buttons
-4. **Tenant switcher** in navbar
-
-**Defer:**
-- UUID repair workflow UI (High complexity, low frequency -- CLI is adequate for now)
-- Cross-entity diagnostic (High complexity -- can be added as enhancement later)
-- Batch progress with per-item SSE (Medium complexity -- basic completion notification is sufficient for MVP)
-
-## Script-to-Endpoint Mapping
-
-All 13 existing scripts mapped to proposed REST endpoints:
-
-### Payment Operations
-| Script | Proposed Endpoint | Method | Params |
-|--------|-------------------|--------|--------|
-| `payment-reconciliation.js` | `/api/payments/reconciliation` | POST | `tenantIndex`, `from`, `batchLimit`, `pyFilter`, `upload` |
-| `payment-uuid-diagnostic.js` | `/api/payments/uuid-diagnostic` | GET | `tenantIndex`, `docNumbers[]` |
-| `payment-uuid-repair.js` (scan) | `/api/payments/uuid-repair/scan` | POST | `tenantIndex`, `months` |
-| `payment-uuid-repair.js` (repair) | `/api/payments/uuid-repair/repair` | POST | `tenantIndex`, `apply`, `batch`, `pyFilter` |
-| `payment-uuid-repair.js` (upload) | `/api/payments/uuid-repair/upload` | POST | `tenantIndex`, `apply`, `batch`, `pyFilter` |
-| `portal-payments-generator.js` | `/api/payments/generate` | POST | `tenantIndex`, `pyFilter`, `dateFilter`, `post` |
-| `get-payment-cfdis.js` | `/api/payments/cfdis` | GET | `tenantIndex` |
-
-### PO Operations
-| Script | Proposed Endpoint | Method | Params |
-|--------|-------------------|--------|--------|
-| `po-diagnostic.js` | `/api/pos/diagnostic` | GET | `poNumber`, `database`, `empresa` |
-| `po-query.js` | `/api/pos/query` | GET | `poNumbers[]`, `database`, `tenantIndex` |
-| `po-upload.js` | `/api/pos/upload` | POST | `poNumbers[]`, `database`, `tenantIndex` |
-| `po-update.js` | `/api/pos/update` | PUT | `poNumber`, `database`, `tenantIndex`, `dryRun` |
-| `po-address-diagnostic.js` | `/api/pos/address-diagnostic` | GET | `poNumber`, `database` |
-| `po-payment-form-diagnostic.js` | `/api/pos/payment-form-diagnostic` | GET | `poNumber`, `database` |
-| `upload-authorized-pos.js` | `/api/pos/upload-authorized` | POST | `tenantIndex` |
-| `test-order-lifecycle.js` | `/api/pos/lifecycle` | POST | `action`, `poNumber`, `tenantIndex` |
-
-### System Operations
-| Feature | Proposed Endpoint | Method | Notes |
-|---------|-------------------|--------|-------|
-| Schedule status | `/api/schedule` | GET | List all scheduled tasks with next run time |
-| Schedule trigger | `/api/schedule/:taskId/trigger` | POST | Manual trigger of a specific scheduled task |
-| Schedule history | `/api/schedule/history` | GET | Last N executions per task |
-| Operation status | `/api/operations/status` | GET | Which operations are currently running |
-| SSE progress stream | `/api/operations/:operationId/stream` | GET (SSE) | Real-time progress for a running operation |
+Defer to hardening pass:
+- **Timestamp freshness check**: Simple to add inside LicenseGuard's HMAC verification. Low risk of omitting in MVP since HMAC alone prevents most bypass vectors.
+- **License expiry countdown in sidebar**: Polish feature. The "Licencia inactiva" banner covers the critical blocked state. Countdown is proactive UX.
+- **Grace period for network errors**: Start with a simple counter (3 consecutive failures). Can be refined later based on real-world Vercel reliability data.
+- **Health endpoint enhancement**: Low effort but lower priority than the enforcement features.
 
 ## Sources
 
-- Project codebase analysis: `src/scripts/` (13 scripts), `src/routes/routes.js`, `src/background.js`, `src/config.js`
-- [Better Stack: Schedulers in Node.js Comparison](https://betterstack.com/community/guides/scaling-nodejs/best-nodejs-schedulers/)
-- [Better Stack: Job Scheduling with Node-cron](https://betterstack.com/community/guides/scaling-nodejs/node-cron-scheduled-tasks/)
-- [DigitalOcean: Server-Sent Events in Node.js](https://www.digitalocean.com/community/tutorials/nodejs-server-sent-events-build-realtime-app)
-- [DEV.to: Real-time Log Streaming with SSE](https://dev.to/manojspace/real-time-log-streaming-with-nodejs-and-react-using-server-sent-events-sse-48pk)
-- [Yodaplus: Audit Trails in ERP](https://yodaplus.com/blog/audit-trails-in-erp-how-to-design-them-right/)
-- [Stripe: ERP Payment Integration Guide](https://stripe.com/resources/more/erp-payment-integration-a-quick-start-guide-for-businesses)
-- [Cronicle: Task Scheduler with Web UI](https://cronicle.net/)
-- [LogRocket: Comparing Node.js Schedulers](https://blog.logrocket.com/comparing-best-node-js-schedulers/)
+- SageConnect codebase: `src/config.js` (fail-fast validation pattern), `src/index.js` (startup sequence), `src/server.js` (Express app), `src/services/CronScheduler.js` (cron callback structure), `src/middleware/api-key.js` (HMAC/timingSafeEqual usage), `src/routes/routes.js` (middleware mounting), `public/js/shared.js` (initPage + sidebar renderer)
+- License server: `app/api/validate/route.ts` (response shape and signing), `lib/crypto.ts` (HMAC-SHA256 `signResponse()` implementation -- `JSON.stringify(payload)` with explicit field ordering)
+- [LicenseSpring: How to Implement Offline Software License Validation](https://licensespring.com/blog/guide/how-to-implement-offline-software-license-validation) -- Grace period and caching patterns
+- [Statsig: Kill Switch in Software Safety](https://www.statsig.com/perspectives/killswitchsoftwareafety) -- Kill switch design principles
+- [HMAC Verification in Node.js](https://gist.github.com/turret-io/76946bf8475848710f7d) -- HMAC verification patterns
+- [Adobe: Connectivity Requirements and Offline Grace Period](https://helpx.adobe.com/document-cloud/kb/internet-connectivity-and-offline-grace-period---acrobat-dc.html) -- Industry grace period precedent (30-99 days for Adobe; our use case warrants ~45 min since the goal is a kill switch, not user convenience)
