@@ -48,7 +48,11 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 
 ### Active
 
-(None — pending v2.1 milestone definition)
+- [ ] Validación de licencia en startup contra servidor externo (fail-fast si inválida)
+- [ ] Re-validación periódica de licencia cada ciclo de cron
+- [ ] Verificación HMAC de respuesta del servidor de licencias
+- [ ] Banner "Licencia inactiva" en web UI cuando la licencia expira o se revoca
+- [ ] Bloqueo de todas las operaciones (API + cron) cuando licencia inválida
 
 ### Out of Scope
 
@@ -88,6 +92,19 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | SAGECONNECT_API_KEY (no API_KEY) | Evita colisión con portal tenant keys | ✓ Good |
 | Singleton SQL pool + USE [database] | Zero cambios en 25+ callers de runQuery | ✓ Good |
 | ResultEnvelope unificado | Contrato consistente para API layer | ✓ Good |
+| HMAC-signed license validation | Previene bypass DNS/MITM en servidores de clientes | — Pending |
+| Fail-fast en startup si licencia invalida | Sin licencia = sistema no opera | — Pending |
+
+## Current Milestone: v2.1 License Validation
+
+**Goal:** Integrar validación de licencia contra el servidor externo (sageconnect-license en Vercel) para control remoto de deployments en servidores de clientes.
+
+**Target features:**
+- Validación de SAGECONNECT_API_KEY contra LICENSE_API_URL en startup (fail-fast)
+- Re-validación periódica cada ciclo de cron
+- Verificación HMAC de la respuesta para prevenir bypass (DNS/MITM)
+- Banner "Licencia inactiva" en web UI cuando la licencia es invalida
+- Bloqueo total de operaciones si la licencia no es válida
 
 ---
-*Last updated: 2026-03-25 after v2.0 milestone*
+*Last updated: 2026-03-25 after v2.1 milestone start*
