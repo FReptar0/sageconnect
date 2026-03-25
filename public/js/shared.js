@@ -2,7 +2,8 @@
  * SageConnect - Shared JavaScript Module
  *
  * Provides sidebar navigation, tenant state management, API helper,
- * toast notifications, and date/currency formatters for all operational pages.
+ * toast notifications, license status indicators, and date/currency
+ * formatters for all operational pages.
  */
 
 /* ========================================================================
@@ -196,6 +197,78 @@ function showToast(message, type = 'success') {
 }
 
 /* ========================================================================
+ * License Status Indicators
+ * ======================================================================== */
+
+/**
+ * Checks the license status via GET /api/system/license and manages
+ * the inactive banner (UI-09) and expiry countdown badge (UI-10).
+ * Called once on page load and every 60 seconds thereafter.
+ * Silently returns on error -- license UI is non-critical.
+ */
+async function checkLicenseStatus() {
+    var active, expiresAt, state;
+
+    try {
+        var res = await fetch('/api/system/license', {
+            headers: { 'Accept': 'application/json' },
+        });
+        var json = await res.json();
+        if (json.success && json.data) {
+            active = json.data.active;
+            expiresAt = json.data.expiresAt;
+            state = json.data.state;
+        } else {
+            return;
+        }
+    } catch (err) {
+        return;
+    }
+
+    // --- Inactive banner (UI-09) ---
+    var existingBanner = document.getElementById('license-banner');
+
+    if (state === 'INVALID') {
+        if (!existingBanner) {
+            document.body.insertAdjacentHTML('afterbegin',
+                '<div id="license-banner" class="alert alert-danger text-center mb-0 fw-bold" ' +
+                'style="position: sticky; top: 0; z-index: 1050;">' +
+                '<i class="fas fa-exclamation-triangle me-2"></i>' +
+                'Licencia inactiva. Contacte a su proveedor.' +
+                '</div>'
+            );
+        }
+    } else {
+        if (existingBanner) {
+            existingBanner.remove();
+        }
+    }
+
+    // --- Expiry countdown badge (UI-10) ---
+    var existingBadge = document.getElementById('license-expiry-badge');
+    if (existingBadge) {
+        existingBadge.remove();
+    }
+
+    if (expiresAt) {
+        var days = Math.ceil((new Date(expiresAt) - Date.now()) / 86400000);
+
+        if (days <= 30) {
+            var badgeClass = days <= 7 ? 'badge bg-danger' : 'badge bg-warning text-dark';
+            var dayLabel = days === 1 ? 'dia' : 'dias';
+            var badgeHTML = '<div id="license-expiry-badge" class="px-2 mb-2">' +
+                '<span class="' + badgeClass + '">Expira en ' + days + ' ' + dayLabel + '</span>' +
+                '</div>';
+
+            var hrElement = document.querySelector('#sidebar hr');
+            if (hrElement) {
+                hrElement.insertAdjacentHTML('afterend', badgeHTML);
+            }
+        }
+    }
+}
+
+/* ========================================================================
  * Date / Currency Formatters
  * ======================================================================== */
 
@@ -248,22 +321,40 @@ function confirmAction(message) {
  * ======================================================================== */
 
 /**
- * Initializes a page: fetches tenants, renders sidebar, sets up tenant switcher.
+ * Initializes a page: fetches tenants and license status in parallel,
+ * renders sidebar, injects license indicators, and starts 60s polling.
  * Must be called from DOMContentLoaded on every page.
  * @param {string} activePage - Current page path (e.g. '/logs.html')
  */
 async function initPage(activePage) {
-    try {
-        const res = await fetch('/api/system/tenants', {
-            headers: { 'Accept': 'application/json; charset=utf-8' },
-        });
-        const json = await res.json();
-        if (json.success && json.data && json.data.tenants) {
-            window.__TENANTS__ = json.data.tenants;
-        }
-    } catch (err) {
+    // Fetch tenants and license status in parallel for faster page load
+    var tenantsPromise = fetch('/api/system/tenants', {
+        headers: { 'Accept': 'application/json; charset=utf-8' },
+    }).then(function (res) { return res.json(); })
+      .catch(function (err) {
         console.warn('[shared.js] No se pudieron cargar los tenants:', err.message);
+        return null;
+    });
+
+    var licensePromise = fetch('/api/system/license', {
+        headers: { 'Accept': 'application/json' },
+    }).then(function (res) { return res.json(); })
+      .catch(function () { return null; });
+
+    var results = await Promise.allSettled([tenantsPromise, licensePromise]);
+
+    // Process tenants result
+    var tenantsResult = results[0].status === 'fulfilled' ? results[0].value : null;
+    if (tenantsResult && tenantsResult.success && tenantsResult.data && tenantsResult.data.tenants) {
+        window.__TENANTS__ = tenantsResult.data.tenants;
     }
 
+    // Render sidebar (needs tenants data)
     renderSidebar(activePage);
+
+    // Process license result and inject indicators
+    await checkLicenseStatus();
+
+    // Poll license status every 60 seconds
+    setInterval(checkLicenseStatus, 60000);
 }
