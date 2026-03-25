@@ -15,9 +15,9 @@
 
 ### Enforcement
 
-- [ ] **ENF-01**: Express middleware returns 503 on all payment/PO/schedule endpoints when license is INVALID
+- [x] **ENF-01**: Express middleware returns 503 on all payment/PO/schedule endpoints when license is INVALID
 - [ ] **ENF-02**: CronScheduler skips background cycle when license state is INVALID
-- [ ] **ENF-03**: GET /api/system/license returns current license state (active, expiresAt, lastChecked)
+- [x] **ENF-03**: GET /api/system/license returns current license state (active, expiresAt, lastChecked)
 - [ ] **ENF-04**: dns.resolve4() verifies license server resolves to expected IP range (defense-in-depth)
 
 ### Configuration
@@ -59,9 +59,9 @@
 | LIC-03 | Phase 12 | Complete |
 | LIC-04 | Phase 12 | Complete |
 | LIC-05 | Phase 12 | Complete |
-| ENF-01 | Phase 13 | Pending |
+| ENF-01 | Phase 13 | Complete |
 | ENF-02 | Phase 13 | Pending |
-| ENF-03 | Phase 13 | Pending |
+| ENF-03 | Phase 13 | Complete |
 | ENF-04 | Phase 13 | Pending |
 | UI-09 | Phase 14 | Pending |
 | UI-10 | Phase 14 | Pending |

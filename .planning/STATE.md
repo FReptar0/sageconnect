@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: License Validation
-status: completed
-stopped_at: Phase 13 context gathered
-last_updated: "2026-03-25T21:56:47.781Z"
-last_activity: 2026-03-25 -- Completed 12-02 (LicenseValidator core service)
+status: in-progress
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-03-25T22:15:20Z"
+last_activity: 2026-03-25 -- Completed 13-01 (License enforcement middleware)
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 5
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-25)
 
 **Core value:** Control remoto sobre deployments de SageConnect -- kill switch confiable que no puede ser bypasseado.
-**Current focus:** v2.1 License Validation -- Phase 12 complete (all plans done), Phase 13 pending
+**Current focus:** v2.1 License Validation -- Phase 13 in progress (plan 01 of 02 complete)
 
 ## Current Position
 
-Phase: 12 of 14 (LicenseValidator Core) -- COMPLETE
-Plan: 2 of 2 (Complete)
-Status: Phase 12 Complete
-Last activity: 2026-03-25 -- Completed 12-02 (LicenseValidator core service)
+Phase: 13 of 14 (Enforcement) -- IN PROGRESS
+Plan: 1 of 2 (13-01 complete, 13-02 pending)
+Status: Phase 13 In Progress
+Last activity: 2026-03-25 -- Completed 13-01 (License enforcement middleware)
 
-Progress: [██████████] 100%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
+- Total plans completed: 4
 - Average duration: 2.3min
-- Total execution time: 7min
+- Total execution time: 9min
 
 **By Phase:**
 
@@ -45,6 +45,7 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 11-license-config | 1 | 1min | 1min |
 | 12-licensevalidator-core | 2 | 6min | 3min |
+| 13-enforcement | 1 | 2min | 2min |
 
 *Updated after each plan completion*
 
@@ -63,6 +64,8 @@ Progress: [██████████] 100%
 - [Phase 12]: Used nodemailer directly instead of EmailSender -- notices array indexing incompatible with arbitrary recipients
 - [Phase 12]: HMAC payload uses explicit property assignment (not spread) for obfuscation safety
 - [Phase 12]: Test files in tests/services/ following Jest testMatch pattern, not src/services/__tests__/
+- [Phase 13]: requireLicense placed before requireApiKey so invalid license returns 503 not 401
+- [Phase 13]: GET /license includes hmacConfigured boolean for diagnostics (presence not value)
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-25T21:56:47.773Z
-Stopped at: Phase 13 context gathered
-Resume file: .planning/phases/13-enforcement/13-CONTEXT.md
+Last session: 2026-03-25T22:15:20Z
+Stopped at: Completed 13-01-PLAN.md
+Resume file: .planning/phases/13-enforcement/13-01-SUMMARY.md
