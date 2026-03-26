@@ -348,6 +348,11 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
         const d = hdr.payment_date.toString();
         const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
 
+        // Recalculate total_amount from the CFDIs being sent (not the original payment total)
+        // This handles partial uploads where some invoices are already paid
+        const calculatedTotal = cfdis.reduce((sum, c) => sum + (c.payment_amount || 0), 0);
+        const totalAmount = Math.round(calculatedTotal * 100) / 100; // avoid floating point
+
         return {
             bank_account_id: hdr.bank_account_id,
             cfdis,
@@ -359,7 +364,7 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
             payment_date,
             provider_external_id: hdr.provider_external_id,
             reference: hdr.reference,
-            total_amount: hdr.total_amount
+            total_amount: totalAmount
         };
     });
 
