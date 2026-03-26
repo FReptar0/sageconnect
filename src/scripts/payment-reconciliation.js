@@ -6,6 +6,34 @@ const { getProviderByExternalId } = require('../utils/GetProviders');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const axios = require('axios');
 const config = require('../config');
+const { appendCsv } = require('../utils/CsvWriter');
+
+const LOG_FILE = 'PaymentReconciliation';
+const CSV_FILE = 'PaymentReconciliation-uploads';
+
+// --- Console → Log File Interceptor ---
+// Mirrors ALL console output to the winston log file so nothing is lost
+const _origLog = console.log;
+const _origWarn = console.warn;
+const _origError = console.error;
+const _origTable = console.table;
+
+console.log = (...args) => {
+    _origLog.apply(console, args);
+    logGenerator(LOG_FILE, 'info', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.warn = (...args) => {
+    _origWarn.apply(console, args);
+    logGenerator(LOG_FILE, 'warn', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.error = (...args) => {
+    _origError.apply(console, args);
+    logGenerator(LOG_FILE, 'error', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.table = (data, columns) => {
+    _origTable.call(console, data, columns);
+    logGenerator(LOG_FILE, 'info', '[TABLE] ' + JSON.stringify(data, null, 2));
+};
 
 const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);
@@ -331,6 +359,7 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
     let errorCount = 0;
     let missingCount = 0;
     const respondedIds = new Set();
+    const csvRows = [];
 
     try {
         const resp = await axios.post(endpoint, { payments: paymentPayloads }, {
@@ -420,11 +449,24 @@ VALUES
                 } else {
                     console.warn(`  [WARN] Control table NOT updated for ${displayId}`);
                 }
+                csvRows.push([
+                    displayId, idPortal || '', 'SUCCESS', '', '',
+                    matchEntry?.hdr?.total_amount || '', matchEntry?.hdr?.bk_currency || '',
+                    matchEntry?.invoices?.length || '', statusTag,
+                    insertResult.rowsAffected[0] ? 'YES' : 'NO',
+                    new Date().toISOString()
+                ]);
                 successCount++;
             } else {
                 const details = errorMessage || JSON.stringify(result);
                 console.error(`  [ERROR] ${displayId} failed: error_code=${errorCode ?? 'N/A'}, message=${details}`);
                 logGenerator(logFileName, 'error', `Batch upload failed ${displayId}: code=${errorCode ?? 'N/A'} msg=${details}`);
+                csvRows.push([
+                    displayId, '', 'ERROR', errorCode || '', details,
+                    matchEntry?.hdr?.total_amount || '', matchEntry?.hdr?.bk_currency || '',
+                    matchEntry?.invoices?.length || '', '', 'NO',
+                    new Date().toISOString()
+                ]);
                 errorCount++;
             }
         }
@@ -437,6 +479,12 @@ VALUES
                     logGenerator(logFileName, 'warn',
                         `Batch upload missing result: ${entry.hdr.external_id} not in API response`
                     );
+                    csvRows.push([
+                        entry.hdr.external_id, '', 'MISSING', '', 'Not in API response',
+                        entry.hdr.total_amount || '', entry.hdr.bk_currency || '',
+                        entry.invoices?.length || '', '', 'NO',
+                        new Date().toISOString()
+                    ]);
                     missingCount++;
                 }
             }
@@ -447,6 +495,17 @@ VALUES
         console.error(`  [ERROR] Batch upload failed: HTTP ${status} - ${data}`);
         logGenerator(logFileName, 'error', `Batch upload error: ${status} ${data}`);
         errorCount = toUpload.length;
+    }
+
+    // Write CSV audit file
+    if (csvRows.length > 0) {
+        const csvHeaders = [
+            'PaymentId', 'PortalId', 'Status', 'ErrorCode', 'ErrorMessage',
+            'Amount', 'Currency', 'InvoiceCount', 'PaymentStatus', 'ControlTableInsert', 'Timestamp'
+        ];
+        const csvPath = appendCsv(CSV_FILE, csvHeaders, csvRows);
+        console.log(`\n  [CSV] Audit file: ${csvPath}`);
+        logGenerator(logFileName, 'info', `CSV audit written: ${csvPath} (${csvRows.length} rows)`);
     }
 
     console.log(`\n=== UPLOAD COMPLETE ===`);
