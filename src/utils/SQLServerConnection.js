@@ -7,7 +7,7 @@ const dbConfig = {
     server: config.database.server,
     database: config.database.database, // By default, the database is FESA
     connectionTimeout: 15000,          // 15 s para conectarse
-    requestTimeout: 60000,             // 60 s para cada query (aumentado para queries complejas)
+    requestTimeout: 180000,            // 3 min para cada query (aumentado para reconciliación de pagos históricos)
 };
 
 async function runQuery(query, database = 'FESA') {
