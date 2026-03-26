@@ -222,13 +222,19 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // All invoices have UUIDs — check if they exist in portal PENDING_TO_PAY
-        const allInPortal = invoices.recordset.every(inv => {
+        // Split invoices: those in portal PENDING_TO_PAY vs those not
+        const invoicesInPortal = [];
+        const invoicesNotInPortal = [];
+        for (const inv of invoices.recordset) {
             const uuid = inv.UUID.trim().toUpperCase();
-            return portalUuidMap.has(uuid);
-        });
+            if (portalUuidMap.has(uuid)) {
+                invoicesInPortal.push(inv);
+            } else {
+                invoicesNotInPortal.push(inv);
+            }
+        }
 
-        if (!allInPortal) {
+        if (invoicesInPortal.length === 0) {
             categories.not_in_portal.push({
                 hdr,
                 invoices: invoices.recordset
@@ -236,11 +242,11 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // Check provider_id match for all invoices (PROV-01, PROV-02)
+        // Check provider_id match only for invoices that ARE in portal
         const mismatchDetails = [];
         const sageProviderId = effectiveProviderId.toLowerCase();
 
-        for (const inv of invoices.recordset) {
+        for (const inv of invoicesInPortal) {
             const uuid = inv.UUID.trim().toUpperCase();
             const portalItem = portalUuidMap.get(uuid);
             const portalProviderId = (portalItem?.provider_id || '').trim().toLowerCase();
@@ -266,10 +272,16 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // All good — ready to upload
+        // Ready to upload — use only invoices that are in portal PENDING_TO_PAY
+        if (invoicesNotInPortal.length > 0) {
+            console.log(`  [PARTIAL] ${hdr.external_id}: ${invoicesInPortal.length}/${invoices.recordset.length} invoices in PENDING_TO_PAY (${invoicesNotInPortal.length} already paid/not found)`);
+            logGenerator(logFileName, 'info',
+                `Partial upload for ${hdr.external_id}: ${invoicesInPortal.length} of ${invoices.recordset.length} invoices`
+            );
+        }
         categories.ready.push({
             hdr,
-            invoices: invoices.recordset
+            invoices: invoicesInPortal
         });
     }
 
