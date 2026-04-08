@@ -495,3 +495,51 @@ describe('PO Routes - tenantIndex Validation', () => {
         expect(res.body.success).toBe(false);
     });
 });
+
+// ---------------------------------------------------------------------------
+// 8. statusUpdateSchema validation
+// ---------------------------------------------------------------------------
+describe('PO Schemas - statusUpdateSchema', () => {
+    test('statusUpdateSchema is exported from po-schemas', () => {
+        const schemas = require('../../src/routes/schemas/po-schemas');
+        expect(schemas.statusUpdateSchema).toBeDefined();
+    });
+
+    test('accepts valid poNumber + status + tenantIndex', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { error } = statusUpdateSchema.validate({ poNumber: 'OC001', status: 'OPEN', tenantIndex: 0 });
+        expect(error).toBeUndefined();
+    });
+
+    test('rejects invalid status value', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { error } = statusUpdateSchema.validate({ poNumber: 'OC001', status: 'INVALID' });
+        expect(error).toBeDefined();
+        expect(error.message).toMatch(/OPEN|CLOSED|CANCELLED|GENERATED/);
+    });
+
+    test('rejects missing poNumber', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { error } = statusUpdateSchema.validate({ status: 'OPEN' });
+        expect(error).toBeDefined();
+    });
+
+    test('rejects missing status', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { error } = statusUpdateSchema.validate({ poNumber: 'OC001' });
+        expect(error).toBeDefined();
+    });
+
+    test('defaults tenantIndex to 0', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { value } = statusUpdateSchema.validate({ poNumber: 'OC001', status: 'CLOSED' });
+        expect(value.tenantIndex).toBe(0);
+    });
+
+    test('does not accept database field', () => {
+        const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
+        const { value } = statusUpdateSchema.validate({ poNumber: 'OC001', status: 'OPEN', database: 'DB1' });
+        // stripUnknown would remove it, but the schema itself should not define it
+        expect(value.database).toBeUndefined();
+    });
+});
