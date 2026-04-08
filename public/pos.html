@@ -221,6 +221,40 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="row g-3 mt-1">
+                            <div class="col-12">
+                                <div class="card action-card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-exchange-alt text-info me-2"></i>Cambiar Estado OC
+                                        </h6>
+                                        <p class="card-text small text-muted">
+                                            Cambia el estado de una orden de compra en el portal de proveedores.
+                                        </p>
+                                        <div class="row g-2 align-items-end">
+                                            <div class="col-md-4">
+                                                <input type="text" id="change-status-po-input" class="form-control form-control-sm"
+                                                    placeholder="Numero de OC">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <select id="change-status-select" class="form-select form-select-sm">
+                                                    <option value="">Seleccione estado...</option>
+                                                    <option value="OPEN">Abierta</option>
+                                                    <option value="CLOSED">Cerrada</option>
+                                                    <option value="CANCELLED">Cancelada</option>
+                                                    <option value="GENERATED">Generada</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <button class="btn btn-info text-white btn-sm w-100" onclick="changeOCStatus()">
+                                                    <i class="fas fa-exchange-alt me-1"></i>Cambiar Estado
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -865,6 +899,56 @@
                     input.value = '';
                 } else {
                     showToast(result.summary || result.errors?.join(', ') || 'Error al actualizar OC', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        /* ====================================================================
+         * Action: Change OC Status
+         * ==================================================================== */
+
+        const STATUS_LABELS = {
+            OPEN: 'Abierta',
+            CLOSED: 'Cerrada',
+            CANCELLED: 'Cancelada',
+            GENERATED: 'Generada',
+        };
+
+        async function changeOCStatus() {
+            const poInput = document.getElementById('change-status-po-input');
+            const statusSelect = document.getElementById('change-status-select');
+            const poNumber = poInput.value.trim();
+            const status = statusSelect.value;
+
+            if (!poNumber) {
+                showToast('Ingrese un numero de OC', 'warning');
+                return;
+            }
+            if (!status) {
+                showToast('Seleccione un estado', 'warning');
+                return;
+            }
+
+            const spanishLabel = STATUS_LABELS[status];
+            if (!confirmAction(`Cambiar el estado de ${poNumber} a ${spanishLabel} (${status})?`)) {
+                return;
+            }
+
+            try {
+                const result = await apiCall('PUT', '/api/pos/status', {
+                    poNumber: poNumber,
+                    status: status,
+                    tenantIndex: getTenantIndex(),
+                });
+
+                if (result.success) {
+                    showToast(`Estado de ${poNumber} cambiado a ${spanishLabel} (${status})`, 'success');
+                    poInput.value = '';
+                    statusSelect.value = '';
+                } else {
+                    showToast(result.summary || result.errors?.join(', ') || 'Error al cambiar estado', 'error');
                 }
             } catch (err) {
                 showToast('Error: ' + err.message, 'error');
