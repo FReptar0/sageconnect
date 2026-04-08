@@ -50,6 +50,13 @@ function initScheduler() {
                 return;
             }
 
+            // Re-validate license each cycle (updates cached state)
+            try {
+                await licenseValidator.validate();
+            } catch (err) {
+                logGenerator(LOG_FILE, 'warn', `[LICENSE] Re-validation error: ${err.message} -- using cached state`);
+            }
+
             // License guard: skip cycle if license is invalid
             if (!licenseValidator.isValid()) {
                 logGenerator(LOG_FILE, 'warn', '[LICENSE] Ciclo omitido: licencia inactiva -- ' + operationId);
