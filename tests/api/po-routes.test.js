@@ -536,10 +536,13 @@ describe('PO Schemas - statusUpdateSchema', () => {
         expect(value.tenantIndex).toBe(0);
     });
 
-    test('does not accept database field', () => {
+    test('does not accept database field (stripped by middleware)', () => {
         const { statusUpdateSchema } = require('../../src/routes/schemas/po-schemas');
-        const { value } = statusUpdateSchema.validate({ poNumber: 'OC001', status: 'OPEN', database: 'DB1' });
-        // stripUnknown would remove it, but the schema itself should not define it
+        // Validate with stripUnknown (same option used by validate middleware)
+        const { value } = statusUpdateSchema.validate(
+            { poNumber: 'OC001', status: 'OPEN', database: 'DB1' },
+            { stripUnknown: true }
+        );
         expect(value.database).toBeUndefined();
     });
 });

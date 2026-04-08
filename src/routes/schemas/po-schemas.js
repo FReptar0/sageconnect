@@ -1,7 +1,7 @@
 /**
  * PO Route Validation Schemas
  *
- * Joi schemas for all 8 PO endpoints. Each schema defines the expected
+ * Joi schemas for all 9 PO endpoints. Each schema defines the expected
  * request parameters with types, defaults, and constraints.
  *
  * tenantIndex is validated against config.portal.tenants.length so
@@ -89,6 +89,13 @@ const lifecycleSchema = Joi.object({
     database: databaseField.optional().default(null),
 });
 
+/** PUT /api/pos/status -- body */
+const statusUpdateSchema = Joi.object({
+    poNumber: poNumberField,
+    status: Joi.string().valid('OPEN', 'CLOSED', 'CANCELLED', 'GENERATED').required(),
+    tenantIndex: tenantIndexField,
+});
+
 module.exports = {
     diagnosticSchema,
     querySchema,
@@ -98,4 +105,5 @@ module.exports = {
     paymentFormDiagnosticSchema,
     uploadAuthorizedSchema,
     lifecycleSchema,
+    statusUpdateSchema,
 };
