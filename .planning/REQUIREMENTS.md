@@ -14,9 +14,9 @@ Requirements for OC Status UI milestone. Each maps to roadmap phases.
 
 ### UI
 
-- [ ] **UI-01**: Operator can enter an OC number and select a target status (OPEN/CLOSED/CANCELLED/GENERATED) from a form in the PO management page
-- [ ] **UI-02**: Operator sees a confirmation dialog before the status change is submitted
-- [ ] **UI-03**: Operator receives toast feedback (success or error) after the status update completes
+- [x] **UI-01**: Operator can enter an OC number and select a target status (OPEN/CLOSED/CANCELLED/GENERATED) from a form in the PO management page
+- [x] **UI-02**: Operator sees a confirmation dialog before the status change is submitted
+- [x] **UI-03**: Operator receives toast feedback (success or error) after the status update completes
 
 ## Future Requirements
 
@@ -45,9 +45,9 @@ Requirements for OC Status UI milestone. Each maps to roadmap phases.
 |-------------|-------|--------|
 | API-01 | Phase 15 | Complete |
 | API-02 | Phase 15 | Complete |
-| UI-01 | Phase 16 | Pending |
-| UI-02 | Phase 16 | Pending |
-| UI-03 | Phase 16 | Pending |
+| UI-01 | Phase 16 | Complete |
+| UI-02 | Phase 16 | Complete |
+| UI-03 | Phase 16 | Complete |
 
 **Coverage:**
 - v2.2 requirements: 5 total

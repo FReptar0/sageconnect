@@ -6,12 +6,12 @@
 - v1.1 Env Unification (Phases 3-5) -- shipped 2026-03-23
 - v2.0 Always-On Service (Phases 6-10) -- shipped 2026-03-25
 - v2.1 License Validation (Phases 11-14) -- shipped 2026-03-25
-- **v2.2 OC Status UI (Phases 15-16)** -- in progress
+- v2.2 OC Status UI (Phases 15-16) -- shipped 2026-04-08
 
 ## Phases
 
 - [x] **Phase 15: OC Status API Endpoint** - PUT /api/pos/status with Joi validation and error handling (completed 2026-04-08)
-- [ ] **Phase 16: OC Status UI Form** - HTML form with status dropdown, confirmation dialog, and toast feedback
+- [x] **Phase 16: OC Status UI Form** - HTML form with status dropdown, confirmation dialog, and toast feedback (completed 2026-04-08)
 
 ## Phase Details
 
@@ -39,10 +39,10 @@ Plans:
   3. On successful status update, operator sees a green toast notification with the result message
   4. On failed status update, operator sees a red toast notification with the error detail
   5. The form resets or remains ready for the next operation after feedback is shown
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 16-01-PLAN.md — Action card with status dropdown, confirmation dialog, and toast feedback in pos.html
+- [x] 16-01-PLAN.md — Action card with status dropdown, confirmation dialog, and toast feedback in pos.html
 
 ## Progress
 
@@ -51,4 +51,4 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 15. OC Status API Endpoint | 1/1 | Complete    | 2026-04-08 | - |
-| 16. OC Status UI Form | v2.2 | 0/1 | Not started | - |
+| 16. OC Status UI Form | 1/1 | Complete   | 2026-04-08 | - |
