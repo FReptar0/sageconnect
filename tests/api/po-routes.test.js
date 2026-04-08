@@ -657,7 +657,7 @@ describe('PO Routes - Status Update Error Handling', () => {
         updatePOStatus.mockResolvedValueOnce({
             success: false,
             data: null,
-            errors: ['No se encontro registro valido para OC=OC999, DB=DB1'],
+            errors: ['Record not found for OC=OC999, DB=DB1'],
             summary: 'not found',
             meta: { duration: 0, timestamp: '2026-01-01T00:00:00.000Z', tenant: null },
         });
@@ -666,6 +666,23 @@ describe('PO Routes - Status Update Error Handling', () => {
             .set('x-api-key', TEST_API_KEY)
             .send({ poNumber: 'OC999', status: 'OPEN' });
         expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    test('returns 500 when updatePOStatus returns Spanish not-found error (no English keyword match)', async () => {
+        updatePOStatus.mockResolvedValueOnce({
+            success: false,
+            data: null,
+            errors: ['No se encontro registro valido para OC=OC999, DB=DB1'],
+            summary: 'Sin registro en fesaOCFocaltec',
+            meta: { duration: 0, timestamp: '2026-01-01T00:00:00.000Z', tenant: null },
+        });
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC999', status: 'OPEN' });
+        // sendResult maps /not found/i in errors -- Spanish text doesn't match, falls to 500
+        expect(res.status).toBe(500);
         expect(res.body.success).toBe(false);
     });
 

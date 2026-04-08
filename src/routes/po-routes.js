@@ -1,7 +1,7 @@
 /**
  * PO Route Handlers
  *
- * 8 endpoints for purchase order operations:
+ * 9 endpoints for purchase order operations:
  *   GET  /diagnostic            - PO diagnostic
  *   GET  /query                 - Query specific POs
  *   POST /upload                - Upload specific POs
@@ -10,6 +10,7 @@
  *   GET  /payment-form-diagnostic - Payment form diagnostic
  *   POST /upload-authorized     - Upload authorized POs
  *   POST /lifecycle             - Lifecycle management (analyze/process/tenant)
+ *   PUT  /status                - Update OC status (OPEN/CLOSED/CANCELLED/GENERATED)
  *
  * All routes are mounted behind requireApiKey in routes.js.
  * PO scripts use positional args -- handlers map request params inline.
@@ -31,6 +32,7 @@ const {
     paymentFormDiagnosticSchema,
     uploadAuthorizedSchema,
     lifecycleSchema,
+    statusUpdateSchema,
 } = require('./schemas/po-schemas');
 
 // Write rate limiter -- local instance to avoid circular dependency with server.js
@@ -201,6 +203,26 @@ router.post(
                 result = await testTenant({ tenantIndex });
                 break;
         }
+        sendResult(res, result);
+    })
+);
+
+// ---------------------------------------------------------------------------
+// i. PUT /status -- Update OC status in portal
+// ---------------------------------------------------------------------------
+router.put(
+    '/status',
+    validate(statusUpdateSchema, 'body'),
+    writeLimiter,
+    asyncHandler(async (req, res) => {
+        const { updatePOStatus } = require('../controller/PortalOC_StatusUpdater');
+        const config = require('../config');
+        const databases = config.portal.tenants.map(t => t.database);
+        const result = await updatePOStatus(
+            req.body.poNumber,
+            req.body.status,
+            databases[req.body.tenantIndex]
+        );
         sendResult(res, result);
     })
 );
