@@ -41,21 +41,19 @@ Requirements for OC Status UI milestone. Each maps to roadmap phases.
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Pending | Pending |
-| API-02 | Pending | Pending |
-| UI-01 | Pending | Pending |
-| UI-02 | Pending | Pending |
-| UI-03 | Pending | Pending |
+| API-01 | Phase 15 | Pending |
+| API-02 | Phase 15 | Pending |
+| UI-01 | Phase 16 | Pending |
+| UI-02 | Phase 16 | Pending |
+| UI-03 | Phase 16 | Pending |
 
 **Coverage:**
 - v2.2 requirements: 5 total
-- Mapped to phases: 0
-- Unmapped: 5 ⚠️
+- Mapped to phases: 5
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-08*
-*Last updated: 2026-04-08 after initial definition*
+*Last updated: 2026-04-08 after roadmap creation*
