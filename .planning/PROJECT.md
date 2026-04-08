@@ -56,7 +56,8 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 
 ### Active
 
-(None — pending next milestone definition)
+- [ ] OC status update exposed as REST API endpoint
+- [ ] OC status update UI in PO management page (pos.html)
 
 ### Out of Scope
 
@@ -102,5 +103,15 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | dns.resolve4() para bypass detection | Defense-in-depth contra hosts file redirect | ✓ Good |
 | LICENSE_ADMIN_EMAIL separado de MAILING_NOTICES | Admin Tersoft != operaciones del cliente | ✓ Good |
 
+## Current Milestone: v2.2 OC Status UI
+
+**Goal:** Expose the existing OC status update functionality (PortalOC_StatusService) through a dedicated API endpoint and web UI form so operators can manually change OC status.
+
+**Target features:**
+- New `PUT /api/pos/status` endpoint with Joi validation
+- UI form in pos.html: OC number input, status dropdown (OPEN/CLOSED/CANCELLED/GENERATED), tenant selector
+- Confirmation dialog before status change
+- Toast notifications for success/error feedback
+
 ---
-*Last updated: 2026-03-25 after v2.1 milestone*
+*Last updated: 2026-04-08 after v2.2 milestone started*
