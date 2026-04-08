@@ -10,7 +10,7 @@
 
 ## Phases
 
-- [ ] **Phase 15: OC Status API Endpoint** - PUT /api/pos/status with Joi validation and error handling
+- [x] **Phase 15: OC Status API Endpoint** - PUT /api/pos/status with Joi validation and error handling (completed 2026-04-08)
 - [ ] **Phase 16: OC Status UI Form** - HTML form with status dropdown, confirmation dialog, and toast feedback
 
 ## Phase Details
@@ -24,7 +24,7 @@
   2. API rejects requests with missing fields (ocSage, status, tenantIndex) returning 400 with a clear error message per field
   3. API rejects invalid status values (anything other than OPEN, CLOSED, CANCELLED, GENERATED) returning 400 with the list of valid values
   4. API returns appropriate error response when the underlying PortalOC_StatusService fails (e.g., DB error, OC not found)
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] 15-01-PLAN.md — Schema, route handler, and tests for PUT /api/pos/status
@@ -50,5 +50,5 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. OC Status API Endpoint | v2.2 | 0/1 | Not started | - |
+| 15. OC Status API Endpoint | 1/1 | Complete   | 2026-04-08 | - |
 | 16. OC Status UI Form | v2.2 | 0/? | Not started | - |

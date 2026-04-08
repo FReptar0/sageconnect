@@ -9,8 +9,8 @@ Requirements for OC Status UI milestone. Each maps to roadmap phases.
 
 ### API
 
-- [ ] **API-01**: Operator can update a single OC's status via `PUT /api/pos/status` with validated input (ocSage, status, tenantIndex)
-- [ ] **API-02**: API rejects invalid status values and missing fields with clear error messages
+- [x] **API-01**: Operator can update a single OC's status via `PUT /api/pos/status` with validated input (ocSage, status, tenantIndex)
+- [x] **API-02**: API rejects invalid status values and missing fields with clear error messages
 
 ### UI
 
@@ -43,8 +43,8 @@ Requirements for OC Status UI milestone. Each maps to roadmap phases.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 15 | Pending |
-| API-02 | Phase 15 | Pending |
+| API-01 | Phase 15 | Complete |
+| API-02 | Phase 15 | Complete |
 | UI-01 | Phase 16 | Pending |
 | UI-02 | Phase 16 | Pending |
 | UI-03 | Phase 16 | Pending |
