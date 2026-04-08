@@ -17,17 +17,17 @@
 
 ### Phase 15: OC Status API Endpoint
 **Goal**: Operators can update an OC's status via a validated REST API call
-**Depends on**: Nothing (builds on existing PortalOC_StatusService and po-routes infrastructure)
+**Depends on**: Nothing (builds on existing PortalOC_StatusUpdater and po-routes infrastructure)
 **Requirements**: API-01, API-02
 **Success Criteria** (what must be TRUE):
   1. Operator can send PUT /api/pos/status with ocSage, status, and tenantIndex and receive a success response with the update result
   2. API rejects requests with missing fields (ocSage, status, tenantIndex) returning 400 with a clear error message per field
   3. API rejects invalid status values (anything other than OPEN, CLOSED, CANCELLED, GENERATED) returning 400 with the list of valid values
   4. API returns appropriate error response when the underlying PortalOC_StatusService fails (e.g., DB error, OC not found)
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 15-01: TBD
+- [ ] 15-01-PLAN.md — Schema, route handler, and tests for PUT /api/pos/status
 
 ### Phase 16: OC Status UI Form
 **Goal**: Operators can change an OC's status from the PO management page without leaving the browser
@@ -50,5 +50,5 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. OC Status API Endpoint | v2.2 | 0/? | Not started | - |
+| 15. OC Status API Endpoint | v2.2 | 0/1 | Not started | - |
 | 16. OC Status UI Form | v2.2 | 0/? | Not started | - |
