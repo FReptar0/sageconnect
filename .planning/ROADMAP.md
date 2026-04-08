@@ -27,7 +27,7 @@
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 15-01-PLAN.md — Schema, route handler, and tests for PUT /api/pos/status
+- [x] 15-01-PLAN.md — Schema, route handler, and tests for PUT /api/pos/status
 
 ### Phase 16: OC Status UI Form
 **Goal**: Operators can change an OC's status from the PO management page without leaving the browser
@@ -39,10 +39,10 @@ Plans:
   3. On successful status update, operator sees a green toast notification with the result message
   4. On failed status update, operator sees a red toast notification with the error detail
   5. The form resets or remains ready for the next operation after feedback is shown
-**Plans**: TBD
+**Plans:** 1 plan
 
 Plans:
-- [ ] 16-01: TBD
+- [ ] 16-01-PLAN.md — Action card with status dropdown, confirmation dialog, and toast feedback in pos.html
 
 ## Progress
 
@@ -51,4 +51,4 @@ Plans:
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 15. OC Status API Endpoint | 1/1 | Complete    | 2026-04-08 | - |
-| 16. OC Status UI Form | v2.2 | 0/? | Not started | - |
+| 16. OC Status UI Form | v2.2 | 0/1 | Not started | - |
