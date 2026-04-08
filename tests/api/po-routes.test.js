@@ -1,8 +1,8 @@
 /**
  * PO Routes Integration Tests
  *
- * Tests all 8 PO endpoints: happy path, validation errors, API key enforcement,
- * dry-run defaults, poNumbers normalization, and lifecycle mode dispatch.
+ * Tests all 9 PO endpoints: happy path, validation errors, API key enforcement,
+ * dry-run defaults, poNumbers normalization, lifecycle mode dispatch, and status update.
  *
  * Strategy: Build a dedicated test app that mirrors the production Express stack
  * but mocks all PO script functions and config.js to avoid env var requirements.
@@ -86,6 +86,10 @@ jest.mock('../../src/scripts/test-order-lifecycle', () => ({
     testTenant: jest.fn().mockResolvedValue(mockEnvelope),
 }));
 
+jest.mock('../../src/controller/PortalOC_StatusUpdater', () => ({
+    updatePOStatus: jest.fn().mockResolvedValue(mockEnvelope),
+}));
+
 // ---------------------------------------------------------------------------
 // Build test app
 // ---------------------------------------------------------------------------
@@ -147,6 +151,7 @@ const { diagnosticPOAddress } = require('../../src/scripts/po-address-diagnostic
 const { diagnosticPaymentForm } = require('../../src/scripts/po-payment-form-diagnostic');
 const { uploadAuthorizedPOs } = require('../../src/scripts/upload-authorized-pos');
 const { analyzeOrders, processOrders, testTenant } = require('../../src/scripts/test-order-lifecycle');
+const { updatePOStatus } = require('../../src/controller/PortalOC_StatusUpdater');
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -171,6 +176,7 @@ beforeEach(() => {
     analyzeOrders.mockResolvedValue(mockEnvelope);
     processOrders.mockResolvedValue(mockEnvelope);
     testTenant.mockResolvedValue(mockEnvelope);
+    updatePOStatus.mockResolvedValue(mockEnvelope);
 });
 
 // ---------------------------------------------------------------------------
@@ -544,5 +550,138 @@ describe('PO Schemas - statusUpdateSchema', () => {
             { stripUnknown: true }
         );
         expect(value.database).toBeUndefined();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 9. PUT /status -- Status Update happy path
+// ---------------------------------------------------------------------------
+describe('PO Routes - Status Update', () => {
+    test('PUT /api/pos/status with valid body returns 200 envelope', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001', status: 'CLOSED' });
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(updatePOStatus).toHaveBeenCalledWith('OC001', 'CLOSED', 'DB1');
+    });
+
+    test('PUT /api/pos/status with tenantIndex=1 resolves correct database', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC002', status: 'OPEN', tenantIndex: 1 });
+        expect(res.status).toBe(200);
+        expect(updatePOStatus).toHaveBeenCalledWith('OC002', 'OPEN', 'DB2');
+    });
+
+    test('PUT /api/pos/status defaults tenantIndex to 0', async () => {
+        await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001', status: 'GENERATED' });
+        expect(updatePOStatus).toHaveBeenCalledWith('OC001', 'GENERATED', 'DB1');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 10. PUT /status -- Status Update validation
+// ---------------------------------------------------------------------------
+describe('PO Routes - Status Update Validation', () => {
+    test('rejects missing poNumber with 400', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ status: 'OPEN' });
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.errors.length).toBeGreaterThan(0);
+    });
+
+    test('rejects missing status with 400', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001' });
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    test('rejects invalid status value with 400', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001', status: 'INVALID' });
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+        expect(res.body.errors.some(e => /OPEN|CLOSED|CANCELLED|GENERATED/.test(e))).toBe(true);
+    });
+
+    test('rejects tenantIndex above max with 400', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001', status: 'OPEN', tenantIndex: 99 });
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+
+    test('rejects empty body with 400', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({});
+        expect(res.status).toBe(400);
+        expect(res.body.success).toBe(false);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 11. PUT /status -- API key enforcement
+// ---------------------------------------------------------------------------
+describe('PO Routes - Status Update API Key', () => {
+    test('PUT /api/pos/status without API key returns 401', async () => {
+        const res = await request(app)
+            .put('/api/pos/status')
+            .send({ poNumber: 'OC001', status: 'OPEN' });
+        expect(res.status).toBe(401);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// 12. PUT /status -- Error propagation
+// ---------------------------------------------------------------------------
+describe('PO Routes - Status Update Error Handling', () => {
+    test('returns 404 when updatePOStatus returns not-found error envelope', async () => {
+        updatePOStatus.mockResolvedValueOnce({
+            success: false,
+            data: null,
+            errors: ['No se encontro registro valido para OC=OC999, DB=DB1'],
+            summary: 'not found',
+            meta: { duration: 0, timestamp: '2026-01-01T00:00:00.000Z', tenant: null },
+        });
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC999', status: 'OPEN' });
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+    });
+
+    test('returns 500 when updatePOStatus returns generic error envelope', async () => {
+        updatePOStatus.mockResolvedValueOnce({
+            success: false,
+            data: null,
+            errors: ['Error inesperado: connection timeout'],
+            summary: 'Error inesperado',
+            meta: { duration: 0, timestamp: '2026-01-01T00:00:00.000Z', tenant: null },
+        });
+        const res = await request(app)
+            .put('/api/pos/status')
+            .set('x-api-key', TEST_API_KEY)
+            .send({ poNumber: 'OC001', status: 'OPEN' });
+        expect(res.status).toBe(500);
+        expect(res.body.success).toBe(false);
     });
 });
