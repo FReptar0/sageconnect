@@ -50,5 +50,5 @@ Plans:
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 15. OC Status API Endpoint | 1/1 | Complete   | 2026-04-08 | - |
+| 15. OC Status API Endpoint | 1/1 | Complete    | 2026-04-08 | - |
 | 16. OC Status UI Form | v2.2 | 0/? | Not started | - |
