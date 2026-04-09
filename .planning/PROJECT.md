@@ -8,17 +8,17 @@ SageConnect es un servicio always-on de integración entre Sage 300 ERP y Portal
 
 La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
 
-## Current State (post v2.1)
+## Current State (post v2.2)
 
 - **Service:** Always-on via Servy Windows Service, node-cron v4 internal scheduler (every 15 min)
 - **License:** LicenseValidator validates against external server (sageconnect-license on Vercel) with HMAC-SHA256, anti-replay, three-state cache (24h TTL)
 - **Enforcement:** Startup fail-fast, cron guard, Express middleware (503), DNS bypass detection
-- **API:** 15 REST endpoints (7 payment + 8 PO) + 6 system endpoints (health, tenants, license, schedule, history, operations)
-- **Web UI:** 4 pages + license banner (red "Licencia inactiva") + expiry countdown badge with 60s polling
+- **API:** 16 REST endpoints (7 payment + 9 PO) + 6 system endpoints (health, tenants, license, schedule, history, operations)
+- **Web UI:** 4 pages + license banner + expiry badge + OC status change form (pos.html "Cambiar Estado OC")
 - **Config:** `src/config.js` with fail-fast validation, 33+ env vars including LICENSE_API_URL, HMAC_SECRET, LICENSE_ADMIN_EMAIL
 - **Scripts:** All 13 scripts + PortalOC_StatusUpdater return ResultEnvelope
 - **SQL:** Singleton connection pool with USE [database] switching, auto-reconnect
-- **Tests:** 200+ across the codebase
+- **Tests:** 200+ across the codebase (50 in PO routes alone)
 - **Legacy removed:** AutoShutdownService, AUTO_TERMINATE, RunSageconnect.bat, --web-only all gone
 
 ## Requirements
@@ -54,10 +54,12 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 - ✓ Banner "Licencia inactiva" + expiry countdown badge en web UI — v2.1
 - ✓ Admin email (LICENSE_ADMIN_EMAIL) on failure/revocation — v2.1
 
+- ✓ PUT /api/pos/status endpoint with Joi validation (statusUpdateSchema) — v2.2
+- ✓ OC status change UI form in pos.html ("Cambiar Estado OC") with Spanish labels — v2.2
+
 ### Active
 
-- [ ] OC status update exposed as REST API endpoint
-- [ ] OC status update UI in PO management page (pos.html)
+(None — pending next milestone definition)
 
 ### Out of Scope
 
@@ -102,16 +104,10 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | Three-state model (VALID/INVALID/ERROR) | Network errors no bloquean clientes que pagan | ✓ Good |
 | dns.resolve4() para bypass detection | Defense-in-depth contra hosts file redirect | ✓ Good |
 | LICENSE_ADMIN_EMAIL separado de MAILING_NOTICES | Admin Tersoft != operaciones del cliente | ✓ Good |
-
-## Current Milestone: v2.2 OC Status UI
-
-**Goal:** Expose the existing OC status update functionality (PortalOC_StatusService) through a dedicated API endpoint and web UI form so operators can manually change OC status.
-
-**Target features:**
-- New `PUT /api/pos/status` endpoint with Joi validation
-- UI form in pos.html: OC number input, status dropdown (OPEN/CLOSED/CANCELLED/GENERATED), tenant selector
-- Confirmation dialog before status change
-- Toast notifications for success/error feedback
+| poNumber (no ocSage) como campo API público | Consistente con los 8 endpoints PO existentes | ✓ Good |
+| PortalOC_StatusUpdater sobre PortalOC_StatusService | StatusUpdater retorna ResultEnvelope, compatible con sendResult | ✓ Good |
+| tenantIndex sin database override para status update | Simplifica UI, operadores no necesitan saber nombres de BD | ✓ Good |
+| Labels español en dropdown con valores inglés al API | Operadores ven "Cancelada", API envía "CANCELLED" | ✓ Good |
 
 ---
-*Last updated: 2026-04-08 after v2.2 milestone started*
+*Last updated: 2026-04-09 after v2.2 milestone*

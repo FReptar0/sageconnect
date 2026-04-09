@@ -1,5 +1,19 @@
 # Milestones
 
+## v2.2 OC Status UI (Shipped: 2026-04-09)
+
+**Phases completed:** 2 phases, 2 plans
+**Files:** 13 files changed, 1,064 insertions, 41 deletions
+**Git range:** `4a59184` → `8833df9`
+
+**Key accomplishments:**
+- PUT /api/pos/status endpoint with Joi validation (statusUpdateSchema: poNumber, status enum, tenantIndex) + writeLimiter + 19 new tests (50 total passing)
+- "Cambiar Estado OC" action card in pos.html with Spanish-labeled status dropdown (Abierta/Cerrada/Cancelada/Generada → OPEN/CLOSED/CANCELLED/GENERATED)
+- confirmAction dialog with bilingual message + showToast feedback (success green, error red)
+- Wired to existing PortalOC_StatusUpdater.updatePOStatus() via inline require + databases[tenantIndex] resolution
+
+---
+
 ## v2.1 License Validation (Shipped: 2026-03-25)
 
 **Phases completed:** 4 phases, 6 plans
