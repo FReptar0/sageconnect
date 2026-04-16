@@ -73,9 +73,9 @@ function compactToDashed(compactDate) {
     return `${compactDate.slice(0, 4)}-${compactDate.slice(4, 6)}-${compactDate.slice(6, 8)}`;
 }
 
-function oneYearAgoDashed() {
+function threeMonthsAgoDashed() {
     const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
+    d.setMonth(d.getMonth() - 3);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -542,9 +542,10 @@ VALUES
 // ---------------------------------------------------------------------------
 async function main() {
     const currentDate = getCurrentDateCompact();
-    // Portal from: always use wide range (1 year) to catch ALL pending invoices,
+    // Portal from: always use 3-month lookback to catch ALL pending invoices,
     // regardless of when they were received. --from only affects Sage date filter.
-    const portalFrom = oneYearAgoDashed();
+    // Note: Portal API rejects date ranges > ~4 months with HTTP 400.
+    const portalFrom = threeMonthsAgoDashed();
     const portalTo = compactToDashed(currentDate);
 
     console.log('=== PAYMENT RECONCILIATION ===');
