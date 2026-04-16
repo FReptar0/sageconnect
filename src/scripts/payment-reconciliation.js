@@ -542,13 +542,15 @@ VALUES
 // ---------------------------------------------------------------------------
 async function main() {
     const currentDate = getCurrentDateCompact();
-    const portalFrom = compactToDashed(fromDate) || oneYearAgoDashed();
+    // Portal from: always use wide range (1 year) to catch ALL pending invoices,
+    // regardless of when they were received. --from only affects Sage date filter.
+    const portalFrom = oneYearAgoDashed();
     const portalTo = compactToDashed(currentDate);
 
     console.log('=== PAYMENT RECONCILIATION ===');
     console.log(`Tenant: ${tenantIds[index]} | DB: ${database[index]} | Today: ${currentDate}`);
     console.log(`Mode: ${shouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: PENDING_TO_PAY from ${portalFrom} to ${portalTo}`);
-    if (fromDate) console.log(`Sage --from: ${fromDate}`);
+    if (fromDate) console.log(`Sage --from: ${fromDate} (only affects Sage payment date filter)`);
     if (pyFilter) console.log(`Sage --py: ${pyFilter}`);
     console.log('');
 

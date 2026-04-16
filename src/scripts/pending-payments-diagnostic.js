@@ -33,7 +33,7 @@ const databases = config.portal.tenants.map(t => t.database);
 // --- CLI args ---
 const cliArgs = process.argv.slice(2);
 let index = 0;
-let months = 15;
+let months = 6;
 
 for (const a of cliArgs) {
     if (a.startsWith('--index=')) index = parseInt(a.split('=')[1], 10);
@@ -49,13 +49,26 @@ async function main() {
 
     // Step 1: Fetch portal PENDING_TO_PAY
     console.log('[PASO 1] Obteniendo CFDIs PENDING_TO_PAY del portal...');
-    const fromDate = new Date();
-    fromDate.setMonth(fromDate.getMonth() - months);
-    const from = fromDate.toISOString().split('T')[0];
     const to = new Date().toISOString().split('T')[0];
 
-    const portalItems = await getPendingToPayInvoices(index, { from, to, pageSize: 200 });
-    console.log(`  Portal: ${portalItems.length} CFDIs PENDING_TO_PAY\n`);
+    // Try with requested months first; if portal returns 400, retry with shorter range
+    let portalItems = [];
+    let usedMonths = months;
+    for (const tryMonths of [months, 3, 1]) {
+        const fromDate = new Date();
+        fromDate.setMonth(fromDate.getMonth() - tryMonths);
+        const from = fromDate.toISOString().split('T')[0];
+
+        console.log(`  Intentando con rango: ${from} a ${to} (${tryMonths} meses)...`);
+        portalItems = await getPendingToPayInvoices(index, { from, to, pageSize: 200 });
+
+        if (portalItems.length > 0 || tryMonths === 1) {
+            usedMonths = tryMonths;
+            break;
+        }
+        console.warn(`  [WARN] Portal retornó 0 con ${tryMonths} meses, intentando rango más corto...`);
+    }
+    console.log(`  Portal: ${portalItems.length} CFDIs PENDING_TO_PAY (rango: ${usedMonths} meses)\n`);
 
     if (portalItems.length === 0) {
         console.log('No hay CFDIs pendientes. Fin.');
