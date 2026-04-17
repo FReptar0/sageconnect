@@ -194,7 +194,6 @@ WHERE DP.BATCHTYPE = 'PY'
         currency: hdr.bk_currency,
         external_id: hdr.external_id,
         ignore_amounts: false,
-        open: false,
         operation_type: hdr.operation_type,
         payment_date,
         provider_external_id: hdr.provider_external_id,
