@@ -28,7 +28,8 @@ jest.mock('../src/utils/GetTypesCFDI', () => ({
 }));
 
 jest.mock('../src/utils/TimezoneHelper', () => ({
-    getCurrentDateCompact: jest.fn().mockReturnValue('20260312')
+    getCurrentDateCompact: jest.fn().mockReturnValue('20260312'),
+    getCurrentDateString: jest.fn().mockReturnValue('2026-03-12')
 }));
 
 jest.mock('../src/config', () => ({
