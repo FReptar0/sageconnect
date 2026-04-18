@@ -28,6 +28,7 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateString } = require('../utils/TimezoneHelper');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const axios = require('axios');
 const config = require('../config');
 const fs = require('fs');
@@ -173,7 +174,12 @@ function getConfidence(score) {
 // ============================================================================
 // MODE: SCAN (Portal-first)
 // ============================================================================
-async function modeScan(DB, tenantIndex, months) {
+async function scanForRepairableUUIDs(options = {}) {
+    const startTime = Date.now();
+    const tenantIndex = options.tenantIndex || 0;
+    const DB = options.database || databases[tenantIndex];
+    const months = options.months || 12;
+
     console.log('\n=== MODE: SCAN (Portal-first) ===');
     console.log(`Looking back ${months} months for PENDING_TO_PAY invoices...\n`);
 
@@ -206,14 +212,22 @@ async function modeScan(DB, tenantIndex, months) {
     } catch (err) {
         console.error(`[ERROR] Failed to fetch portal CFDIs: ${err.message}`);
         logGenerator(LOG_FILE, 'error', `SCAN: Failed to fetch portal CFDIs: ${err.message}`);
-        return;
+        return errorResult(
+            [err.message],
+            'Failed to fetch portal CFDIs',
+            { tenant: tenantIndex, startTime }
+        );
     }
 
     if (portalCfdis.length === 0) {
         console.log('  No pending invoices in portal. Nothing to do.');
         state.lastScanDate = new Date().toISOString();
         saveState(state);
-        return;
+        return successResult(
+            { portalCfdis: 0, needsRepair: 0, uploadReady: 0 },
+            'No pending invoices in portal',
+            { tenant: tenantIndex, startTime }
+        );
     }
 
     // --- STEP 2: Get all known UUIDs from APIBHO (batch) ---
@@ -558,6 +572,23 @@ async function modeScan(DB, tenantIndex, months) {
     logGenerator(LOG_FILE, 'info',
         `SCAN complete: ${portalCfdis.length} portal CFDIs, ${missingCount} missing UUID, ${matchedCfdiCount} matched, ${newCount} need repair, ${uploadReadyCount} upload-ready`
     );
+
+    return successResult(
+        {
+            portalCfdis: portalCfdis.length,
+            alreadyKnown: alreadyKnownCount,
+            needsRepair: missingCount,
+            providersResolved: Object.keys(providerToVendor).length,
+            matchedCfdis: matchedCfdiCount,
+            newPayments: newCount,
+            uploadReady: uploadReadyCount,
+            skipped: skippedCount,
+            pending,
+            readyForUpload
+        },
+        `Scan complete: ${portalCfdis.length} portal CFDIs, ${newCount} need repair, ${uploadReadyCount} upload-ready`,
+        { tenant: tenantIndex, startTime }
+    );
 }
 
 // --- Helper: Find PY payments for a set of invoice IDs ---
@@ -705,7 +736,13 @@ async function buildPaymentStateEntry(DB, py, providerId, vendorId, state, cfdiT
 // ============================================================================
 // MODE: REPAIR
 // ============================================================================
-async function modeRepair(DB, tenantIndex, apply, batchSize, pyFilter) {
+async function repairUUIDs(options = {}) {
+    const startTime = Date.now();
+    const tenantIndex = options.tenantIndex || 0;
+    const DB = options.database || databases[tenantIndex];
+    const apply = options.apply || false;
+    const batchSize = options.batchSize || null;
+    const pyFilter = options.pyFilter || null;
     const batch = batchSize || 50;
 
     console.log(`\n=== MODE: REPAIR ${apply ? '(APPLY)' : '(DRY-RUN)'} ===`);
@@ -718,7 +755,11 @@ async function modeRepair(DB, tenantIndex, apply, batchSize, pyFilter) {
     if (pyFilter) {
         if (!state.payments[pyFilter]) {
             console.error(`[ERROR] Payment ${pyFilter} not found in state file. Run scan first.`);
-            return;
+            return errorResult(
+                [`Payment ${pyFilter} not found in state file`],
+                `Payment ${pyFilter} not in state`,
+                { tenant: tenantIndex, startTime }
+            );
         }
         toProcess = [[pyFilter, state.payments[pyFilter]]];
     } else {
@@ -729,7 +770,11 @@ async function modeRepair(DB, tenantIndex, apply, batchSize, pyFilter) {
 
     if (toProcess.length === 0) {
         console.log('No pending payments to repair. Run scan first or check state file.');
-        return;
+        return successResult(
+            { processed: 0, repaired: 0, noMatch: 0, errors: 0, remaining: 0 },
+            'No pending payments to repair',
+            { tenant: tenantIndex, startTime }
+        );
     }
 
     console.log(`Processing ${toProcess.length} payments...\n`);
@@ -851,6 +896,12 @@ async function modeRepair(DB, tenantIndex, apply, batchSize, pyFilter) {
     logGenerator(LOG_FILE, 'info',
         `REPAIR ${apply ? 'APPLY' : 'DRY-RUN'}: ${repairedCount} repaired, ${noMatchCount} no_match, ${errorCount} errors, ${remaining} remaining`
     );
+
+    return successResult(
+        { processed: toProcess.length, repaired: repairedCount, noMatch: noMatchCount, errors: errorCount, remaining },
+        `Repair ${apply ? 'apply' : 'dry-run'}: ${repairedCount} repaired, ${noMatchCount} no match, ${errorCount} errors`,
+        { tenant: tenantIndex, startTime }
+    );
 }
 
 // --- Write UUID to APIBHO ---
@@ -900,7 +951,13 @@ async function writeUuidToApibho(DB, inv, uuid, schemaRow) {
 // ============================================================================
 // MODE: UPLOAD
 // ============================================================================
-async function modeUpload(DB, tenantIndex, apply, batchSize, pyFilter) {
+async function uploadRepairedPayments(options = {}) {
+    const startTime = Date.now();
+    const tenantIndex = options.tenantIndex || 0;
+    const DB = options.database || databases[tenantIndex];
+    const apply = options.apply || false;
+    const batchSize = options.batchSize || null;
+    const pyFilter = options.pyFilter || null;
     const batch = batchSize || 20;
 
     console.log(`\n=== MODE: UPLOAD ${apply ? '(APPLY)' : '(DRY-RUN)'} ===`);
@@ -912,7 +969,11 @@ async function modeUpload(DB, tenantIndex, apply, batchSize, pyFilter) {
     if (pyFilter) {
         if (!state.payments[pyFilter]) {
             console.error(`[ERROR] Payment ${pyFilter} not found in state file.`);
-            return;
+            return errorResult(
+                [`Payment ${pyFilter} not found in state file`],
+                `Payment ${pyFilter} not in state`,
+                { tenant: tenantIndex, startTime }
+            );
         }
         toProcess = [[pyFilter, state.payments[pyFilter]]];
     } else {
@@ -923,7 +984,11 @@ async function modeUpload(DB, tenantIndex, apply, batchSize, pyFilter) {
 
     if (toProcess.length === 0) {
         console.log('No repaired payments ready for upload. Run repair --apply first.');
-        return;
+        return successResult(
+            { processed: 0, uploaded: 0, failed: 0, remaining: 0 },
+            'No repaired payments ready for upload',
+            { tenant: tenantIndex, startTime }
+        );
     }
 
     console.log(`Processing ${toProcess.length} payments for upload...\n`);
@@ -1216,56 +1281,66 @@ async function modeUpload(DB, tenantIndex, apply, batchSize, pyFilter) {
     logGenerator(LOG_FILE, 'info',
         `UPLOAD ${apply ? 'APPLY' : 'DRY-RUN'}: ${uploadedCount} uploaded, ${failedCount} failed, ${remainingRepaired} remaining`
     );
+
+    return successResult(
+        { processed: toProcess.length, uploaded: uploadedCount, failed: failedCount, remaining: remainingRepaired },
+        `Upload ${apply ? 'apply' : 'dry-run'}: ${uploadedCount} uploaded, ${failedCount} failed`,
+        { tenant: tenantIndex, startTime }
+    );
 }
 
 // ============================================================================
 // MAIN
 // ============================================================================
-async function main() {
-    const { mode, apply, batchSize, pyFilter, tenantIndex, months } = parseArgs();
-    const DB = databases[tenantIndex];
+module.exports = { scanForRepairableUUIDs, repairUUIDs, uploadRepairedPayments };
 
-    if (!mode || !['scan', 'repair', 'upload'].includes(mode)) {
-        console.log('Payment UUID Repair & Upload Script (Portal-first)');
-        console.log('');
-        console.log('Usage:');
-        console.log('  node src/scripts/payment-uuid-repair.js scan                      # portal-first scan');
-        console.log('  node src/scripts/payment-uuid-repair.js scan --months=6            # look back 6 months');
-        console.log('  node src/scripts/payment-uuid-repair.js repair                     # dry-run');
-        console.log('  node src/scripts/payment-uuid-repair.js repair --apply             # write UUIDs');
-        console.log('  node src/scripts/payment-uuid-repair.js repair --apply --batch=100');
-        console.log('  node src/scripts/payment-uuid-repair.js repair --apply --py PY0061652');
-        console.log('  node src/scripts/payment-uuid-repair.js upload                     # dry-run');
-        console.log('  node src/scripts/payment-uuid-repair.js upload --apply             # POST to portal');
-        console.log('  node src/scripts/payment-uuid-repair.js upload --apply --batch=20');
-        console.log('  node src/scripts/payment-uuid-repair.js upload --apply --py PY0061652');
-        console.log('');
-        console.log('Flags:');
-        console.log('  --index=N    Tenant index (default: 0)');
-        console.log('  --batch=N    Batch size (default: 50 for repair, 20 for upload)');
-        console.log('  --months=N   Months back for portal scan (default: 12)');
+// CLI execution
+if (require.main === module) {
+    (async () => {
+        const { mode, apply, batchSize, pyFilter, tenantIndex, months } = parseArgs();
+        const DB = databases[tenantIndex];
+
+        if (!mode || !['scan', 'repair', 'upload'].includes(mode)) {
+            console.log('Payment UUID Repair & Upload Script (Portal-first)');
+            console.log('');
+            console.log('Usage:');
+            console.log('  node src/scripts/payment-uuid-repair.js scan                      # portal-first scan');
+            console.log('  node src/scripts/payment-uuid-repair.js scan --months=6            # look back 6 months');
+            console.log('  node src/scripts/payment-uuid-repair.js repair                     # dry-run');
+            console.log('  node src/scripts/payment-uuid-repair.js repair --apply             # write UUIDs');
+            console.log('  node src/scripts/payment-uuid-repair.js repair --apply --batch=100');
+            console.log('  node src/scripts/payment-uuid-repair.js repair --apply --py PY0061652');
+            console.log('  node src/scripts/payment-uuid-repair.js upload                     # dry-run');
+            console.log('  node src/scripts/payment-uuid-repair.js upload --apply             # POST to portal');
+            console.log('  node src/scripts/payment-uuid-repair.js upload --apply --batch=20');
+            console.log('  node src/scripts/payment-uuid-repair.js upload --apply --py PY0061652');
+            console.log('');
+            console.log('Flags:');
+            console.log('  --index=N    Tenant index (default: 0)');
+            console.log('  --batch=N    Batch size (default: 50 for repair, 20 for upload)');
+            console.log('  --months=N   Months back for portal scan (default: 12)');
+            process.exit(1);
+        }
+
+        console.log(`Tenant index: ${tenantIndex}, DB: ${DB}`);
+        const opts = { tenantIndex, database: DB, apply, batchSize, pyFilter, months };
+
+        switch (mode) {
+            case 'scan':
+                await scanForRepairableUUIDs(opts);
+                break;
+            case 'repair':
+                await repairUUIDs(opts);
+                break;
+            case 'upload':
+                await uploadRepairedPayments(opts);
+                break;
+        }
+
+        process.exit(0);
+    })().catch(err => {
+        console.error('Fatal error:', err);
+        logGenerator(LOG_FILE, 'error', `Fatal error: ${err.message}`);
         process.exit(1);
-    }
-
-    console.log(`Tenant index: ${tenantIndex}, DB: ${DB}`);
-
-    switch (mode) {
-        case 'scan':
-            await modeScan(DB, tenantIndex, months);
-            break;
-        case 'repair':
-            await modeRepair(DB, tenantIndex, apply, batchSize, pyFilter);
-            break;
-        case 'upload':
-            await modeUpload(DB, tenantIndex, apply, batchSize, pyFilter);
-            break;
-    }
-
-    process.exit(0);
+    });
 }
-
-main().catch(err => {
-    console.error('Fatal error:', err);
-    logGenerator(LOG_FILE, 'error', `Fatal error: ${err.message}`);
-    process.exit(1);
-});

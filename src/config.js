@@ -6,7 +6,7 @@
  *
  * Usage: const config = require('./config');
  *
- * Sections: database, portal, mailing, paths, app
+ * Sections: database, portal, mailing, paths, app, license
  */
 
 const dotenv = require('dotenv');
@@ -27,6 +27,7 @@ const REQUIRED = {
         'DEFAULT_ADDRESS_MUNICIPALITY', 'DEFAULT_ADDRESS_STATE', 'DEFAULT_ADDRESS_STREET',
         'DEFAULT_ADDRESS_ZIP', 'ADDRESS_IDENTIFIERS_SKIP',
     ],
+    license: ['LICENSE_API_URL', 'HMAC_SECRET', 'LICENSE_ADMIN_EMAIL'],
 };
 
 // ---------------------------------------------------------------------------
@@ -139,7 +140,6 @@ const config = {
         rfc: process.env.RFC,
         regimen: process.env.REGIMEN,
         timezone: process.env.TIMEZONE,
-        autoTerminate: (process.env.AUTO_TERMINATE || '').toLowerCase() === 'true',
         defaultAddress: {
             city: process.env.DEFAULT_ADDRESS_CITY,
             country: process.env.DEFAULT_ADDRESS_COUNTRY,
@@ -151,6 +151,26 @@ const config = {
         },
         addressIdentifiersSkip: splitCSV(process.env.ADDRESS_IDENTIFIERS_SKIP),
     },
+
+    security: {
+        apiKey: process.env.SAGECONNECT_API_KEY || null,
+    },
+
+    license: {
+        apiUrl: process.env.LICENSE_API_URL,
+        hmacSecret: process.env.HMAC_SECRET,
+        adminEmail: process.env.LICENSE_ADMIN_EMAIL,
+    },
+
+    schedule: {
+        cronExpression: process.env.CRON_SCHEDULE || '*/15 * * * *',
+        operationDelayMs: parseInt(process.env.OPERATION_DELAY_MS, 10) || 5000,
+    },
 };
+
+// Warn if API key protection is disabled (optional -- not fatal)
+if (!config.security.apiKey) {
+    console.warn('[CONFIG WARN] SAGECONNECT_API_KEY not set -- API key protection is DISABLED');
+}
 
 module.exports = config;

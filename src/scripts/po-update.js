@@ -2,6 +2,7 @@
 
 const axios = require('axios');
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
@@ -36,6 +37,7 @@ const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenant
  * @param {boolean} dryRun - If true, only simulates the update without sending to Portal
  */
 async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 0, dryRun = false) {
+  const startTime = Date.now();
   const logFileName = 'PO_Update';
   const dbToUse = database || databases[tenantIndex];
 
@@ -56,12 +58,17 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
   try {
     // STEP 1: Search for the PO in FESA database
     console.log(`\n[STEP 1] === BÚSQUEDA EN FESA ===`);
-    const fesaResult = await searchPOInFESA(poNumber, dbToUse);
+    const fesaEnvelope = await searchPOInFESA(poNumber, dbToUse);
+    const fesaResult = fesaEnvelope.data;
 
     if (!fesaResult.found) {
       console.log(`❌ [ERROR] PO ${poNumber} no encontrada en FESA o no está marcada como POSTED`);
       logGenerator(logFileName, 'error', `PO ${poNumber} no encontrada en FESA`);
-      return { success: false, error: 'PO not found in FESA' };
+      return errorResult(
+        ['PO not found in FESA'],
+        `PO ${poNumber} not found in FESA or not POSTED`,
+        { tenant: tenantIds[tenantIndex], startTime }
+      );
     }
 
     console.log(`✅ [SUCCESS] PO encontrada en FESA:`);
@@ -77,7 +84,11 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
     if (!sageData.success) {
       console.log(`❌ [ERROR] ${sageData.error}`);
       logGenerator(logFileName, 'error', `Error recuperando datos de Sage: ${sageData.error}`);
-      return { success: false, error: sageData.error };
+      return errorResult(
+        [sageData.error],
+        `Failed to retrieve Sage data for PO ${poNumber}`,
+        { tenant: tenantIds[tenantIndex], startTime }
+      );
     }
 
     console.log(`✅ [SUCCESS] Datos recuperados de Sage:`);
@@ -106,7 +117,11 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
 
       console.log(`✅ [DRY RUN] Actualización simulada completada`);
       logGenerator(logFileName, 'info', `DRY RUN completado para PO ${poNumber}`);
-      return { success: true, mode: 'dry-run', idFocaltec: fesaResult.idFocaltec };
+      return successResult(
+        { mode: 'dry-run', idFocaltec: fesaResult.idFocaltec, lines: sageData.parsedOrder.lines?.length || 0 },
+        `Dry run completed for PO ${poNumber}`,
+        { tenant: tenantIds[tenantIndex], startTime }
+      );
 
     } else {
       const updateResult = await updatePOInPortal(fesaResult.idFocaltec, sageData.parsedOrder, tenantIndex);
@@ -121,19 +136,31 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
         console.log(`✅ [SUCCESS] Timestamp actualizado en FESA`);
 
         logGenerator(logFileName, 'info', `Actualización exitosa para PO ${poNumber}`);
-        return { success: true, mode: 'update', status: updateResult.status };
+        return successResult(
+          { mode: 'update', status: updateResult.status, idFocaltec: fesaResult.idFocaltec },
+          `PO ${poNumber} updated successfully (HTTP ${updateResult.status})`,
+          { tenant: tenantIds[tenantIndex], startTime }
+        );
 
       } else {
         console.log(`❌ [ERROR] Error actualizando PO en Portal: ${updateResult.error}`);
         logGenerator(logFileName, 'error', `Error actualizando PO ${poNumber}: ${updateResult.error}`);
-        return { success: false, error: updateResult.error };
+        return errorResult(
+          [updateResult.error],
+          `Failed to update PO ${poNumber} in Portal`,
+          { tenant: tenantIds[tenantIndex], startTime }
+        );
       }
     }
 
   } catch (error) {
     console.error(`\n❌ [ERROR] Error durante el proceso: ${error.message}`);
     logGenerator(logFileName, 'error', `Error durante proceso para ${poNumber}: ${error.message}`);
-    return { success: false, error: error.message };
+    return errorResult(
+      [error.message],
+      `Unexpected error updating PO ${poNumber}`,
+      { tenant: tenantIds[tenantIndex], startTime }
+    );
   }
 }
 
@@ -144,6 +171,7 @@ async function testPurchaseOrderUpdate(poNumber, database = null, tenantIndex = 
  * @returns {Promise<Object>} Search result
  */
 async function searchPOInFESA(poNumber, database) {
+  const startTime = Date.now();
   const sql = `
     SELECT 
       RTRIM(idFocaltec) AS idFocaltec,
@@ -165,7 +193,7 @@ async function searchPOInFESA(poNumber, database) {
 
     if (recordset.length > 0) {
       const record = recordset[0];
-      return {
+      const data = {
         found: true,
         idFocaltec: record.idFocaltec,
         status: record.status,
@@ -173,9 +201,18 @@ async function searchPOInFESA(poNumber, database) {
         lastUpdate: record.lastUpdate,
         responseAPI: record.responseAPI
       };
+      return successResult(
+        data,
+        `PO ${poNumber} found in FESA (status: ${record.status})`,
+        { startTime }
+      );
     }
 
-    return { found: false };
+    return successResult(
+      { found: false },
+      `PO ${poNumber} not found in FESA`,
+      { startTime }
+    );
 
   } catch (error) {
     throw new Error(`Error searching FESA: ${error.message}`);

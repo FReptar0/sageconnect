@@ -2,11 +2,9 @@ name: Obfuscate & Push to Distribution Repo
 
 on:
   push:
-    paths:
-      - 'src/**'
-      - 'public/**'
-      - 'package.json'
-      - 'package-lock.json'
+    branches:
+      - master
+      - feat/always-on-service
   workflow_dispatch:  # Permite ejecución manual desde GitHub UI
 
 env:

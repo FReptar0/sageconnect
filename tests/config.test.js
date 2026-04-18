@@ -99,13 +99,14 @@ function loadConfigWithCapture() {
 // 1. Structure tests
 // ============================================================
 describe('Config Structure', () => {
-    test('config has all five top-level sections', () => {
+    test('config has all six top-level sections', () => {
         const config = loadConfig();
         expect(config).toHaveProperty('database');
         expect(config).toHaveProperty('portal');
         expect(config).toHaveProperty('mailing');
         expect(config).toHaveProperty('paths');
         expect(config).toHaveProperty('app');
+        expect(config).toHaveProperty('security');
     });
 
     test('config.database has correct keys mapped from env vars', () => {
@@ -188,18 +189,6 @@ describe('Config Structure', () => {
         const config = loadConfig();
         expect(Array.isArray(config.app.addressIdentifiersSkip)).toBe(true);
         expect(config.app.addressIdentifiersSkip).toEqual(['LOC1', 'LOC2']);
-    });
-
-    test('config.app.autoTerminate is boolean (defaults to false)', () => {
-        const config = loadConfig();
-        expect(typeof config.app.autoTerminate).toBe('boolean');
-        expect(config.app.autoTerminate).toBe(false);
-    });
-
-    test('config.app.autoTerminate is true when AUTO_TERMINATE=true', () => {
-        process.env.AUTO_TERMINATE = 'true';
-        const config = loadConfig();
-        expect(config.app.autoTerminate).toBe(true);
     });
 
     test('config.app has all expected scalar keys', () => {

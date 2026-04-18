@@ -1,7 +1,8 @@
-// scripts/updatePOStatus.js
+// controller/PortalOC_StatusUpdater.js
 
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const axios = require('axios');
 const http = require('http');
 const https = require('https');
@@ -24,28 +25,44 @@ const httpsAgent = new https.Agent(agentOptions);
 
 const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
-async function main() {
-    const [, , ocSage, status, idDatabase] = process.argv;
+/**
+ * Updates the status of a purchase order in the Portal and local control table.
+ *
+ * @param {string} ocSage - Sage purchase order identifier
+ * @param {string} status - New status (OPEN, CLOSED, CANCELLED, GENERATED)
+ * @param {string} idDatabase - Tenant database identifier
+ * @returns {Promise<object>} ResultEnvelope with success/error details
+ */
+async function updatePOStatus(ocSage, status, idDatabase) {
+    const startTime = Date.now();
     const logFileName = 'PortalOC_StatusUpdater';
-    
-    console.log(`[INICIO] Ejecutando actualización de estado de orden de compra - OC: ${ocSage || 'N/A'} - Estado: ${status || 'N/A'} - Base: ${idDatabase || 'N/A'}`);
 
+    // --- Argument validation ---
     if (!ocSage || !status || !idDatabase) {
-        console.error('[ERROR] Uso: node updatePOStatus.js <ocSage> <status> <idDatabase>');
-        process.exit(1);
+        return errorResult(
+            'Uso: updatePOStatus(ocSage, status, idDatabase) -- todos los argumentos son requeridos',
+            `Argumentos faltantes: OC=${ocSage || 'N/A'}, status=${status || 'N/A'}, db=${idDatabase || 'N/A'}`,
+            { startTime }
+        );
     }
     if (!VALID_STATUSES.has(status)) {
-        console.error(`[ERROR] status inválido. Debe ser uno de: ${[...VALID_STATUSES].join(',')}`);
-        process.exit(1);
+        return errorResult(
+            `Status invalido: '${status}'. Debe ser uno de: ${[...VALID_STATUSES].join(', ')}`,
+            `Status invalido para OC=${ocSage}`,
+            { startTime }
+        );
     }
     const dbIndex = databases.indexOf(idDatabase);
     if (dbIndex < 0) {
-        console.error(`[ERROR] idDatabase desconocido: '${idDatabase}'`);
-        process.exit(1);
+        return errorResult(
+            `idDatabase desconocido: '${idDatabase}'`,
+            `Base de datos no configurada para OC=${ocSage}`,
+            { startTime }
+        );
     }
 
     try {
-        // 1) Buscar control record válido
+        // 1) Buscar control record valido
         const checkSql = `
       SELECT RTRIM(idFocaltec) AS idFocaltec
       FROM fesa.dbo.fesaOCFocaltec
@@ -57,8 +74,12 @@ async function main() {
     `;
         const { recordset } = await runQuery(checkSql, 'FESA');
         if (!recordset.length) {
-            logGenerator(logFileName, 'warn', `[WARN] No se encontró registro válido para OC=${ocSage}, DB=${idDatabase}`);
-            process.exit(1);
+            logGenerator(logFileName, 'warn', `[WARN] No se encontro registro valido para OC=${ocSage}, DB=${idDatabase}`);
+            return errorResult(
+                `No se encontro registro valido para OC=${ocSage}, DB=${idDatabase}`,
+                `Sin registro en fesaOCFocaltec`,
+                { startTime }
+            );
         }
         const idFocaltec = recordset[0].idFocaltec;
 
@@ -86,7 +107,11 @@ async function main() {
                 ? `${err.response.status} ${JSON.stringify(err.response.data)}`
                 : err.message;
             logGenerator(logFileName, 'error', `[ERROR] Error al llamar portal: ${msg}`);
-            process.exit(1);
+            return errorResult(
+                `Error al llamar portal: ${msg}`,
+                `Fallo API para OC=${ocSage}`,
+                { startTime }
+            );
         }
 
         // 3) Actualizar la tabla de control en FESA
@@ -101,14 +126,39 @@ async function main() {
         await runQuery(updateSql, 'FESA');
         logGenerator(logFileName, 'info', `[INFO] Control actualizado para OC=${ocSage} a ${status}`);
 
-        console.log(`[OK] OC ${ocSage} actualizado a ${status}`);
-        process.exit(0);
+        return successResult(
+            { ocSage, status, idFocaltec, apiStatus: apiResp.status },
+            `OC ${ocSage} actualizado a ${status}`,
+            { startTime }
+        );
 
     } catch (err) {
         logGenerator(logFileName, 'error', `[ERROR] Error inesperado: ${err.message}`);
-        console.error('[ERROR]', err);
-        process.exit(1);
+        return errorResult(
+            `Error inesperado: ${err.message}`,
+            `Error inesperado para OC=${ocSage}`,
+            { startTime }
+        );
     }
 }
 
-main();
+// CLI backward compatibility: run as standalone script
+if (require.main === module) {
+    const [, , ocSage, status, idDatabase] = process.argv;
+    console.log(`[INICIO] Ejecutando actualizacion de estado de orden de compra - OC: ${ocSage || 'N/A'} - Estado: ${status || 'N/A'} - Base: ${idDatabase || 'N/A'}`);
+
+    updatePOStatus(ocSage, status, idDatabase).then((result) => {
+        if (result.success) {
+            console.log(`[OK] ${result.summary}`);
+            process.exit(0);
+        } else {
+            console.error(`[ERROR] ${result.errors.join(', ')}`);
+            process.exit(1);
+        }
+    }).catch((err) => {
+        console.error('[ERROR]', err);
+        process.exit(1);
+    });
+}
+
+module.exports = { updatePOStatus };

@@ -21,7 +21,6 @@ jest.mock('../src/config', () => ({
     paths: { downloads: '/tmp/downloads', providers: '/tmp/providers', logs: '/tmp/logs' },
     app: {
         importRoute: '', arg: '', company: '', rfc: '', regimen: '', timezone: 'America/Mexico_City',
-        autoTerminate: false,
         defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
         addressIdentifiersSkip: []
     }
@@ -177,7 +176,6 @@ describe('REGR-01: Config structure validation', () => {
 
     test('app section has expected keys', () => {
         expect(config.app).toHaveProperty('timezone');
-        expect(config.app).toHaveProperty('autoTerminate');
         expect(config.app).toHaveProperty('defaultAddress');
         expect(config.app).toHaveProperty('addressIdentifiersSkip');
     });

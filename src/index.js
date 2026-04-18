@@ -1,37 +1,29 @@
 const { startServer } = require('./server');
-const config = require('./config');
-const { startBackgroundProcesses } = require('./background');
+const { initScheduler } = require('./services/CronScheduler');
+const { validate } = require('./services/LicenseValidator');
 
 /**
  * SageConnect Main Entry Point
- * Orchestrates web server and background processes based on startup arguments
+ * Always-on mode: validates license, then starts web server and cron scheduler
  */
 
-// Parse command line arguments
-const args = process.argv.slice(2);
-const webOnlyMode = args.includes('--web-only') || args.includes('-w');
+(async () => {
+    // Validate license before starting anything
+    // validate({ startup: true }) retries 3x and calls process.exit(1) on failure
+    var license = await validate({ startup: true });
+    if (!license.valid) {
+        // This should not be reached (validate with startup:true exits on failure)
+        // but as a safety net:
+        console.error('[LICENSE] Startup blocked -- ' + (license.error || 'license inactive'));
+        process.exit(1);
+        return;
+    }
+    console.log('[LICENSE] Valid -- expires ' + (license.expiresAt || 'never'));
 
-// Start the web server
-const server = startServer(3030, webOnlyMode);
+    // Start the web server
+    startServer(3030);
 
-// Start background processes only if not in web-only mode
-if (!webOnlyMode) {
-    // Start background processes (now async)
-    startBackgroundProcesses().then(() => {
-        // Background processes completed successfully
-        if (config.app.autoTerminate) {
-            console.log('[AUTO-TERMINATE] Cerrando servidor y finalizando proceso');
-            server.close(() => {
-                process.exit(0);
-            });
-        }
-    }).catch((error) => {
-        console.error('[ERROR] Error en procesos de background:', error);
-        if (config.app.autoTerminate) {
-            console.log('[AUTO-TERMINATE] Cerrando servidor debido a error');
-            server.close(() => {
-                process.exit(1);
-            });
-        }
-    });
-}
+    // Initialize cron scheduler for recurring background jobs
+    initScheduler();
+    console.log('[CRON] Scheduler initialized -- background cycle runs on schedule');
+})();

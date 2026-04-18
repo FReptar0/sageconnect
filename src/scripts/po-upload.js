@@ -2,6 +2,7 @@
 
 const axios = require('axios');
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 // Default address values from centralized config
 const DEFAULT_ADDRESS_CITY = config.app.defaultAddress.city;
@@ -36,6 +37,7 @@ const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenant
  * @param {number} tenantIndex - Tenant index to use (optional, defaults to 0)
  */
 async function uploadSpecificPurchaseOrders(poNumbers, database = null, tenantIndex = 0) {
+  const startTime = Date.now();
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
   const logFileName = 'PO_Upload';
   const dbToUse = database || databases[tenantIndex];
@@ -215,7 +217,11 @@ order by A.PONUMBER, B.PORLREV;
   } catch (dbErr) {
     console.error('❌ Error al ejecutar la consulta SQL:', dbErr);
     logGenerator(logFileName, 'error', `[ERROR] Error al ejecutar la consulta SQL: ${dbErr.message}`);
-    return;
+    return errorResult(
+      [dbErr.message],
+      `SQL query failed for POs: ${poNumbers.join(', ')}`,
+      { tenant: tenantIds[tenantIndex], startTime }
+    );
   }
 
   if (recordset.length === 0) {
@@ -225,7 +231,11 @@ order by A.PONUMBER, B.PORLREV;
     console.log('   - Las POs no están autorizadas');
     console.log('   - Error en el nombre de la base de datos');
     logGenerator(logFileName, 'warn', `[WARN] No se encontraron registros para las POs: ${poNumbers.join(', ')}`);
-    return;
+    return successResult(
+      { uploaded: 0, skipped: 0, errors: 0, details: [] },
+      `No records found for POs: ${poNumbers.join(', ')}`,
+      { tenant: tenantIds[tenantIndex], startTime }
+    );
   }
 
   // 3) Agrupar y parsear al formato de envío
@@ -236,6 +246,9 @@ order by A.PONUMBER, B.PORLREV;
   ordersToSend.forEach(order => {
     console.log(`[INFO] - ${order.external_id}`);
   });
+
+  // Track upload results for envelope
+  const uploadResults = { uploaded: 0, skipped: 0, errors: 0, details: [] };
 
   // 4) Procesar cada PO
   for (let i = 0; i < ordersToSend.length; i++) {
@@ -255,6 +268,8 @@ order by A.PONUMBER, B.PORLREV;
     if (existing.length > 0) {
       console.log(`⚠️  [SKIP] PO ${po.external_id} ya procesada (POSTED), se omite.`);
       logGenerator(logFileName, 'warn', `[WARN] PO ${po.external_id} ya procesada (POSTED), se omite.`);
+      uploadResults.skipped++;
+      uploadResults.details.push({ po: po.external_id, status: 'skipped', reason: 'already POSTED' });
       continue;
     }
 
@@ -289,6 +304,8 @@ order by A.PONUMBER, B.PORLREV;
           )
       `;
       await runQuery(sqlErr, 'FESA');
+      uploadResults.errors++;
+      uploadResults.details.push({ po: po.external_id, status: 'error', reason: 'Joi validation failed' });
       continue;
     }
 
@@ -332,6 +349,8 @@ order by A.PONUMBER, B.PORLREV;
       `;
       await runQuery(sqlOk, 'FESA');
       logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} marcada POSTED en FESA con idFocaltec: ${idFocaltec}`);
+      uploadResults.uploaded++;
+      uploadResults.details.push({ po: po.external_id, status: 'uploaded', idFocaltec });
 
     } catch (err) {
       console.error(`❌ [ERROR] Error enviando PO ${po.external_id}:`);
@@ -363,6 +382,8 @@ order by A.PONUMBER, B.PORLREV;
       `;
       await runQuery(sqlErr, 'FESA');
       logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
+      uploadResults.errors++;
+      uploadResults.details.push({ po: po.external_id, status: 'error', reason: respAPI });
     }
   }
 
@@ -372,6 +393,12 @@ order by A.PONUMBER, B.PORLREV;
   console.log(`[FIN] Database: ${dbToUse}`);
   console.log(`[FIN] ==========================================`);
   logGenerator(logFileName, 'info', `[FIN] Proceso completado para ${ordersToSend.length} órdenes - Tenant: ${tenantIds[tenantIndex]}`);
+
+  return successResult(
+    uploadResults,
+    `Processed ${ordersToSend.length} POs: ${uploadResults.uploaded} uploaded, ${uploadResults.skipped} skipped, ${uploadResults.errors} errors`,
+    { tenant: tenantIds[tenantIndex], startTime }
+  );
 }
 
 // Función principal para manejar argumentos CLI

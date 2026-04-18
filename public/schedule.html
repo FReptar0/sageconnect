@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SageConnect - Programacion</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+        crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/cronstrue@3.14.0/dist/cronstrue.min.js"></script>
+    <script src="https://unpkg.com/cronstrue@3.14.0/locales/es.min.js"></script>
+</head>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    .card {
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border: none;
+        backdrop-filter: blur(10px);
+        background: rgba(255, 255, 255, 0.95);
+    }
+
+    .card-header {
+        background: linear-gradient(45deg, #2c3e50, #3498db);
+        color: white;
+        border-radius: 15px 15px 0 0 !important;
+        font-weight: 600;
+    }
+
+    /* Timeline styles */
+    .timeline {
+        position: relative;
+        padding-left: 30px;
+    }
+
+    .timeline::before {
+        content: '';
+        position: absolute;
+        left: 12px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: #dee2e6;
+    }
+
+    .timeline-step {
+        position: relative;
+        padding: 8px 0;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    .timeline-step .step-icon {
+        position: absolute;
+        left: -30px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        border-radius: 50%;
+        z-index: 1;
+    }
+
+    .timeline-step .step-content {
+        flex: 1;
+    }
+
+    .timeline-step .step-content .step-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .timeline-step .step-content .step-meta {
+        font-size: 0.8rem;
+        color: #6c757d;
+    }
+
+    /* Loading spinner */
+    .loading-overlay {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 200px;
+    }
+</style>
+
+<body>
+    <div class="d-flex">
+        <!-- Sidebar -->
+        <div id="sidebar"></div>
+
+        <!-- Main Content -->
+        <div class="flex-grow-1">
+            <!-- Page Header -->
+            <div class="p-3 border-bottom bg-white">
+                <h4 class="mb-0"><i class="fas fa-calendar-check me-2 text-primary"></i>Programacion</h4>
+            </div>
+
+            <!-- Content Area -->
+            <div class="p-4">
+                <!-- Loading state -->
+                <div id="loading" class="loading-overlay">
+                    <div class="text-center text-white">
+                        <div class="spinner-border text-light mb-3" role="status">
+                            <span class="visually-hidden">Cargando...</span>
+                        </div>
+                        <p>Cargando datos de programacion...</p>
+                    </div>
+                </div>
+
+                <!-- Main content (hidden while loading) -->
+                <div id="main-content" style="display: none;">
+
+                    <!-- Schedule Status Card -->
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-clock me-2"></i>Ciclo de Fondo</span>
+                            <span id="status-badge"></span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <table class="table table-borderless mb-0">
+                                        <tbody>
+                                            <tr>
+                                                <td class="text-muted fw-bold" style="width: 160px;">Expresion Cron:</td>
+                                                <td>
+                                                    <code id="cron-raw"></code>
+                                                    <span id="cron-human" class="ms-2 text-muted small"></span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted fw-bold">Proxima ejecucion:</td>
+                                                <td id="next-run">-</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted fw-bold">Ultima ejecucion:</td>
+                                                <td id="last-run">-</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-center justify-content-end">
+                                    <button id="btn-trigger" class="btn btn-primary btn-lg" onclick="triggerCycle()">
+                                        <i class="fas fa-play me-2"></i>Ejecutar Ahora
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Real-time Timeline Card -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <i class="fas fa-stream me-2"></i>Progreso en Tiempo Real
+                        </div>
+                        <div class="card-body">
+                            <div id="timeline">
+                                <p class="text-muted text-center mb-0">
+                                    <i class="fas fa-info-circle me-1"></i>Sin actividad reciente
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Execution History Card -->
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <i class="fas fa-history me-2"></i>Historial de Ejecuciones
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Fecha/Hora</th>
+                                            <th>Duracion</th>
+                                            <th>Estado</th>
+                                            <th>Errores</th>
+                                            <th>Resumen</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="history-body">
+                                        <tr>
+                                            <td colspan="5" class="text-center text-muted py-4">
+                                                No hay historial
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100;"></div>
+
+    <!-- Shared JS -->
+    <script src="/js/shared.js"></script>
+
+    <script>
+        /* ====================================================================
+         * Constants
+         * ==================================================================== */
+
+        const STEP_LABELS = {
+            buildProviders: 'Construir Proveedores XML',
+            downloadCFDI: 'Descargar CFDIs',
+            checkPayments: 'Verificar Pagos',
+            uploadPayments: 'Subir Pagos',
+            createPurchaseOrders: 'Crear Ordenes de Compra',
+            processOrderChanges: 'Procesar Cambios de Ordenes',
+            closePurchaseOrders: 'Cerrar Ordenes de Compra',
+        };
+
+        let evtSource = null;
+        let currentTask = null;
+
+        /* ====================================================================
+         * Page Initialization
+         * ==================================================================== */
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initPage('/schedule.html');
+            await loadScheduleData();
+        });
+
+        // Schedule is global -- tenant change does not reload schedule data
+        window.onTenantChange = function () {
+            // No-op: schedule is not per-tenant
+        };
+
+        /* ====================================================================
+         * Data Loading
+         * ==================================================================== */
+
+        async function loadScheduleData() {
+            const loading = document.getElementById('loading');
+            const mainContent = document.getElementById('main-content');
+
+            loading.style.display = 'flex';
+            mainContent.style.display = 'none';
+
+            try {
+                // Fetch schedule status and history in parallel
+                const [scheduleRes, historyRes] = await Promise.all([
+                    apiCall('GET', '/api/schedule'),
+                    apiCall('GET', '/api/schedule/history'),
+                ]);
+
+                // Render schedule status
+                if (scheduleRes.success && scheduleRes.data && scheduleRes.data.tasks) {
+                    const bgTask = scheduleRes.data.tasks.find(t => t.taskId === 'background-cycle');
+                    if (bgTask) {
+                        currentTask = bgTask;
+                        renderScheduleStatus(bgTask);
+
+                        // Auto-detect running operations
+                        if (bgTask.status === 'running') {
+                            await detectRunningOperation();
+                        }
+                    }
+                }
+
+                // Render execution history
+                if (historyRes.success && historyRes.data && historyRes.data.executions) {
+                    renderHistory(historyRes.data.executions);
+                }
+            } catch (err) {
+                console.error('Error cargando datos de programacion:', err);
+            } finally {
+                loading.style.display = 'none';
+                mainContent.style.display = 'block';
+            }
+        }
+
+        /* ====================================================================
+         * Schedule Status Rendering
+         * ==================================================================== */
+
+        function renderScheduleStatus(task) {
+            // Status badge
+            const badgeEl = document.getElementById('status-badge');
+            if (task.status === 'running') {
+                badgeEl.innerHTML = '<span class="badge bg-success"><i class="fas fa-spinner fa-spin me-1"></i>Ejecutando</span>';
+            } else if (task.status === 'not-initialized') {
+                badgeEl.innerHTML = '<span class="badge bg-warning text-dark">No inicializado</span>';
+            } else {
+                badgeEl.innerHTML = '<span class="badge bg-secondary">Inactivo</span>';
+            }
+
+            // Cron expression
+            const cronRaw = document.getElementById('cron-raw');
+            const cronHuman = document.getElementById('cron-human');
+            cronRaw.textContent = task.cronExpression || '-';
+
+            if (task.cronExpression) {
+                try {
+                    cronHuman.textContent = '(' + cronstrue.toString(task.cronExpression, { locale: 'es' }) + ')';
+                } catch {
+                    cronHuman.textContent = '';
+                }
+            }
+
+            // Next run / Last run
+            document.getElementById('next-run').textContent = formatDateTime(task.nextRun);
+            document.getElementById('last-run').textContent = formatDateTime(task.lastRun);
+
+            // Disable trigger button while running
+            const btnTrigger = document.getElementById('btn-trigger');
+            if (task.status === 'running') {
+                btnTrigger.disabled = true;
+                btnTrigger.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>En ejecucion...';
+            } else {
+                btnTrigger.disabled = false;
+                btnTrigger.innerHTML = '<i class="fas fa-play me-2"></i>Ejecutar Ahora';
+            }
+        }
+
+        /* ====================================================================
+         * Execution History Rendering
+         * ==================================================================== */
+
+        function renderHistory(executions) {
+            const tbody = document.getElementById('history-body');
+
+            if (!executions || executions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-4">
+                            No hay historial
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Sort by startedAt descending (most recent first)
+            const sorted = [...executions].sort((a, b) =>
+                new Date(b.startedAt) - new Date(a.startedAt)
+            );
+
+            tbody.innerHTML = sorted.map(exec => {
+                const duration = formatDuration(exec.startedAt, exec.finishedAt);
+                const statusBadge = exec.success
+                    ? '<span class="badge bg-success">Exitoso</span>'
+                    : '<span class="badge bg-danger">Error</span>';
+                const errorCount = exec.errors ? exec.errors.length : 0;
+
+                return `
+                    <tr>
+                        <td>${formatDateTime(exec.startedAt)}</td>
+                        <td>${duration}</td>
+                        <td>${statusBadge}</td>
+                        <td>${errorCount}</td>
+                        <td>${exec.summary || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /**
+         * Calculates duration between two ISO timestamps and formats as "Xm Ys" or "Xs".
+         */
+        function formatDuration(startISO, endISO) {
+            if (!startISO || !endISO) return '-';
+            try {
+                const ms = new Date(endISO) - new Date(startISO);
+                if (ms < 0) return '-';
+
+                const totalSeconds = Math.floor(ms / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+
+                if (minutes > 0) {
+                    return minutes + 'm ' + seconds + 's';
+                }
+                return seconds + 's';
+            } catch {
+                return '-';
+            }
+        }
+
+        /* ====================================================================
+         * Manual Trigger
+         * ==================================================================== */
+
+        async function triggerCycle() {
+            if (!confirmAction('Iniciar ciclo de fondo manualmente?')) {
+                return;
+            }
+
+            const btnTrigger = document.getElementById('btn-trigger');
+            btnTrigger.disabled = true;
+            btnTrigger.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Iniciando...';
+
+            try {
+                const res = await apiCall('POST', '/api/schedule/background-cycle/trigger');
+
+                if (res.success && res.data && res.data.operationId) {
+                    showToast('Ciclo iniciado', 'success');
+                    connectSSE(res.data.operationId);
+
+                    // Update status to running
+                    if (currentTask) {
+                        currentTask.status = 'running';
+                        renderScheduleStatus(currentTask);
+                    }
+                } else if (res.errors && res.errors.length > 0) {
+                    // 409 or other API error
+                    showToast('El ciclo ya esta en ejecucion', 'warning');
+                    btnTrigger.disabled = false;
+                    btnTrigger.innerHTML = '<i class="fas fa-play me-2"></i>Ejecutar Ahora';
+                } else {
+                    showToast('Error al iniciar ciclo', 'error');
+                    btnTrigger.disabled = false;
+                    btnTrigger.innerHTML = '<i class="fas fa-play me-2"></i>Ejecutar Ahora';
+                }
+            } catch (err) {
+                showToast('Error al iniciar ciclo: ' + err.message, 'error');
+                btnTrigger.disabled = false;
+                btnTrigger.innerHTML = '<i class="fas fa-play me-2"></i>Ejecutar Ahora';
+            }
+        }
+
+        /* ====================================================================
+         * SSE (Server-Sent Events) Connection
+         * ==================================================================== */
+
+        function connectSSE(operationId) {
+            // Close any existing connection
+            if (evtSource) {
+                evtSource.close();
+                evtSource = null;
+            }
+
+            // Clear timeline placeholder
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = '';
+            timeline.classList.add('timeline');
+
+            evtSource = new EventSource('/api/operations/' + operationId + '/stream');
+
+            evtSource.addEventListener('progress', function (e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    addTimelineStep(data);
+                } catch (err) {
+                    console.error('Error procesando evento SSE:', err);
+                }
+            });
+
+            evtSource.addEventListener('complete', function (e) {
+                try {
+                    const data = JSON.parse(e.data);
+                    markTimelineComplete();
+                    showToast('Ciclo completado', 'success');
+                } catch (err) {
+                    console.error('Error procesando evento de completado:', err);
+                }
+
+                // Close connection
+                evtSource.close();
+                evtSource = null;
+
+                // Reset status to idle and reload data
+                if (currentTask) {
+                    currentTask.status = 'idle';
+                    renderScheduleStatus(currentTask);
+                }
+
+                // Reload history to show the new execution
+                loadHistoryOnly();
+            });
+
+            evtSource.onerror = function () {
+                console.warn('Conexion SSE perdida');
+                evtSource.close();
+                evtSource = null;
+            };
+        }
+
+        /**
+         * Reload just the history table (after a cycle completes).
+         */
+        async function loadHistoryOnly() {
+            try {
+                const res = await apiCall('GET', '/api/schedule/history');
+                if (res.success && res.data && res.data.executions) {
+                    renderHistory(res.data.executions);
+                }
+            } catch (err) {
+                console.error('Error recargando historial:', err);
+            }
+        }
+
+        /* ====================================================================
+         * Timeline Step Management
+         * ==================================================================== */
+
+        /** Tracks which steps have been added to avoid duplicates */
+        const addedSteps = new Set();
+
+        function addTimelineStep(data) {
+            const timeline = document.getElementById('timeline');
+            const step = data.step || 'unknown';
+
+            // Mark previous in-progress steps as complete
+            const inProgress = timeline.querySelectorAll('.step-in-progress');
+            inProgress.forEach(el => {
+                el.classList.remove('step-in-progress');
+                const icon = el.querySelector('.step-icon');
+                if (icon) {
+                    icon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+                }
+            });
+
+            // If this step was already added, skip duplicate
+            const stepKey = step + '_' + (data.tenant || '');
+            if (addedSteps.has(stepKey)) return;
+            addedSteps.add(stepKey);
+
+            const label = STEP_LABELS[step] || step;
+            const tenant = data.tenant || '';
+            const time = data.timestamp ? formatDateTime(data.timestamp) : '';
+
+            const stepEl = document.createElement('div');
+            stepEl.className = 'timeline-step step-in-progress';
+            stepEl.innerHTML = `
+                <div class="step-icon">
+                    <i class="fas fa-spinner fa-spin text-primary"></i>
+                </div>
+                <div class="step-content">
+                    <div class="step-label">${label}</div>
+                    <div class="step-meta">
+                        ${tenant ? '<i class="fas fa-building me-1"></i>' + tenant + ' &middot; ' : ''}
+                        ${time ? '<i class="fas fa-clock me-1"></i>' + time : ''}
+                    </div>
+                    ${data.message ? '<div class="step-meta mt-1">' + data.message + '</div>' : ''}
+                </div>
+            `;
+
+            timeline.appendChild(stepEl);
+
+            // Scroll timeline into view
+            stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function markTimelineComplete() {
+            const timeline = document.getElementById('timeline');
+            const allSteps = timeline.querySelectorAll('.timeline-step');
+            allSteps.forEach(el => {
+                el.classList.remove('step-in-progress');
+                const icon = el.querySelector('.step-icon');
+                if (icon) {
+                    icon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+                }
+            });
+        }
+
+        /* ====================================================================
+         * Auto-detect Running Operations
+         * ==================================================================== */
+
+        async function detectRunningOperation() {
+            try {
+                const res = await apiCall('GET', '/api/operations/status');
+                if (res.success && res.data && res.data.operations) {
+                    const bgOp = res.data.operations.find(op => op.taskId === 'background-cycle');
+                    if (bgOp && bgOp.operationId) {
+                        connectSSE(bgOp.operationId);
+                    }
+                }
+            } catch (err) {
+                console.error('Error detectando operaciones en curso:', err);
+            }
+        }
+
+        /* ====================================================================
+         * Cleanup: Close SSE on page unload
+         * ==================================================================== */
+
+        window.addEventListener('beforeunload', function () {
+            if (evtSource) {
+                evtSource.close();
+                evtSource = null;
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -8,11 +8,16 @@
  */
 const { runQuery } = require('../utils/SQLServerConnection');
 const config = require('../config');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 const database = config.portal.tenants.map(t => t.database);
 const DB = database[0]; // Use first database by default
 
-async function diagnosePayment(docNbr) {
+async function diagnosePayment(options = {}) {
+    const startTime = Date.now();
+    const docNbr = options.docNbr || options;
+    const tenant = options.tenantIndex != null ? options.tenantIndex : 0;
+
     console.log(`\n${'='.repeat(80)}`);
     console.log(`  DIAGNOSTIC FOR: ${docNbr}`);
     console.log(`${'='.repeat(80)}`);
@@ -49,12 +54,20 @@ async function diagnosePayment(docNbr) {
         const result = await runQuery(headerQuery, DB);
         if (result.recordset.length === 0) {
             console.log(`  [NOT FOUND] Payment ${docNbr} not found in APTCR.`);
-            return;
+            return errorResult(
+                [`Payment ${docNbr} not found in APTCR`],
+                `Payment ${docNbr} not found`,
+                { tenant, startTime }
+            );
         }
         header = result.recordset[0];
     } catch (err) {
         console.error(`  [ERROR] Failed to query header: ${err.message}`);
-        return;
+        return errorResult(
+            [err.message],
+            `Failed to query header for ${docNbr}`,
+            { tenant, startTime }
+        );
     }
 
     console.log(`\n  --- Payment Header ---`);
@@ -137,13 +150,21 @@ async function diagnosePayment(docNbr) {
         invoices = invResult.recordset;
     } catch (err) {
         console.error(`  [ERROR] Failed to query invoices: ${err.message}`);
-        return;
+        return errorResult(
+            [err.message],
+            `Failed to query invoices for ${docNbr}`,
+            { tenant, startTime }
+        );
     }
 
     if (invoices.length === 0) {
         console.log(`\n  --- Invoices ---`);
         console.log(`  ** NO invoices found for this payment **`);
-        return;
+        return successResult(
+            { docNbr, header, invoices: [], diagnosis: { hasEmptyUUID: false, hasNoRow: false, noProviderId: !header.PROVIDERID } },
+            `No invoices found for payment ${docNbr}`,
+            { tenant, startTime }
+        );
     }
 
     console.log(`\n  --- Invoices (${invoices.length}) ---`);
@@ -199,9 +220,24 @@ async function diagnosePayment(docNbr) {
         console.log(`       - 404 (1800): UUIDs not registered in Portal de Proveedores`);
         console.log(`       - 406 (1827): CFDIs already marked as paid in the portal`);
     }
+
+    const problems = [];
+    if (!header.PROVIDERID) problems.push('No PROVIDERID for vendor');
+    if (hasEmptyUUID) problems.push('One or more invoices have empty UUID (FOLIOCFD)');
+    if (hasNoRow) problems.push('Some invoices missing FOLIOCFD row in APIBHO');
+
+    return successResult(
+        { docNbr, header, invoices, diagnosis: { hasEmptyUUID, hasNoRow, noProviderId: !header.PROVIDERID, problems } },
+        problems.length > 0
+            ? `Diagnostic for ${docNbr}: ${problems.length} problem(s) found`
+            : `Diagnostic for ${docNbr}: OK`,
+        { tenant, startTime }
+    );
 }
 
-async function getAllFailingPayments() {
+async function getAllFailingPayments(options = {}) {
+    const startTime = Date.now();
+    const tenant = options.tenantIndex != null ? options.tenantIndex : 0;
     console.log(`\nSearching for all PY payments NOT in control table (potential infinite retriers)...\n`);
 
     const query = `
@@ -225,47 +261,59 @@ async function getAllFailingPayments() {
         const docs = result.recordset.map(r => r.external_id.trim());
         console.log(`Found ${docs.length} payments not in control table:`);
         docs.forEach(d => console.log(`  - ${d}`));
-        return docs;
+        return successResult(
+            docs,
+            `Found ${docs.length} failing payments`,
+            { tenant, startTime }
+        );
     } catch (err) {
         console.error(`Error querying failing payments: ${err.message}`);
-        return [];
+        return errorResult(
+            [err.message],
+            'Failed to query failing payments',
+            { tenant, startTime }
+        );
     }
 }
 
-async function main() {
-    const args = process.argv.slice(2);
+module.exports = { diagnosePayment, getAllFailingPayments };
 
-    if (args.length === 0) {
-        console.log('Usage:');
-        console.log('  node src/scripts/payment-uuid-diagnostic.js PY0061652');
-        console.log('  node src/scripts/payment-uuid-diagnostic.js PY0061652 PY0061666 PY0061691');
-        console.log('  node src/scripts/payment-uuid-diagnostic.js --all-failing');
-        process.exit(1);
-    }
+// CLI execution
+if (require.main === module) {
+    (async () => {
+        const args = process.argv.slice(2);
 
-    let paymentIds;
-
-    if (args[0] === '--all-failing') {
-        paymentIds = await getAllFailingPayments();
-        if (paymentIds.length === 0) {
-            console.log('No failing payments found.');
-            process.exit(0);
+        if (args.length === 0) {
+            console.log('Usage:');
+            console.log('  node src/scripts/payment-uuid-diagnostic.js PY0061652');
+            console.log('  node src/scripts/payment-uuid-diagnostic.js PY0061652 PY0061666 PY0061691');
+            console.log('  node src/scripts/payment-uuid-diagnostic.js --all-failing');
+            process.exit(1);
         }
-    } else {
-        paymentIds = args;
-    }
 
-    for (const pyId of paymentIds) {
-        await diagnosePayment(pyId);
-    }
+        let paymentIds;
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log('  DIAGNOSTIC COMPLETE');
-    console.log(`${'='.repeat(80)}\n`);
-    process.exit(0);
+        if (args[0] === '--all-failing') {
+            const result = await getAllFailingPayments();
+            paymentIds = result.data || [];
+            if (paymentIds.length === 0) {
+                console.log('No failing payments found.');
+                process.exit(0);
+            }
+        } else {
+            paymentIds = args;
+        }
+
+        for (const pyId of paymentIds) {
+            await diagnosePayment({ docNbr: pyId });
+        }
+
+        console.log(`\n${'='.repeat(80)}`);
+        console.log('  DIAGNOSTIC COMPLETE');
+        console.log(`${'='.repeat(80)}\n`);
+        process.exit(0);
+    })().catch(err => {
+        console.error('Fatal error:', err);
+        process.exit(1);
+    });
 }
-
-main().catch(err => {
-    console.error('Fatal error:', err);
-    process.exit(1);
-});

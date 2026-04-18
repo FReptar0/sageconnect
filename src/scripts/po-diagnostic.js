@@ -2,6 +2,7 @@
 
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const { successResult, errorResult } = require('../utils/ResultEnvelope');
 
 /**
  * Diagnóstico completo para verificar por qué una OC no está siendo procesada
@@ -10,6 +11,7 @@ const { logGenerator } = require('../utils/LogGenerator');
  * @param {string} empresa - Empresa en autorizaciones (ej: 'COPDAT')
  */
 async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
+    const startTime = Date.now();
     const logFileName = 'PO_Diagnostic';
     console.log(`\n=== DIAGNÓSTICO COMPLETO PARA ${poNumber} ===`);
     console.log(`Base de datos: ${database}`);
@@ -35,7 +37,11 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
 
         if (existsResult.recordset[0].Existe === 0) {
             console.log('❌ ERROR: La OC no existe en POPORH1. Verifica el número de OC.');
-            return;
+            return errorResult(
+                [`PO ${poNumber} does not exist in POPORH1`],
+                `Diagnostic aborted: PO ${poNumber} not found`,
+                { startTime }
+            );
         }
 
         // 3. Verificar campos opcionales (AFE y USOCFDI)
@@ -185,9 +191,28 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
 
         logGenerator(logFileName, 'info', `Diagnóstico completado para ${poNumber}`);
 
+        return successResult(
+            {
+                poNumber,
+                database,
+                empresa,
+                isAuthorized,
+                isAuthorizedToday,
+                isProcessed,
+                wouldBeProcessed: finalResult.recordset[0].FilasEncontradas > 0
+            },
+            `Diagnostic completed for ${poNumber}: authorized=${isAuthorized}, authorizedToday=${isAuthorizedToday}, processed=${isProcessed}`,
+            { startTime }
+        );
+
     } catch (error) {
         console.error('\n❌ ERROR DURANTE EL DIAGNÓSTICO:', error.message);
         logGenerator(logFileName, 'error', `Error en diagnóstico para ${poNumber}: ${error.message}`);
+        return errorResult(
+            [error.message],
+            `Diagnostic failed for ${poNumber}`,
+            { startTime }
+        );
     }
 }
 
@@ -195,6 +220,7 @@ async function diagnosticPO(poNumber, database = 'COPDAT', empresa = 'COPDAT') {
  * Función para obtener todas las OCs autorizadas hoy
  */
 async function getAuthorizedPOsToday(empresa = 'COPDAT') {
+    const startTime = Date.now();
     console.log('\n=== OCs AUTORIZADAS HOY ===');
     try {
         const query = `
@@ -215,10 +241,18 @@ async function getAuthorizedPOsToday(empresa = 'COPDAT') {
         console.log(`Total de OCs autorizadas hoy: ${result.recordset.length}`);
         console.table(result.recordset);
 
-        return result.recordset;
+        return successResult(
+            result.recordset,
+            `Found ${result.recordset.length} authorized POs today for empresa ${empresa}`,
+            { startTime }
+        );
     } catch (error) {
         console.error('Error obteniendo OCs autorizadas:', error.message);
-        return [];
+        return errorResult(
+            [error.message],
+            `Failed to get authorized POs today for empresa ${empresa}`,
+            { startTime }
+        );
     }
 }
 

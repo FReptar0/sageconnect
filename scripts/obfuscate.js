@@ -35,8 +35,8 @@ const COPY_AS_IS = [
     'CONTRIBUTING.md',
     'EULA.md',
     'SECURITY.md',
-    'RunSageconnect.bat',
     'public',
+    'scripts/install-service.ps1',
     '.env.example',
     '.env.credentials.example',
     'scripts/migrate-env.js',
@@ -241,7 +241,6 @@ async function main() {
         pkg.scripts = {
             start: pkg.scripts?.start || 'node src/index.js',
             'background-only': pkg.scripts?.['background-only'] || 'node src/background.js',
-            'web-only': pkg.scripts?.['web-only'] || 'node src/index.js --web-only',
         };
         fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2), 'utf8');
         console.log('  ✅ package.json limpiado para producción');
