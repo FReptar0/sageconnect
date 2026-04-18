@@ -34,8 +34,35 @@ const config = require('../config');
 const fs = require('fs');
 const path = require('path');
 
+const { appendCsv } = require('../utils/CsvWriter');
+
 const LOG_FILE = 'PaymentUUIDRepair';
+const CSV_FILE = 'PaymentUUIDRepair-uploads';
 const STATE_FILE = path.join(__dirname, 'data', 'repair-state.json');
+
+// --- Console → Log File Interceptor ---
+// Mirrors ALL console output to the winston log file so nothing is lost
+const _origLog = console.log;
+const _origWarn = console.warn;
+const _origError = console.error;
+const _origTable = console.table;
+
+console.log = (...args) => {
+    _origLog.apply(console, args);
+    logGenerator(LOG_FILE, 'info', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.warn = (...args) => {
+    _origWarn.apply(console, args);
+    logGenerator(LOG_FILE, 'warn', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.error = (...args) => {
+    _origError.apply(console, args);
+    logGenerator(LOG_FILE, 'error', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.table = (data, columns) => {
+    _origTable.call(console, data, columns);
+    logGenerator(LOG_FILE, 'info', '[TABLE] ' + JSON.stringify(data, null, 2));
+};
 
 // --- Credentials ---
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -968,6 +995,7 @@ async function uploadRepairedPayments(options = {}) {
 
     let uploadedCount = 0;
     let failedCount = 0;
+    const csvRows = [];
 
     for (const [docNbr, payment] of toProcess) {
         console.log(`\n--- Uploading ${docNbr} ---`);
@@ -1179,12 +1207,26 @@ async function uploadRepairedPayments(options = {}) {
                 payment.uploadDate = new Date().toISOString();
                 payment.uploadResult = 'success';
                 payment.portalPaymentId = idPortal;
+                csvRows.push([
+                    docNbr, idPortal || '', 'SUCCESS', 200, '',
+                    hdr.total_amount || '', hdr.bk_currency || '',
+                    invoices?.length || '', payStatus,
+                    hdr.provider_external_id || '',
+                    ctResult.rowsAffected[0] ? 'YES' : 'NO',
+                    payment.uploadDate
+                ]);
                 uploadedCount++;
             } else {
                 console.error(`  [ERROR] Upload failed: ${resp.status}`);
                 console.error('    Response:', resp.data);
                 payment.status = 'upload_failed';
                 payment.error = `HTTP ${resp.status}: ${JSON.stringify(resp.data)}`;
+                csvRows.push([
+                    docNbr, '', 'ERROR', resp.status, payment.error,
+                    hdr?.total_amount || '', hdr?.bk_currency || '',
+                    invoices?.length || '', '', hdr?.provider_external_id || '', 'NO',
+                    new Date().toISOString()
+                ]);
                 failedCount++;
                 logGenerator(LOG_FILE, 'error',
                     `UPLOAD failed for ${docNbr}: ${resp.status} ${JSON.stringify(resp.data)}`
@@ -1200,6 +1242,12 @@ async function uploadRepairedPayments(options = {}) {
             payment.status = 'upload_failed';
             payment.error = `${status || 'NETWORK'}: ${err.message}`;
             if (data) payment.error += ` | ${JSON.stringify(data)}`;
+            csvRows.push([
+                docNbr, '', 'ERROR', status || 'NETWORK', payment.error,
+                hdr?.total_amount || '', hdr?.bk_currency || '',
+                invoices?.length || '', '', hdr?.provider_external_id || '', 'NO',
+                new Date().toISOString()
+            ]);
             failedCount++;
             logGenerator(LOG_FILE, 'error',
                 `UPLOAD POST failed for ${docNbr}: ${err.message}`
@@ -1208,6 +1256,18 @@ async function uploadRepairedPayments(options = {}) {
     }
 
     saveState(state);
+
+    // Write CSV audit file
+    if (csvRows.length > 0 && apply) {
+        const csvHeaders = [
+            'PaymentId', 'PortalId', 'Status', 'HttpStatus', 'Error',
+            'Amount', 'Currency', 'InvoiceCount', 'PaymentStatus',
+            'ProviderExternalId', 'ControlTableInsert', 'Timestamp'
+        ];
+        const csvPath = appendCsv(CSV_FILE, csvHeaders, csvRows);
+        console.log(`\n  [CSV] Audit file: ${csvPath}`);
+        logGenerator(LOG_FILE, 'info', `CSV audit written: ${csvPath} (${csvRows.length} rows)`);
+    }
 
     const remainingRepaired = Object.values(state.payments).filter(p => p.status === 'uuid_repaired').length;
     console.log(`\n--- UPLOAD ${apply ? 'APPLY' : 'DRY-RUN'} COMPLETE ---`);

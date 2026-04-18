@@ -48,7 +48,8 @@ Progress: [██████████] 100%
 
 ### Pending Todos
 
-None.
+- Fix uploadPayments 7-day lookback (PortalPaymentController.js:70) — prevents missed payments when auto-cycle skips a day
+- Support partial payment completion — handle incomplete uploads and split payments (multi-PY for same invoice)
 
 ### Blockers/Concerns
 

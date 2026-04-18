@@ -7,6 +7,34 @@ const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolve
 const axios = require('axios');
 const config = require('../config');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
+const { appendCsv } = require('../utils/CsvWriter');
+
+const LOG_FILE = 'PaymentReconciliation';
+const CSV_FILE = 'PaymentReconciliation-uploads';
+
+// --- Console → Log File Interceptor ---
+// Mirrors ALL console output to the winston log file so nothing is lost
+const _origLog = console.log;
+const _origWarn = console.warn;
+const _origError = console.error;
+const _origTable = console.table;
+
+console.log = (...args) => {
+    _origLog.apply(console, args);
+    logGenerator(LOG_FILE, 'info', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.warn = (...args) => {
+    _origWarn.apply(console, args);
+    logGenerator(LOG_FILE, 'warn', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.error = (...args) => {
+    _origError.apply(console, args);
+    logGenerator(LOG_FILE, 'error', args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' '));
+};
+console.table = (data, columns) => {
+    _origTable.call(console, data, columns);
+    logGenerator(LOG_FILE, 'info', '[TABLE] ' + JSON.stringify(data, null, 2));
+};
 
 const tenantIds = config.portal.tenants.map(t => t.id);
 const apiKeys = config.portal.tenants.map(t => t.key);
@@ -46,9 +74,9 @@ function compactToDashed(compactDate) {
     return `${compactDate.slice(0, 4)}-${compactDate.slice(4, 6)}-${compactDate.slice(6, 8)}`;
 }
 
-function oneYearAgoDashed() {
+function threeMonthsAgoDashed() {
     const d = new Date();
-    d.setFullYear(d.getFullYear() - 1);
+    d.setMonth(d.getMonth() - 3);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -196,13 +224,19 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // All invoices have UUIDs — check if they exist in portal PENDING_TO_PAY
-        const allInPortal = invoices.recordset.every(inv => {
+        // Split invoices: those in portal PENDING_TO_PAY vs those not
+        const invoicesInPortal = [];
+        const invoicesNotInPortal = [];
+        for (const inv of invoices.recordset) {
             const uuid = inv.UUID.trim().toUpperCase();
-            return portalUuidMap.has(uuid);
-        });
+            if (portalUuidMap.has(uuid)) {
+                invoicesInPortal.push(inv);
+            } else {
+                invoicesNotInPortal.push(inv);
+            }
+        }
 
-        if (!allInPortal) {
+        if (invoicesInPortal.length === 0) {
             categories.not_in_portal.push({
                 hdr,
                 invoices: invoices.recordset
@@ -210,11 +244,11 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // Check provider_id match for all invoices (PROV-01, PROV-02)
+        // Check provider_id match only for invoices that ARE in portal
         const mismatchDetails = [];
         const sageProviderId = effectiveProviderId.toLowerCase();
 
-        for (const inv of invoices.recordset) {
+        for (const inv of invoicesInPortal) {
             const uuid = inv.UUID.trim().toUpperCase();
             const portalItem = portalUuidMap.get(uuid);
             const portalProviderId = (portalItem?.provider_id || '').trim().toLowerCase();
@@ -240,10 +274,16 @@ WHERE DP.BATCHTYPE = 'PY'
             continue;
         }
 
-        // All good — ready to upload
+        // Ready to upload — use only invoices that are in portal PENDING_TO_PAY
+        if (invoicesNotInPortal.length > 0) {
+            console.log(`  [PARTIAL] ${hdr.external_id}: ${invoicesInPortal.length}/${invoices.recordset.length} invoices in PENDING_TO_PAY (${invoicesNotInPortal.length} already paid/not found)`);
+            logGenerator(logFileName, 'info',
+                `Partial upload for ${hdr.external_id}: ${invoicesInPortal.length} of ${invoices.recordset.length} invoices`
+            );
+        }
         categories.ready.push({
             hdr,
-            invoices: invoices.recordset
+            invoices: invoicesInPortal
         });
     }
 
@@ -327,6 +367,11 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
         const d = hdr.payment_date.toString();
         const payment_date = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T10:00:00.000Z`;
 
+        // Recalculate total_amount from the CFDIs being sent (not the original payment total)
+        // This handles partial uploads where some invoices are already paid
+        const calculatedTotal = cfdis.reduce((sum, c) => sum + (c.payment_amount || 0), 0);
+        const totalAmount = Math.round(calculatedTotal * 100) / 100; // avoid floating point
+
         return {
             bank_account_id: hdr.bank_account_id,
             cfdis,
@@ -338,7 +383,7 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
             payment_date,
             provider_external_id: hdr.provider_external_id,
             reference: hdr.reference,
-            total_amount: hdr.total_amount
+            total_amount: totalAmount
         };
     });
 
@@ -350,6 +395,7 @@ async function uploadBatch(categories, { shouldUpload, batchLimit, index, logFil
     let errorCount = 0;
     let missingCount = 0;
     const respondedIds = new Set();
+    const csvRows = [];
 
     try {
         const resp = await axios.post(endpoint, { payments: paymentPayloads }, {
@@ -439,11 +485,24 @@ VALUES
                 } else {
                     console.warn(`  [WARN] Control table NOT updated for ${displayId}`);
                 }
+                csvRows.push([
+                    displayId, idPortal || '', 'SUCCESS', '', '',
+                    matchEntry?.hdr?.total_amount || '', matchEntry?.hdr?.bk_currency || '',
+                    matchEntry?.invoices?.length || '', statusTag,
+                    insertResult.rowsAffected[0] ? 'YES' : 'NO',
+                    new Date().toISOString()
+                ]);
                 successCount++;
             } else {
                 const details = errorMessage || JSON.stringify(result);
                 console.error(`  [ERROR] ${displayId} failed: error_code=${errorCode ?? 'N/A'}, message=${details}`);
                 logGenerator(logFileName, 'error', `Batch upload failed ${displayId}: code=${errorCode ?? 'N/A'} msg=${details}`);
+                csvRows.push([
+                    displayId, '', 'ERROR', errorCode || '', details,
+                    matchEntry?.hdr?.total_amount || '', matchEntry?.hdr?.bk_currency || '',
+                    matchEntry?.invoices?.length || '', '', 'NO',
+                    new Date().toISOString()
+                ]);
                 errorCount++;
             }
         }
@@ -456,6 +515,12 @@ VALUES
                     logGenerator(logFileName, 'warn',
                         `Batch upload missing result: ${entry.hdr.external_id} not in API response`
                     );
+                    csvRows.push([
+                        entry.hdr.external_id, '', 'MISSING', '', 'Not in API response',
+                        entry.hdr.total_amount || '', entry.hdr.bk_currency || '',
+                        entry.invoices?.length || '', '', 'NO',
+                        new Date().toISOString()
+                    ]);
                     missingCount++;
                 }
             }
@@ -466,6 +531,17 @@ VALUES
         console.error(`  [ERROR] Batch upload failed: HTTP ${status} - ${data}`);
         logGenerator(logFileName, 'error', `Batch upload error: ${status} ${data}`);
         errorCount = toUpload.length;
+    }
+
+    // Write CSV audit file
+    if (csvRows.length > 0) {
+        const csvHeaders = [
+            'PaymentId', 'PortalId', 'Status', 'ErrorCode', 'ErrorMessage',
+            'Amount', 'Currency', 'InvoiceCount', 'PaymentStatus', 'ControlTableInsert', 'Timestamp'
+        ];
+        const csvPath = appendCsv(CSV_FILE, csvHeaders, csvRows);
+        console.log(`\n  [CSV] Audit file: ${csvPath}`);
+        logGenerator(logFileName, 'info', `CSV audit written: ${csvPath} (${csvRows.length} rows)`);
     }
 
     console.log(`\n=== UPLOAD COMPLETE ===`);
@@ -531,13 +607,16 @@ async function runReconciliation(options = {}) {
 
     try {
         const currentDate = getCurrentDateCompact();
-        const portalFrom = compactToDashed(optFromDate) || oneYearAgoDashed();
+        // Portal from: always use 3-month lookback to catch ALL pending invoices,
+        // regardless of when they were received. optFromDate only affects Sage date filter.
+        // Note: Portal API rejects date ranges > ~4 months with HTTP 400.
+        const portalFrom = threeMonthsAgoDashed();
         const portalTo = compactToDashed(currentDate);
 
         console.log('=== PAYMENT RECONCILIATION ===');
         console.log(`Tenant: ${localTenantIds[idx]} | DB: ${localDatabase[idx]} | Today: ${currentDate}`);
         console.log(`Mode: ${optShouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: PENDING_TO_PAY from ${portalFrom} to ${portalTo}`);
-        if (optFromDate) console.log(`Sage --from: ${optFromDate}`);
+        if (optFromDate) console.log(`Sage --from: ${optFromDate} (only affects Sage payment date filter)`);
         if (optPyFilter) console.log(`Sage --py: ${optPyFilter}`);
         console.log('');
 
@@ -748,13 +827,16 @@ WHERE O.OPTFIELD = 'FOLIOCFD'
 // ---------------------------------------------------------------------------
 async function main() {
     const currentDate = getCurrentDateCompact();
-    const portalFrom = compactToDashed(fromDate) || oneYearAgoDashed();
+    // Portal from: always use 3-month lookback to catch ALL pending invoices,
+    // regardless of when they were received. --from only affects Sage date filter.
+    // Note: Portal API rejects date ranges > ~4 months with HTTP 400.
+    const portalFrom = threeMonthsAgoDashed();
     const portalTo = compactToDashed(currentDate);
 
     console.log('=== PAYMENT RECONCILIATION ===');
     console.log(`Tenant: ${tenantIds[index]} | DB: ${database[index]} | Today: ${currentDate}`);
     console.log(`Mode: ${shouldUpload ? 'UPLOAD' : 'REPORT'} | Portal: PENDING_TO_PAY from ${portalFrom} to ${portalTo}`);
-    if (fromDate) console.log(`Sage --from: ${fromDate}`);
+    if (fromDate) console.log(`Sage --from: ${fromDate} (only affects Sage payment date filter)`);
     if (pyFilter) console.log(`Sage --py: ${pyFilter}`);
     console.log('');
 

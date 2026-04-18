@@ -14,8 +14,8 @@ const poolConfig = {
     options: {
         trustServerCertificate: true,
     },
-    connectionTimeout: 15000,
-    requestTimeout: 60000,
+    connectionTimeout: 15000,          // 15s to connect
+    requestTimeout: 180000,            // 3 min per query (historical payment reconciliation)
 };
 
 let poolPromise = null;
