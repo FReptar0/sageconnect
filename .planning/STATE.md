@@ -1,50 +1,45 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: Completed 16-01-PLAN.md
-last_updated: "2026-04-09T04:10:39.148Z"
-last_activity: 2026-04-08 — Completed 16-01 OC Status UI Form
+milestone: v2.3
+milestone_name: Scheduler Lock Recovery
+status: requirements
+stopped_at: Defining requirements
+last_updated: "2026-04-24T20:32:00.000Z"
+last_activity: 2026-04-24 — Started v2.3 milestone (scheduler lock recovery)
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-04-08)
+See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.2 OC Status UI -- Phase 16: OC Status UI Form
+**Current focus:** v2.3 Scheduler Lock Recovery — diagnosticar y arreglar bug "Ejecutar Ahora" 409 permanente
 
 ## Current Position
 
-Phase: 16 (2 of 2) — OC Status UI Form
-Plan: 1 of 1
-Status: Phase complete
-Last activity: 2026-04-08 — Completed 16-01 OC Status UI Form
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-24 — Milestone v2.3 started
 
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Accumulated Context
 
 ### Decisions
 
-- [v2.2 Init]: Expose existing PortalOC_StatusService through new PUT /api/pos/status endpoint
-- [v2.2 Init]: UI form in pos.html with status dropdown, OC input, tenant selector
-- [v2.2 Roadmap]: 2 phases — API endpoint first (Phase 15), UI form second (Phase 16)
-- [Phase 15]: statusUpdateSchema uses tenantIndex only, no database field
-- [Phase 15]: poNumber maps transparently to ocSage in updatePOStatus
-- [Phase 15]: idFocaltec filtering deferred to Phase 16 UI layer
-- [Phase 16]: Full-width col-12 card layout for OC status form with three inline controls
-- [Phase 16]: Confirmation dialog and toast show both Spanish label and English API code
-- [Phase 16]: UI ignores idFocaltec in API response per Phase 15 decision
+- [v2.3 Init]: Bug se manifiesta como HTTP 409 permanente en `POST /api/schedule/background-cycle/trigger`, causado por lock huérfano en `OperationManager.locks`
+- [v2.3 Init]: Hipótesis principal — `axios` al portal sin timeout cuelga `forResponse`, `finally` nunca corre
+- [v2.3 Init]: Alcance confirmado con usuario — 3 phases (observability, recovery, root cause fix)
+- [v2.3 Init]: Root cause fix incluye 3 timeouts: axios portal calls, startChildProcess, per-step Promise.race
 
 ### Pending Todos
 
@@ -54,9 +49,11 @@ Progress: [██████████] 100%
 ### Blockers/Concerns
 
 - No Sage DB access locally: SQL query changes can only be validated structurally
+- No repro local del bug: requiere prod (ZCL-RDS-02) o simulación con mocks
+- Servy como Windows service no tiene sesión de escritorio: child-process GUI puede colgarse
 
 ## Session Continuity
 
-Last session: 2026-04-08T21:24:39.511Z
-Stopped at: Completed 16-01-PLAN.md
+Last session: 2026-04-24T20:32:00.000Z
+Stopped at: Defining requirements
 Resume file: None
