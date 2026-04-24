@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
-status: requirements
-stopped_at: Defining requirements
-last_updated: "2026-04-24T20:32:00.000Z"
-last_activity: 2026-04-24 — Started v2.3 milestone (scheduler lock recovery)
+status: roadmap
+stopped_at: Roadmap created
+last_updated: "2026-04-24T20:45:00.000Z"
+last_activity: 2026-04-24 — Created ROADMAP.md (3 phases, 14 REQs)
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
