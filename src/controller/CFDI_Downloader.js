@@ -164,7 +164,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index, logFileName = 'CFDI_Do
         });
 
         const query = `SELECT COALESCE(idCia, 'NOT_FOUND') AS Resultado FROM FESAPARAM WHERE idCia IN (SELECT idCia FROM FESAPARAM WHERE Parametro = 'RFCReceptor' AND Valor = '${dataCfdi.rfcReceptor}') AND Parametro = 'DataBase';`
-        const dbResponse = await runQuery(query).catch(() => {
+        const dbResponse = await runQuery(query, 'FESA').catch(() => {
             console.log('Error al ejecutar la consulta:', query);
             logGenerator(logFileName, 'error', 'Error al ejecutar la consulta: ' + query);
             return { recordset: [{ Resultado: 'NOT_FOUND' }] };

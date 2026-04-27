@@ -53,7 +53,7 @@ async function checkPayments(index) {
         logGenerator(logFileName, 'info', `[PROCESS] Procesando pago ${i + 1}/${resultPayments.length} - Payment ID: ${paymentId}, RFC: ${receptorRfc}, UUID: ${uuid}`);
 
         const idCiaQuery = `SELECT Valor as DataBaseName, idCia FROM FESAPARAM WHERE idCia IN ( SELECT idCia FROM fesaParam WHERE Parametro = 'RFCReceptor' AND Valor = '${resultPayments[i].cfdi.receptor.rfc}') AND Parametro = 'DataBase'`;
-        const idCiaResult = await runQuery(idCiaQuery)
+        const idCiaResult = await runQuery(idCiaQuery, 'FESA')
             .catch(
                 (err) => {
                     const data = {
@@ -72,7 +72,7 @@ async function checkPayments(index) {
 
         if (idCiaResult.recordset.length > 0) {
             const optionalFieldsQuery = `SELECT [BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac] FROM (SELECT PARAMETRO, RTRIM(VALOR) AS VALOR FROM fesaParam WHERE PARAMETRO IN ('BancoAP','NumCtaAP','FechaCFD','FolioCFD','FormaPago','MetodoPago','PasswordA','UserAccpac') AND idCia = '${idCiaResult.recordset[0].idCia}') AS t PIVOT (MIN(VALOR) FOR PARAMETRO IN ([BancoAP],[NumCtaAP],[FechaCFD],[FolioCFD],[FormaPago],[MetodoPago],[PasswordA],[UserAccpac])) AS p;`;
-            const optionalFieldsResult = await runQuery(optionalFieldsQuery)
+            const optionalFieldsResult = await runQuery(optionalFieldsQuery, 'FESA')
                 .catch(
                     (err) => {
                         const data = { h1: "Error al obtener los campos opcionales", p: err, status: 500, message: "Error al obtener los campos opcionales", idCia: idCiaResult.recordset[0].idCia, position: index };
