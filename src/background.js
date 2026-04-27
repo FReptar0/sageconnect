@@ -36,109 +36,207 @@ async function forResponse(options = {}) {
         try {
             logGenerator(logFileName, 'info', `[INFO] Procesando tenant con índice ${i}`);
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'buildProviders',
-                    message: `Iniciando buildProvidersXML para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'buildProviders';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando buildProvidersXML para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando buildProvidersXML para el índice ${i}`);
+                    await buildProvidersXML(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] buildProvidersXML completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando buildProvidersXML para el índice ${i}`);
-            await buildProvidersXML(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] buildProvidersXML completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'downloadCFDI',
-                    message: `Iniciando downloadCFDI para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'downloadCFDI';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando downloadCFDI para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando downloadCFDI para el índice ${i}`);
+                    await downloadCFDI(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] downloadCFDI completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando downloadCFDI para el índice ${i}`);
-            await downloadCFDI(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] downloadCFDI completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'checkPayments',
-                    message: `Iniciando checkPayments para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'checkPayments';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando checkPayments para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando checkPayments para el índice ${i}`);
+                    await checkPayments(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] checkPayments completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando checkPayments para el índice ${i}`);
-            await checkPayments(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] checkPayments completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'uploadPayments',
-                    message: `Iniciando uploadPayments para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'uploadPayments';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando uploadPayments para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando uploadPayments para el índice ${i}`);
+                    await uploadPayments(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] uploadPayments completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando uploadPayments para el índice ${i}`);
-            await uploadPayments(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] uploadPayments completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'createPurchaseOrders',
-                    message: `Iniciando createPurchaseOrders para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'createPurchaseOrders';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando createPurchaseOrders para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando createPurchaseOrders para el índice ${i}`);
+                    await createPurchaseOrders(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando createPurchaseOrders para el índice ${i}`);
-            await createPurchaseOrders(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'processOrderChanges',
-                    message: `Iniciando processOrderChanges para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'processOrderChanges';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando processOrderChanges para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando processOrderChanges para el índice ${i}`);
+                    await processOrderChanges(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] processOrderChanges completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando processOrderChanges para el índice ${i}`);
-            await processOrderChanges(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] processOrderChanges completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
-            if (emitter && operationId) {
-                emitter.emitProgress(operationId, {
-                    type: 'progress',
-                    operation: 'background-cycle',
-                    tenant: tenantIds[i],
-                    step: 'closePurchaseOrders',
-                    message: `Iniciando closePurchaseOrders para tenant ${i}`,
-                    timestamp: new Date().toISOString(),
-                });
+            {
+                const __step = 'closePurchaseOrders';
+                let __stepError = null;
+                try {
+                    if (emitter && operationId) {
+                        emitter.startStep('background-cycle', __step, tenantIds[i]);
+                        emitter.emitProgress(operationId, {
+                            type: 'progress',
+                            operation: 'background-cycle',
+                            tenant: tenantIds[i],
+                            step: __step,
+                            message: `Iniciando closePurchaseOrders para tenant ${i}`,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
+                    await closePurchaseOrders(i);
+                    logGenerator(logFileName, 'info', `[COMPLETE] closePurchaseOrders completado para el índice ${i}`);
+                } catch (stepErr) {
+                    __stepError = stepErr.message || String(stepErr);
+                    throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
+                } finally {
+                    if (emitter && operationId) {
+                        emitter.endStep('background-cycle', __step, tenantIds[i], { error: __stepError });
+                    }
+                }
             }
-            logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
-            await closePurchaseOrders(i);
-            logGenerator(logFileName, 'info', `[COMPLETE] closePurchaseOrders completado para el índice ${i}`);
             await new Promise(resolve => setTimeout(resolve, delay));
 
             logGenerator(logFileName, 'info', `[TENANT-COMPLETE] Todos los procesos completados para el tenant índice ${i}`);

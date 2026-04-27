@@ -1,0 +1,24 @@
+const fs = require('fs');
+const src = fs.readFileSync('src/background.js', 'utf8');
+const STEPS = ['buildProviders', 'downloadCFDI', 'checkPayments', 'uploadPayments', 'createPurchaseOrders', 'processOrderChanges', 'closePurchaseOrders'];
+const checks = [];
+STEPS.forEach(step => {
+  checks.push(['__step assigned to ' + step, new RegExp("const __step = '" + step + "'").test(src)]);
+});
+const startStepCount = (src.match(/emitter\.startStep\('background-cycle',\s*__step,\s*tenantIds\[i\]\)/g) || []).length;
+const endStepCount = (src.match(/emitter\.endStep\('background-cycle',\s*__step,\s*tenantIds\[i\],\s*\{\s*error:\s*__stepError\s*\}\)/g) || []).length;
+const tryCount = (src.match(/let __stepError = null;\s+try\s*\{/g) || []).length;
+const reThrowCount = (src.match(/__stepError = stepErr\.message \|\| String\(stepErr\);[\s\S]{0,40}throw stepErr;/g) || []).length;
+checks.push(['exactly 7 emitter.startStep calls (found ' + startStepCount + ')', startStepCount === 7]);
+checks.push(['exactly 7 emitter.endStep calls (found ' + endStepCount + ')', endStepCount === 7]);
+checks.push(['exactly 7 try blocks with __stepError (found ' + tryCount + ')', tryCount === 7]);
+checks.push(['exactly 7 catch blocks that capture + re-throw (found ' + reThrowCount + ')', reThrowCount === 7]);
+checks.push(['emitter && operationId guard present (>= 14 occurrences)', (src.match(/if \(emitter && operationId\)/g) || []).length >= 14]);
+checks.push(['startChildProcess function untouched in background.js (no startStep around it)', /function startChildProcess\(\)/.test(src) && !/startStep\([^)]*startChildProcess/.test(src)]);
+checks.push(['completion emitProgress (type: complete) present', /type:\s*'complete'/.test(src)]);
+checks.push(['tenant catch-block emitProgress (type: error) present', /type:\s*'error'/.test(src)]);
+checks.push(['await new Promise...setTimeout still present after non-last steps (>= 6)', (src.match(/await new Promise\(resolve => setTimeout\(resolve,\s*delay\)\)/g) || []).length >= 6]);
+let pass = 0;
+checks.forEach(([name, ok]) => { console.log(ok ? 'PASS' : 'FAIL', name); if (ok) pass++; });
+console.log(pass + '/' + checks.length + ' checks passed');
+if (pass < checks.length) process.exit(1);

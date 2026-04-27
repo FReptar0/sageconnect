@@ -77,7 +77,20 @@ function initScheduler() {
             try {
                 logGenerator(LOG_FILE, 'info', `[START] Background cycle ${operationId} started`);
                 await forResponse({ operationId, emitter: operationManager });
-                await startChildProcess();
+
+                // Phase 17 (D-12): startChildProcess is cron-only (manual trigger does NOT call it).
+                // Instrument here so cron-tick stepProgress has 8 entries (7 per-tenant from forResponse + 1 global startChildProcess).
+                let __scpError = null;
+                try {
+                    operationManager.startStep('background-cycle', 'startChildProcess', null);
+                    await startChildProcess();
+                } catch (scpErr) {
+                    __scpError = scpErr.message || String(scpErr);
+                    throw scpErr;
+                } finally {
+                    operationManager.endStep('background-cycle', 'startChildProcess', null, { error: __scpError });
+                }
+
                 logGenerator(LOG_FILE, 'info', `[COMPLETE] Background cycle ${operationId} finished`);
             } catch (error) {
                 success = false;

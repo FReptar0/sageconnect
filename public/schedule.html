@@ -164,6 +164,32 @@
                         </div>
                     </div>
 
+                    <!-- Active Operation Card (Phase 17 — OBS-01, OBS-02) -->
+                    <div id="active-operation-card" class="card mb-4" style="display: none;">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-play-circle me-2"></i>Operación en curso</span>
+                            <span id="active-op-badge"></span>
+                        </div>
+                        <div class="card-body">
+                            <div id="active-op-summary" class="mb-2">
+                                <span class="text-muted">Operación:</span>
+                                <code id="active-op-type">background-cycle</code>
+                                <span class="text-muted ms-3">ID:</span>
+                                <code id="active-op-id" title="">—</code>
+                            </div>
+                            <div class="mb-1">
+                                <i class="fas fa-clock me-1 text-muted"></i>
+                                <span class="text-muted">Iniciada:</span>
+                                <span id="active-op-elapsed" title="">—</span>
+                            </div>
+                            <div id="active-op-step-line">
+                                <i class="fas fa-spinner fa-spin me-1 text-primary"></i>
+                                <span class="text-muted">Step actual:</span>
+                                <span id="active-op-step">Inicializando ciclo…</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Real-time Timeline Card -->
                     <div class="card mb-4">
                         <div class="card-header">
@@ -231,10 +257,16 @@
             createPurchaseOrders: 'Crear Ordenes de Compra',
             processOrderChanges: 'Procesar Cambios de Ordenes',
             closePurchaseOrders: 'Cerrar Ordenes de Compra',
+            startChildProcess: 'Importar CFDIs (proceso hijo)',
         };
 
         let evtSource = null;
         let currentTask = null;
+
+        // Phase 17: polling state for the "Operación en curso" card
+        let activeOpPollHandle = null;       // setInterval id for the 5s polling loop
+        let activeOpHeartbeatHandle = null;  // setInterval id for the 1s heartbeat refresh
+        let activeOpSnapshot = null;         // last successful poll payload for the active op (or null when idle)
 
         /* ====================================================================
          * Page Initialization
@@ -243,6 +275,16 @@
         document.addEventListener('DOMContentLoaded', async () => {
             await initPage('/schedule.html');
             await loadScheduleData();
+
+            // Phase 17 (D-06): permanent 5s polling for the "Operación en curso" card.
+            // Always-on (no backoff, no pause-on-idle) — endpoint is read-only and cheap.
+            // Initial call covers mid-cycle reload detection (replaces the old
+            // bgTask.status === 'running' conditional removed in Task 2a).
+            await pollActiveOperation();
+            activeOpPollHandle = setInterval(pollActiveOperation, 5000);
+
+            // Phase 17 (D-08): client-side heartbeat refresh every 1s without re-fetching.
+            activeOpHeartbeatHandle = setInterval(refreshActiveOperationHeartbeat, 1000);
         });
 
         // Schedule is global -- tenant change does not reload schedule data
@@ -274,11 +316,6 @@
                     if (bgTask) {
                         currentTask = bgTask;
                         renderScheduleStatus(bgTask);
-
-                        // Auto-detect running operations
-                        if (bgTask.status === 'running') {
-                            await detectRunningOperation();
-                        }
                     }
                 }
 
@@ -579,21 +616,134 @@
         }
 
         /* ====================================================================
-         * Auto-detect Running Operations
+         * Phase 17: Polling-driven Active Operation Card
          * ==================================================================== */
 
-        async function detectRunningOperation() {
+        /**
+         * Polls /api/operations/status, updates the "Operación en curso" card,
+         * and (if an operationId is detected and no SSE is open yet) connects SSE
+         * to feed the existing "Progreso en Tiempo Real" timeline. Hides the card
+         * when no operations are active and closes SSE.
+         *
+         * Called every 5s by activeOpPollHandle (D-06). Also called once on page load.
+         * Replaces the old detectRunningOperation() removed in Task 2a (had a bug:
+         * operations.find() on a map always returned undefined — see Phase 17 D-04).
+         */
+        async function pollActiveOperation() {
             try {
                 const res = await apiCall('GET', '/api/operations/status');
-                if (res.success && res.data && res.data.operations) {
-                    const bgOp = res.data.operations.find(op => op.taskId === 'background-cycle');
-                    if (bgOp && bgOp.operationId) {
-                        connectSSE(bgOp.operationId);
-                    }
+                if (!res || !res.success || !res.data || !res.data.operations) {
+                    hideActiveOperationCard();
+                    return;
+                }
+
+                // D-04 bug fix: operations is a MAP keyed by operationType, not an array.
+                // Use direct map access (or Object.values when iterating) — never .find().
+                const bgOp = res.data.operations['background-cycle'] || null;
+
+                if (!bgOp || !bgOp.operationId) {
+                    hideActiveOperationCard();
+                    return;
+                }
+
+                activeOpSnapshot = bgOp;
+                renderActiveOperationCard(bgOp);
+
+                // D-05 hybrid: when polling detects an op AND no SSE is open, open one
+                // so the existing timeline (Phase 9) gets fed. SSE never updates THIS card.
+                if (!evtSource) {
+                    connectSSE(bgOp.operationId);
                 }
             } catch (err) {
-                console.error('Error detectando operaciones en curso:', err);
+                console.warn('Error polling /api/operations/status:', err);
+                // Do NOT hide the card on transient network errors — leave the last snapshot.
             }
+        }
+
+        /**
+         * Renders the active operation card from a /status response entry.
+         * Per D-08, "step actual" = LAST stepProgress entry without finishedAt.
+         * Per D-07, when stepProgress is empty, show "Inicializando ciclo…".
+         */
+        function renderActiveOperationCard(op) {
+            const card = document.getElementById('active-operation-card');
+            card.style.display = '';
+
+            // D-10: truncate operationId to first 8 chars; full UUID in tooltip
+            const idEl = document.getElementById('active-op-id');
+            const shortId = (op.operationId || '').substring(0, 8) || '—';
+            idEl.textContent = shortId;
+            idEl.title = op.operationId || '';
+
+            // D-09: relative elapsed since startedAt; full ISO in tooltip
+            const elapsedEl = document.getElementById('active-op-elapsed');
+            elapsedEl.textContent = formatRelative(op.startedAt);
+            elapsedEl.title = op.startedAt || '';
+
+            // D-07 / D-08: "step actual" line
+            const stepEl = document.getElementById('active-op-step');
+            const sp = Array.isArray(op.stepProgress) ? op.stepProgress : [];
+
+            if (sp.length === 0) {
+                stepEl.textContent = 'Inicializando ciclo…';
+                stepEl.title = '';
+                return;
+            }
+
+            // Last entry without finishedAt = "currently running"
+            // If all are finished (e.g. inter-tenant pause), show last entry as "completado"
+            let active = null;
+            for (let i = sp.length - 1; i >= 0; i--) {
+                if (!sp[i].finishedAt) { active = sp[i]; break; }
+            }
+            const last = sp[sp.length - 1];
+            const display = active || last;
+            const label = STEP_LABELS[display.step] || display.step;
+            const tenantPart = display.tenant ? ' · ' + display.tenant : '';
+            const heartbeatPart = ' · heartbeat ' + formatRelative(display.startedAt);
+            const status = active ? '' : ' (completado)';
+            stepEl.textContent = label + tenantPart + heartbeatPart + status;
+            stepEl.title = 'startedAt: ' + (display.startedAt || '') + (display.finishedAt ? '  finishedAt: ' + display.finishedAt : '');
+        }
+
+        /**
+         * Hides the active operation card and closes SSE if open. Called when polling
+         * sees no active operations (cycle just finished or never started).
+         */
+        function hideActiveOperationCard() {
+            const card = document.getElementById('active-operation-card');
+            if (card) card.style.display = 'none';
+            activeOpSnapshot = null;
+            if (evtSource) {
+                evtSource.close();
+                evtSource = null;
+            }
+        }
+
+        /**
+         * Refreshes only the relative-time strings on the active operation card
+         * WITHOUT calling the API. Driven by setInterval(1000) per D-08.
+         * Reads activeOpSnapshot which was set by the last successful poll.
+         */
+        function refreshActiveOperationHeartbeat() {
+            if (!activeOpSnapshot) return;
+            const elapsedEl = document.getElementById('active-op-elapsed');
+            if (elapsedEl) elapsedEl.textContent = formatRelative(activeOpSnapshot.startedAt);
+
+            // Update step heartbeat without re-deriving "active" — same logic as renderActiveOperationCard
+            const sp = Array.isArray(activeOpSnapshot.stepProgress) ? activeOpSnapshot.stepProgress : [];
+            if (sp.length === 0) return;
+            let active = null;
+            for (let i = sp.length - 1; i >= 0; i--) {
+                if (!sp[i].finishedAt) { active = sp[i]; break; }
+            }
+            const display = active || sp[sp.length - 1];
+            const label = STEP_LABELS[display.step] || display.step;
+            const tenantPart = display.tenant ? ' · ' + display.tenant : '';
+            const heartbeatPart = ' · heartbeat ' + formatRelative(display.startedAt);
+            const status = active ? '' : ' (completado)';
+            const stepEl = document.getElementById('active-op-step');
+            if (stepEl) stepEl.textContent = label + tenantPart + heartbeatPart + status;
         }
 
         /* ====================================================================
@@ -604,6 +754,14 @@
             if (evtSource) {
                 evtSource.close();
                 evtSource = null;
+            }
+            if (activeOpPollHandle) {
+                clearInterval(activeOpPollHandle);
+                activeOpPollHandle = null;
+            }
+            if (activeOpHeartbeatHandle) {
+                clearInterval(activeOpHeartbeatHandle);
+                activeOpHeartbeatHandle = null;
             }
         });
     </script>

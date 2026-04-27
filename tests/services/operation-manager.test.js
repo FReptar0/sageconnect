@@ -264,7 +264,95 @@ describe('OperationManager - Execution History', () => {
 });
 
 // ============================================================
-// 7. Config Schedule Section
+// 8. Step Progress Tracking (Phase 17)
+// ============================================================
+describe('OperationManager - Step Progress (Phase 17)', () => {
+    test('acquireLock initializes stepProgress as an empty array on the slot', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-1');
+        const running = operationManager.getRunningOperations();
+        expect(running['background-cycle']).toHaveProperty('stepProgress');
+        expect(Array.isArray(running['background-cycle'].stepProgress)).toBe(true);
+        expect(running['background-cycle'].stepProgress).toHaveLength(0);
+    });
+
+    test('startStep appends an entry with shape { step, tenant, startedAt, finishedAt: null, error: null }', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-2');
+        operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+
+        const sp = operationManager.getRunningOperations()['background-cycle'].stepProgress;
+        expect(sp).toHaveLength(1);
+        expect(sp[0]).toEqual({
+            step: 'downloadCFDI',
+            tenant: 'capstone',
+            startedAt: expect.any(String),
+            finishedAt: null,
+            error: null,
+        });
+        // ISO 8601 sanity check
+        expect(new Date(sp[0].startedAt).toISOString()).toBe(sp[0].startedAt);
+    });
+
+    test('startStep with null tenant stores tenant: null (used for startChildProcess global step)', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-3');
+        operationManager.startStep('background-cycle', 'startChildProcess', null);
+
+        const sp = operationManager.getRunningOperations()['background-cycle'].stepProgress;
+        expect(sp[0].tenant).toBeNull();
+    });
+
+    test('endStep sets finishedAt + error on the last matching open entry', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-4');
+        operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+        operationManager.endStep('background-cycle', 'downloadCFDI', 'capstone');
+
+        const sp = operationManager.getRunningOperations()['background-cycle'].stepProgress;
+        expect(sp[0].finishedAt).not.toBeNull();
+        expect(typeof sp[0].finishedAt).toBe('string');
+        expect(sp[0].error).toBeNull();
+        // finishedAt must be >= startedAt
+        expect(new Date(sp[0].finishedAt).getTime()).toBeGreaterThanOrEqual(new Date(sp[0].startedAt).getTime());
+    });
+
+    test('endStep records error message when provided', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-5');
+        operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+        operationManager.endStep('background-cycle', 'downloadCFDI', 'capstone', { error: 'axios timeout after 30s' });
+
+        const sp = operationManager.getRunningOperations()['background-cycle'].stepProgress;
+        expect(sp[0].error).toBe('axios timeout after 30s');
+        expect(sp[0].finishedAt).not.toBeNull();
+    });
+
+    test('endStep is a no-op when lock does not exist (race condition defense)', () => {
+        // No acquireLock first — slot is absent
+        expect(() => {
+            operationManager.endStep('background-cycle', 'downloadCFDI', 'capstone', { error: 'test' });
+        }).not.toThrow();
+        expect(operationManager.getRunningOperations()).toEqual({});
+    });
+
+    test('startStep is a no-op when lock does not exist', () => {
+        expect(() => {
+            operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+        }).not.toThrow();
+        expect(operationManager.getRunningOperations()).toEqual({});
+    });
+
+    test('releaseLock discards stepProgress entirely (volatile per D-01)', () => {
+        operationManager.acquireLock('background-cycle', 'op-sp-6');
+        operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+        operationManager.endStep('background-cycle', 'downloadCFDI', 'capstone');
+        operationManager.releaseLock('background-cycle');
+
+        // Re-acquire and verify stepProgress starts empty (no leak from previous run)
+        operationManager.acquireLock('background-cycle', 'op-sp-7');
+        const sp = operationManager.getRunningOperations()['background-cycle'].stepProgress;
+        expect(sp).toHaveLength(0);
+    });
+});
+
+// ============================================================
+// 9. Config Schedule Section
 // ============================================================
 // These tests use a separate describe block with jest.resetModules
 // to load the REAL config.js (not the mocked version above).

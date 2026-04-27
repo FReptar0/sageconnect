@@ -59,7 +59,29 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 
 ### Active
 
-(None — pending next milestone definition)
+**v2.3 Scheduler Lock Recovery** (diagnóstico + fix del bug "Ejecutar Ahora" siempre 409)
+
+- Observability del estado de locks del scheduler en UI + endpoint diagnóstico
+- Auto-release de locks por timeout (configurable, default 14 min)
+- Manual force-release endpoint + botón UI con confirmación
+- Timeout explícito en axios a portal de proveedores
+- Timeout en `startChildProcess` (ImportaFacturasFocaltec.exe)
+- Per-step timeout en `forResponse` vía Promise.race
+
+## Current Milestone: v2.3 Scheduler Lock Recovery
+
+**Goal:** Eliminar el bug donde el botón "Ejecutar Ahora" en `schedule.html` permanentemente retorna "ya en ejecución" por locks huérfanos en `OperationManager`. Agregar observability, recovery, y prevención de raíz.
+
+**Target features:**
+- Diagnóstico en UI del estado actual de locks y último heartbeat por step del ciclo
+- Recuperación del operador: timeout auto + botón force-release + endpoint admin
+- Prevención de causa raíz: timeouts en axios al portal, en child-process del importador, y per-step en el ciclo
+
+**Key context:**
+- Bug reportado 2026-04-24 en producción (server ZCL-RDS-02, cliente Capstone Copper)
+- Hipótesis principal: llamadas axios al portal sin `timeout` explícito cuelgan `forResponse` indefinidamente → `finally` nunca corre → lock stuck
+- Hipótesis secundaria: `ImportaFacturasFocaltec.exe` cuelga bajo Servy (sin sesión de escritorio)
+- No hay repro local (requiere BD Sage)
 
 ### Out of Scope
 
@@ -109,5 +131,22 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | tenantIndex sin database override para status update | Simplifica UI, operadores no necesitan saber nombres de BD | ✓ Good |
 | Labels español en dropdown con valores inglés al API | Operadores ven "Cancelada", API envía "CANCELLED" | ✓ Good |
 
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-04-09 after v2.2 milestone*
+*Last updated: 2026-04-24 — started v2.3 Scheduler Lock Recovery*

@@ -138,6 +138,75 @@ describe('Operations Routes', () => {
             expect(res.body.data.operations).toHaveProperty('background-cycle');
             expect(res.body.data.operations['background-cycle'].operationId).toBe('op-123');
         });
+
+        test('returns stepProgress array on each operation entry', async () => {
+            mockOpManager.getRunningOperations.mockReturnValue({
+                'background-cycle': {
+                    operationId: 'op-sp-1',
+                    startedAt: '2026-04-27T18:14:32.000Z',
+                    stepProgress: [
+                        { step: 'buildProviders', tenant: 'capstone', startedAt: '2026-04-27T18:14:33.000Z', finishedAt: '2026-04-27T18:14:48.000Z', error: null },
+                        { step: 'downloadCFDI',   tenant: 'capstone', startedAt: '2026-04-27T18:14:48.500Z', finishedAt: null, error: null },
+                    ],
+                },
+            });
+
+            const res = await request(app).get('/api/operations/status');
+
+            expect(res.status).toBe(200);
+            expect(res.body.success).toBe(true);
+            const op = res.body.data.operations['background-cycle'];
+            expect(op).toHaveProperty('stepProgress');
+            expect(Array.isArray(op.stepProgress)).toBe(true);
+            expect(op.stepProgress).toHaveLength(2);
+            expect(op.stepProgress[0]).toEqual({
+                step: 'buildProviders',
+                tenant: 'capstone',
+                startedAt: '2026-04-27T18:14:33.000Z',
+                finishedAt: '2026-04-27T18:14:48.000Z',
+                error: null,
+            });
+            expect(op.stepProgress[1].finishedAt).toBeNull();
+            expect(op.stepProgress[1].step).toBe('downloadCFDI');
+        });
+
+        test('preserves null tenant for global steps (startChildProcess)', async () => {
+            mockOpManager.getRunningOperations.mockReturnValue({
+                'background-cycle': {
+                    operationId: 'op-sp-2',
+                    startedAt: '2026-04-27T18:14:32.000Z',
+                    stepProgress: [
+                        { step: 'startChildProcess', tenant: null, startedAt: '2026-04-27T18:20:00.000Z', finishedAt: null, error: null },
+                    ],
+                },
+            });
+
+            const res = await request(app).get('/api/operations/status');
+
+            expect(res.status).toBe(200);
+            const sp = res.body.data.operations['background-cycle'].stepProgress;
+            expect(sp[0].tenant).toBeNull();
+            expect(sp[0].step).toBe('startChildProcess');
+        });
+
+        test('operations field is a map keyed by operationType (not an array)', async () => {
+            mockOpManager.getRunningOperations.mockReturnValue({
+                'background-cycle': {
+                    operationId: 'op-sp-3',
+                    startedAt: '2026-04-27T18:14:32.000Z',
+                    stepProgress: [],
+                },
+            });
+
+            const res = await request(app).get('/api/operations/status');
+
+            expect(res.status).toBe(200);
+            // Asserting the SHAPE so future regressions to an array form (which would break schedule.html access pattern) are caught.
+            expect(Array.isArray(res.body.data.operations)).toBe(false);
+            expect(typeof res.body.data.operations).toBe('object');
+            expect(res.body.data.operations).not.toBeNull();
+            expect(Object.keys(res.body.data.operations)).toContain('background-cycle');
+        });
     });
 
     // -------------------------------------------------------------------
