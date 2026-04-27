@@ -4,6 +4,14 @@
 
 **Phases:** 3 | **Requirements:** 14 | **Phase numbering:** continues from v2.2 (starts at 17)
 
+## Progress
+
+| Phase | Plans | Completed | Status |
+|-------|-------|-----------|--------|
+| 17 — Observability & Diagnostics | 4 | 1 | in-progress (17-01 done) |
+| 18 — Auto-release & Manual Override | TBD | 0 | pending |
+| 19 — Root Cause Timeouts | TBD | 0 | pending |
+
 ## Phase Overview
 
 | # | Phase | Goal | Requirements | Dependencies |

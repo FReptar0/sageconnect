@@ -10,7 +10,7 @@
 
 - [ ] **OBS-01**: Operador puede ver en `schedule.html` qué locks están actualmente held, con `operationType`, `operationId`, y `startedAt` (hace cuánto).
 - [ ] **OBS-02**: Operador puede ver el último heartbeat timestamp por step del ciclo (buildProvidersXML, downloadCFDI, checkPayments, uploadPayments, createPurchaseOrders, processOrderChanges, closePurchaseOrders, startChildProcess).
-- [ ] **OBS-03**: `OperationManager.acquireLock` registra `stepProgress` (timestamps por step) accesibles vía `getRunningOperations()`.
+- [x] **OBS-03**: `OperationManager.acquireLock` registra `stepProgress` (timestamps por step) accesibles vía `getRunningOperations()`. _(Completado en Plan 17-01)_
 - [ ] **OBS-04**: Endpoint `GET /api/operations/status` retorna locks activos + `startedAt` + `stepProgress` para diagnóstico sin UI.
 - [ ] **OBS-05**: Cada step de `forResponse` emite un evento de progreso con timestamp al `OperationManager` (reutiliza `emitProgress` existente pero persiste el último).
 
@@ -35,7 +35,7 @@
 |--------|-------|------------|-------|
 | OBS-01 | 17 | Observability & Diagnostics | UI card |
 | OBS-02 | 17 | Observability & Diagnostics | Step heartbeat UI |
-| OBS-03 | 17 | Observability & Diagnostics | OperationManager extension |
+| OBS-03 | 17 | Observability & Diagnostics | OperationManager extension — ✓ done (Plan 17-01, commits 4c1367d + a804422) |
 | OBS-04 | 17 | Observability & Diagnostics | API endpoint |
 | OBS-05 | 17 | Observability & Diagnostics | background.js instrumentation |
 | REC-01 | 18 | Auto-release & Manual Override | Auto-timeout |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
-status: ready-to-execute
-stopped_at: Phase 17 planned (4 plans, 3 waves)
-last_updated: "2026-04-27T00:00:00.000Z"
-last_activity: 2026-04-27 — Phase 17 PLAN.md × 4 created (verified, plan-checker passed)
+status: in-progress
+stopped_at: Phase 17 Plan 01 complete; ready to execute Plan 02 (operations-routes.js)
+last_updated: "2026-04-27T18:52:18Z"
+last_activity: 2026-04-27 — Plan 17-01 complete (OperationManager stepProgress foundation; 26 tests pass)
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 17 — Observability & Diagnostics (planned)
-Plan: 4 plans in 3 waves (17-01, 17-02, 17-03, 17-04)
-Status: Ready for /gsd-execute-phase 17
-Last activity: 2026-04-27 — Plans verified by gsd-plan-checker (1 revision iteration)
+Phase: 17 — Observability & Diagnostics (in-progress)
+Plan: 1/4 complete (17-01 done; 17-02, 17-03, 17-04 pending)
+Status: Ready to execute Plan 17-02 (operations-routes.js endpoint enrichment)
+Last activity: 2026-04-27 — Plan 17-01 complete; 26 OperationManager tests pass; commits 4c1367d + a804422
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██▌░░░░░░░] 25%
 
 ### Phase 17 Plan Layout
 
@@ -54,6 +54,10 @@ Progress: [░░░░░░░░░░] 0%
 - [v2.3 Phase 17]: Card nuevo "Operación en curso" arriba del timeline; oculto en idle
 - [v2.3 Phase 17]: API mantiene shape de map por operationType (corrigiendo bug en schedule.html:589)
 - [v2.3 Phase 17]: startChildProcess instrumentado en CronScheduler.js (no background.js); manual trigger tiene 7 steps, cron tick tiene 8
+- [v2.3 Plan 17-01]: stepProgress vive en this.locks slot (no Map separado) — hereda releaseLock cleanup automáticamente
+- [v2.3 Plan 17-01]: startStep/endStep son no-op si el lock no existe — defensa contra race con releaseLock
+- [v2.3 Plan 17-01]: endStep itera backwards (LIFO) para resolver retries concurrentes en orden
+- [v2.3 Plan 17-01]: Sin Winston/logger en startStep/endStep para no inflar logs (se logea sólo en sites de error del caller)
 
 ### Pending Todos
 
@@ -69,6 +73,6 @@ Progress: [░░░░░░░░░░] 0%
 
 ## Session Continuity
 
-Last session: 2026-04-27T00:00:00.000Z
-Stopped at: Phase 17 context gathered
-Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-CONTEXT.md
+Last session: 2026-04-27T18:52:18Z
+Stopped at: Phase 17 Plan 01 complete (OperationManager stepProgress foundation)
+Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-02-PLAN.md
