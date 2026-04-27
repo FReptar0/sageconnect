@@ -8,7 +8,7 @@
 
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
-| 17 — Observability & Diagnostics | 4 | 1 | in-progress (17-01 done) |
+| 17 — Observability & Diagnostics | 4 | 2 | in-progress (17-01, 17-02 done) |
 | 18 — Auto-release & Manual Override | TBD | 0 | pending |
 | 19 — Root Cause Timeouts | TBD | 0 | pending |
 

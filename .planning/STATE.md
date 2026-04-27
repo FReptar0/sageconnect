@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
 status: in-progress
-stopped_at: Phase 17 Plan 01 complete; ready to execute Plan 02 (operations-routes.js)
-last_updated: "2026-04-27T18:52:18Z"
-last_activity: 2026-04-27 — Plan 17-01 complete (OperationManager stepProgress foundation; 26 tests pass)
+stopped_at: Phase 17 Plan 02 complete; ready to execute Plan 03 (background.js + CronScheduler.js instrumentation)
+last_updated: "2026-04-27T19:01:54Z"
+last_activity: 2026-04-27 — Plan 17-02 complete (operations-routes.js wire shape locked; 8 integration tests pass)
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -21,25 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 Observability ready to plan
+**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 Observability in progress (2/4 plans done)
 
 ## Current Position
 
 Phase: 17 — Observability & Diagnostics (in-progress)
-Plan: 1/4 complete (17-01 done; 17-02, 17-03, 17-04 pending)
-Status: Ready to execute Plan 17-02 (operations-routes.js endpoint enrichment)
-Last activity: 2026-04-27 — Plan 17-01 complete; 26 OperationManager tests pass; commits 4c1367d + a804422
+Plan: 2/4 complete (17-01, 17-02 done; 17-03, 17-04 pending)
+Status: Ready to execute Plan 17-03 (background.js + CronScheduler.js instrumentation)
+Last activity: 2026-04-27 — Plan 17-02 complete; 8 operations-routes tests pass; commits 7ce3412 + cbadb59
 
-Progress: [██▌░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ### Phase 17 Plan Layout
 
-| Wave | Plan | Files | Autonomous | Reqs |
-|------|------|-------|------------|------|
-| 1 | 17-01 | OperationManager.js + tests | yes | OBS-03 |
-| 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 |
-| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 |
-| 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 |
+| Wave | Plan | Files | Autonomous | Reqs | Status |
+|------|------|-------|------------|------|--------|
+| 1 | 17-01 | OperationManager.js + tests | yes | OBS-03 | ✓ done (4c1367d, a804422, 132a316) |
+| 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 | ✓ done (7ce3412, cbadb59) |
+| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | pending |
+| 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 | pending |
 
 ## Accumulated Context
 
@@ -58,6 +58,11 @@ Progress: [██▌░░░░░░░] 25%
 - [v2.3 Plan 17-01]: startStep/endStep son no-op si el lock no existe — defensa contra race con releaseLock
 - [v2.3 Plan 17-01]: endStep itera backwards (LIFO) para resolver retries concurrentes en orden
 - [v2.3 Plan 17-01]: Sin Winston/logger en startStep/endStep para no inflar logs (se logea sólo en sites de error del caller)
+- [v2.3 Plan 17-02]: operations-routes.js es thin pass-through — OperationManager es dueño de la shape, el route handler no transforma
+- [v2.3 Plan 17-02]: Task 1 commit como `docs(17-02)` (no `feat`) — runtime path byte-equivalent, sólo JSDoc/comments cambian
+- [v2.3 Plan 17-02]: Bug fix de schedule.html:589 (operations.find on a map) NO se hace acá — pertenece a Plan 17-04 con el card UI
+- [v2.3 Plan 17-02]: Test de Array.isArray===false + Object.keys es regression guard explícito contra el patrón del bug schedule.html:589 a nivel API
+- [v2.3 Plan 17-02]: SSE endpoint (/:operationId/stream) byte-identical post-edit — verificado por 3 tests SSE supervivientes
 
 ### Pending Todos
 
@@ -73,6 +78,6 @@ Progress: [██▌░░░░░░░] 25%
 
 ## Session Continuity
 
-Last session: 2026-04-27T18:52:18Z
-Stopped at: Phase 17 Plan 01 complete (OperationManager stepProgress foundation)
-Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-02-PLAN.md
+Last session: 2026-04-27T19:01:54Z
+Stopped at: Phase 17 Plan 02 complete (operations-routes.js wire shape locked)
+Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-03-PLAN.md
