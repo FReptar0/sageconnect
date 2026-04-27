@@ -2,8 +2,25 @@
  * Operations Routes
  *
  * 2 endpoints for operation monitoring:
- * - GET /status              : View all currently running operations
+ * - GET /status              : View all currently running operations (with per-step progress)
  * - GET /:operationId/stream : SSE endpoint for real-time progress events
+ *
+ * GET /status response shape (Phase 17 — OBS-04):
+ *   {
+ *     success: true,
+ *     data: {
+ *       operations: {
+ *         [operationType]: {
+ *           operationId: string,
+ *           startedAt:   string (ISO),
+ *           stepProgress: Array<{ step, tenant, startedAt, finishedAt, error }>
+ *         }
+ *       }
+ *     },
+ *     ...
+ *   }
+ * Note: `operations` is a MAP keyed by operationType (NOT an array). UI consumers
+ *       must use `operations[type]` or `Object.values(operations)`, never `.find()`.
  *
  * The SSE endpoint subscribes to OperationManager progress events
  * and streams them to connected clients. Cleanup occurs on disconnect.
@@ -16,6 +33,8 @@ const operationManager = require('../services/OperationManager');
 
 // ---------------------------------------------------------------------------
 // GET /status (maps to GET /api/operations/status)
+// Returns running operations (map keyed by operationType) with stepProgress.
+// stepProgress shape is owned by OperationManager.startStep / endStep (Phase 17).
 // ---------------------------------------------------------------------------
 router.get('/status', (_req, res) => {
     const operations = operationManager.getRunningOperations();
