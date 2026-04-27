@@ -291,6 +291,48 @@ function formatDateTime(isoString) {
 }
 
 /**
+ * Formats an ISO timestamp as a Spanish relative time string.
+ * Examples: 'hace 45s', 'hace 4m 12s', 'hace 2h 15m', 'hace 3d 4h'.
+ * Returns 'No disponible' on invalid input.
+ *
+ * Used by Phase 17 'Operación en curso' card and heartbeat refresh ticker.
+ * @param {string} isoString
+ * @returns {string}
+ */
+function formatRelative(isoString) {
+    if (!isoString) return 'No disponible';
+    try {
+        const past = new Date(isoString).getTime();
+        if (Number.isNaN(past)) return 'No disponible';
+        const diffMs = Date.now() - past;
+        if (diffMs < 0) return 'en el futuro';
+
+        const totalSeconds = Math.floor(diffMs / 1000);
+        if (totalSeconds < 60) {
+            return 'hace ' + totalSeconds + 's';
+        }
+
+        const totalMinutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        if (totalMinutes < 60) {
+            return 'hace ' + totalMinutes + 'm ' + seconds + 's';
+        }
+
+        const totalHours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (totalHours < 24) {
+            return 'hace ' + totalHours + 'h ' + minutes + 'm';
+        }
+
+        const totalDays = Math.floor(totalHours / 24);
+        const hours = totalHours % 24;
+        return 'hace ' + totalDays + 'd ' + hours + 'h';
+    } catch {
+        return 'No disponible';
+    }
+}
+
+/**
  * Formats a number as MXN currency.
  * @param {number} amount
  * @returns {string}
