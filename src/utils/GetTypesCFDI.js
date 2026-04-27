@@ -80,7 +80,7 @@ async function getTypeP(index) {
 
             const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
             try {
-                const rfcResult = await runQuery(rfcQuery);
+                const rfcResult = await runQuery(rfcQuery, 'FESA');
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
@@ -144,7 +144,7 @@ async function getTypeI(index) {
         for (const item of response.data.items) {
             const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
             try {
-                const rfcResult = await runQuery(rfcQuery);
+                const rfcResult = await runQuery(rfcQuery, 'FESA');
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
                     logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
@@ -236,7 +236,7 @@ async function getTypeIToSend(index) {
                    AND VALOR     = '${rfc}';
             `;
             try {
-                const rfcResult = await runQuery(rfcQuery);
+                const rfcResult = await runQuery(rfcQuery, 'FESA');
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
                     logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
@@ -336,7 +336,7 @@ async function getTypeE(index) {
                    AND VALOR     = '${item.cfdi.receptor.rfc}';
             `;
             try {
-                const rfcResult = await runQuery(rfcQuery);
+                const rfcResult = await runQuery(rfcQuery, 'FESA');
                 if (rfcResult.recordset[0].NREG === 0) {
                     console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
                     logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
