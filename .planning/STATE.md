@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
-status: context-gathered
-stopped_at: Phase 17 context gathered
+status: ready-to-execute
+stopped_at: Phase 17 planned (4 plans, 3 waves)
 last_updated: "2026-04-27T00:00:00.000Z"
-last_activity: 2026-04-27 — Phase 17 CONTEXT.md (Observability & Diagnostics) gathered — 4 áreas decididas
+last_activity: 2026-04-27 — Phase 17 PLAN.md × 4 created (verified, plan-checker passed)
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 4
   completed_plans: 0
   percent: 0
 ---
@@ -25,12 +25,21 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 
 ## Current Position
 
-Phase: 17 — Observability & Diagnostics (context gathered)
-Plan: —
-Status: Ready for /gsd-plan-phase 17
-Last activity: 2026-04-27 — CONTEXT.md generated with 13 implementation decisions
+Phase: 17 — Observability & Diagnostics (planned)
+Plan: 4 plans in 3 waves (17-01, 17-02, 17-03, 17-04)
+Status: Ready for /gsd-execute-phase 17
+Last activity: 2026-04-27 — Plans verified by gsd-plan-checker (1 revision iteration)
 
 Progress: [░░░░░░░░░░] 0%
+
+### Phase 17 Plan Layout
+
+| Wave | Plan | Files | Autonomous | Reqs |
+|------|------|-------|------------|------|
+| 1 | 17-01 | OperationManager.js + tests | yes | OBS-03 |
+| 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 |
+| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 |
+| 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 |
 
 ## Accumulated Context
 
