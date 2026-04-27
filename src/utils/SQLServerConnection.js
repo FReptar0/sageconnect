@@ -38,21 +38,20 @@ function getPool() {
 
 /**
  * Execute a SQL query using the singleton pool.
- * Signature is identical to the previous implementation for backward compatibility.
+ *
+ * Always prepends `USE [database]` so each request runs in a clean context.
+ * Pool connections retain their `USE` state across requests, so skipping the
+ * prefix when `database === config.database.database` would silently leak the
+ * previous request's context into the next one.
  *
  * @param {string} query - SQL query to execute
- * @param {string} database - Target database (defaults to config default, typically 'FESA')
+ * @param {string} database - Target database (defaults to config default)
  * @returns {Promise<object>} mssql query result
  */
-async function runQuery(query, database = 'FESA') {
+async function runQuery(query, database = config.database.database) {
     const pool = await getPool();
     const request = pool.request();
-
-    // If targeting a non-default database, prepend USE [database] to run as a single batch
-    const fullQuery = database !== config.database.database
-        ? `USE [${database}]; ${query}`
-        : query;
-
+    const fullQuery = `USE [${database}]; ${query}`;
     return request.query(fullQuery);
 }
 

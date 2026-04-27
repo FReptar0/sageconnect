@@ -75,7 +75,7 @@ describe('SQLServerConnection - Singleton Pool', () => {
         expect(mockConnectionPool).toHaveBeenCalledTimes(1);
     });
 
-    test('runQuery with non-default database prepends USE [database] to query', async () => {
+    test('runQuery with explicit non-default database prepends USE [database]', async () => {
         mockRequest.query.mockResolvedValue({ recordset: [] });
 
         await SQLServerConnection.runQuery('SELECT 1', 'COPDAT');
@@ -83,12 +83,30 @@ describe('SQLServerConnection - Singleton Pool', () => {
         expect(mockRequest.query).toHaveBeenCalledWith('USE [COPDAT]; SELECT 1');
     });
 
-    test('runQuery with default database does NOT prepend USE prefix', async () => {
+    test('runQuery with default database ALSO prepends USE — guarantees clean context per call', async () => {
+        // Pool connections in mssql/tedious retain their USE [DB] state across requests.
+        // Skipping the prefix when database matches the config default would leak the
+        // previous request's context. The fix: always prepend USE.
         mockRequest.query.mockResolvedValue({ recordset: [] });
 
         await SQLServerConnection.runQuery('SELECT 1');
 
-        expect(mockRequest.query).toHaveBeenCalledWith('SELECT 1');
+        expect(mockRequest.query).toHaveBeenCalledWith('USE [FESA]; SELECT 1');
+    });
+
+    test('regression: pool context does not leak across calls (FESA -> COPDAT both prepend USE)', async () => {
+        // This is the exact production failure mode. With the old code:
+        //   1. runQuery(sql, 'FESA') prepended USE [FESA] -> connection sat in FESA
+        //   2. runQuery(sql, 'COPDAT') skipped USE (matched config default) -> ran in FESA
+        //      -> "Invalid object name 'dbo.APBTA'"
+        // The fix: every call prepends USE, so connection state is irrelevant.
+        mockRequest.query.mockResolvedValue({ recordset: [] });
+
+        await SQLServerConnection.runQuery('SELECT a FROM fesa.dbo.x', 'FESA');
+        await SQLServerConnection.runQuery('SELECT b FROM dbo.APBTA', 'COPDAT');
+
+        expect(mockRequest.query).toHaveBeenNthCalledWith(1, 'USE [FESA]; SELECT a FROM fesa.dbo.x');
+        expect(mockRequest.query).toHaveBeenNthCalledWith(2, 'USE [COPDAT]; SELECT b FROM dbo.APBTA');
     });
 
     test('pool.on error listener is attached during pool creation', async () => {
@@ -112,20 +130,19 @@ describe('SQLServerConnection - Singleton Pool', () => {
         expect(mockConnectionPool).toHaveBeenCalledTimes(2);
     });
 
-    test('runQuery signature accepts (query, database="FESA") -- backward compatible', async () => {
+    test('runQuery default param resolves to config.database.database (not literal "FESA")', async () => {
         mockRequest.query.mockResolvedValue({ recordset: [{ id: 1 }] });
 
-        // Call with explicit default
+        // Call with explicit FESA -- prepends USE [FESA]
         const result1 = await SQLServerConnection.runQuery('SELECT 1', 'FESA');
-        expect(mockRequest.query).toHaveBeenCalledWith('SELECT 1');
+        expect(mockRequest.query).toHaveBeenCalledWith('USE [FESA]; SELECT 1');
 
         mockRequest.query.mockClear();
 
-        // Call with no database (defaults to 'FESA')
+        // Call with no database -- defaults to config.database.database (FESA in mock)
         const result2 = await SQLServerConnection.runQuery('SELECT 2');
-        expect(mockRequest.query).toHaveBeenCalledWith('SELECT 2');
+        expect(mockRequest.query).toHaveBeenCalledWith('USE [FESA]; SELECT 2');
 
-        // Both should return results
         expect(result1).toEqual({ recordset: [{ id: 1 }] });
         expect(result2).toEqual({ recordset: [{ id: 1 }] });
     });
