@@ -43,6 +43,8 @@ const mockOperationManager = {
     releaseLock: jest.fn(),
     addHistory: jest.fn(),
     emitProgress: jest.fn(),
+    startStep: jest.fn(),
+    endStep: jest.fn(),
 };
 jest.mock('../../src/services/OperationManager', () => mockOperationManager);
 
@@ -242,6 +244,51 @@ describe('CronScheduler', () => {
 
             const status = CronScheduler.getSchedulerStatus();
             expect(status.lastRun).not.toBeNull();
+        });
+
+        test('wraps startChildProcess with operationManager.startStep + endStep (Phase 17 D-12)', async () => {
+            await cronCallback();
+
+            // startStep called BEFORE startChildProcess await with tenant=null
+            expect(mockOperationManager.startStep).toHaveBeenCalledWith('background-cycle', 'startChildProcess', null);
+
+            // endStep called AFTER startChildProcess (in finally) with error: null on success path
+            expect(mockOperationManager.endStep).toHaveBeenCalledWith(
+                'background-cycle',
+                'startChildProcess',
+                null,
+                { error: null }
+            );
+
+            // Order: startStep happens before endStep
+            const startCallOrder = mockOperationManager.startStep.mock.invocationCallOrder[0];
+            const endCallOrder = mockOperationManager.endStep.mock.invocationCallOrder[0];
+            expect(startCallOrder).toBeLessThan(endCallOrder);
+
+            // forResponse is NOT wrapped with startStep here — it self-instruments inside background.js
+            expect(mockOperationManager.startStep).not.toHaveBeenCalledWith(
+                'background-cycle',
+                expect.stringMatching(/forResponse|buildProviders|downloadCFDI/),
+                expect.anything()
+            );
+        });
+
+        test('endStep receives error message when startChildProcess rejects (Phase 17 D-12)', async () => {
+            mockStartChildProcess.mockRejectedValueOnce(new Error('child-process-test-error'));
+
+            await cronCallback();
+
+            // endStep should still fire from finally, with the error captured
+            expect(mockOperationManager.endStep).toHaveBeenCalledWith(
+                'background-cycle',
+                'startChildProcess',
+                null,
+                { error: 'child-process-test-error' }
+            );
+
+            // Outer history.success should be false (verifies re-throw reached the outer catch)
+            const historyCall = mockOperationManager.addHistory.mock.calls[mockOperationManager.addHistory.mock.calls.length - 1];
+            expect(historyCall[0].success).toBe(false);
         });
     });
 });
