@@ -17,7 +17,7 @@ const MAX_HISTORY = 100;
 class OperationManager extends EventEmitter {
     constructor() {
         super();
-        /** @type {Map<string, { operationId: string, startedAt: string }>} */
+        /** @type {Map<string, { operationId: string, startedAt: string, stepProgress: Array<{ step: string, tenant: string|null, startedAt: string, finishedAt: string|null, error: string|null }> }>} */
         this.locks = new Map();
         /** @type {Array<Object>} */
         this.history = [];
@@ -47,17 +47,64 @@ class OperationManager extends EventEmitter {
         this.locks.set(operationType, {
             operationId,
             startedAt: new Date().toISOString(),
+            stepProgress: [],
         });
 
         return true;
     }
 
     /**
-     * Release a per-operation-type lock.
+     * Release a per-operation-type lock. Discards stepProgress (volatile by design — see Phase 17 D-01).
      * @param {string} operationType
      */
     releaseLock(operationType) {
         this.locks.delete(operationType);
+    }
+
+    /**
+     * Start tracking a step within an active operation lock.
+     * Appends a new stepProgress entry { step, tenant, startedAt, finishedAt: null, error: null }
+     * to the lock slot's stepProgress array. No-op if the lock does not exist
+     * (defends against race conditions where releaseLock has already cleared the slot).
+     *
+     * @param {string} operationType - e.g. 'background-cycle'
+     * @param {string} step          - e.g. 'downloadCFDI', 'startChildProcess'
+     * @param {string|null} tenant   - tenant id, or null for global steps
+     */
+    startStep(operationType, step, tenant) {
+        const slot = this.locks.get(operationType);
+        if (!slot) return;
+        slot.stepProgress.push({
+            step,
+            tenant: tenant ?? null,
+            startedAt: new Date().toISOString(),
+            finishedAt: null,
+            error: null,
+        });
+    }
+
+    /**
+     * Mark the most recent open stepProgress entry (matching step+tenant with finishedAt === null)
+     * as completed. Sets finishedAt to current ISO timestamp and stores optional error message.
+     * No-op if lock missing or no matching open entry is found.
+     *
+     * @param {string} operationType - e.g. 'background-cycle'
+     * @param {string} step          - step name passed to startStep
+     * @param {string|null} tenant   - tenant id (must match the startStep call), or null for global
+     * @param {{ error?: string|null }} [opts]
+     */
+    endStep(operationType, step, tenant, { error = null } = {}) {
+        const slot = this.locks.get(operationType);
+        if (!slot) return;
+        const target = tenant ?? null;
+        for (let i = slot.stepProgress.length - 1; i >= 0; i--) {
+            const entry = slot.stepProgress[i];
+            if (entry.step === step && entry.tenant === target && entry.finishedAt === null) {
+                entry.finishedAt = new Date().toISOString();
+                entry.error = error ?? null;
+                return;
+            }
+        }
     }
 
     /**
@@ -83,8 +130,8 @@ class OperationManager extends EventEmitter {
     }
 
     /**
-     * Get all currently running (locked) operations.
-     * @returns {Object} key=operationType, value={ operationId, startedAt }
+     * Get all currently running (locked) operations, including stepProgress.
+     * @returns {Object} key=operationType, value={ operationId, startedAt, stepProgress: Array<{step, tenant, startedAt, finishedAt, error}> }
      */
     getRunningOperations() {
         return Object.fromEntries(this.locks);
