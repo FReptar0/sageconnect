@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
-status: in-progress
-stopped_at: Phase 17 Plan 03 complete; ready to execute Plan 04 (UI card + polling + schedule.html bug fix)
-last_updated: "2026-04-27T19:11:03Z"
-last_activity: 2026-04-27 — Plan 17-03 complete (background.js 7-step instrumentation + CronScheduler startChildProcess wrap; 17 cron-scheduler tests pass)
+status: completed-phase
+stopped_at: Phase 17 COMPLETE (4/4 plans done; 5/5 OBS requirements satisfied); ready to plan Phase 18 (Auto-release & Manual Override)
+last_updated: "2026-04-27T19:30:00Z"
+last_activity: 2026-04-27 — Plan 17-04 complete (UI card + 5s polling + 1s heartbeat + D-04 bug fix; manual verification PASSED via orchestrator)
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -21,25 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 Observability nearly complete (3/4 plans done; only UI card remains)
+**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 COMPLETE (4/4 plans, 5/5 OBS requirements); ready to plan Phase 18 (Recovery)
 
 ## Current Position
 
-Phase: 17 — Observability & Diagnostics (in-progress)
-Plan: 3/4 complete (17-01, 17-02, 17-03 done; 17-04 pending)
-Status: Ready to execute Plan 17-04 (UI card + polling + schedule.html bug fix)
-Last activity: 2026-04-27 — Plan 17-03 complete; 17 cron-scheduler tests pass; commits 4bfcc70 + 9b109f5 + 98d41f5
+Phase: 17 — Observability & Diagnostics (✓ COMPLETE)
+Plan: 4/4 complete (17-01, 17-02, 17-03, 17-04 all done)
+Status: Phase 17 done. Ready to plan Phase 18 (Auto-release & Manual Override)
+Last activity: 2026-04-27 — Plan 17-04 complete (UI card + 5s polling + 1s heartbeat + D-04 bug fix); manual verification PASSED via orchestrator; commits 53104ef + 831ee36 + 3d8b822
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ### Phase 17 Plan Layout
 
 | Wave | Plan | Files | Autonomous | Reqs | Status |
 |------|------|-------|------------|------|--------|
 | 1 | 17-01 | OperationManager.js + tests | yes | OBS-03 | ✓ done (4c1367d, a804422, 132a316) |
-| 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 | ✓ done (7ce3412, cbadb59) |
-| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | ✓ done (4bfcc70, 9b109f5, 98d41f5) |
-| 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 | pending |
+| 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 | ✓ done (7ce3412, cbadb59, 88423b8) |
+| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | ✓ done (4bfcc70, 9b109f5, 98d41f5, 6bc4b0a) |
+| 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 | ✓ done (53104ef, 831ee36, 3d8b822) — manual verification PASSED |
 
 ## Accumulated Context
 
@@ -68,6 +68,14 @@ Progress: [████████░░] 75%
 - [v2.3 Plan 17-03]: tenant=null literal (no 'global', no 'null' string) para startChildProcess — match con la wire shape locked en Plan 17-02
 - [v2.3 Plan 17-03]: Task 2 commit BEFORE Task 3 (production code antes que mock) — produce un broken-tests state visible en git como artefacto educativo de que la mock extension es REQUERIDA, no opcional
 - [v2.3 Plan 17-03]: Verification scripts (scripts/verify-bg-instrumentation.js, scripts/verify-cron-instrumentation.js) commitidos como regression guards permanentes (no throwaway), encoden el contrato estructural (exactamente 7 startStep/7 endStep en background.js, exactamente 1 en CronScheduler con tenant=null)
+- [v2.3 Plan 17-04]: Polling-first UI hydration — polling owns the card (5s, survives reload), SSE feeds only the existing timeline; never cross-wire. This separation is what makes mid-cycle reload work correctly (D-04 bug fix)
+- [v2.3 Plan 17-04]: Plan split Task 2 into 2a (static HTML + bug deletions) and 2b (dynamic JS + lifecycle wiring) per checker feedback — atomic verification of structural vs behavioral changes
+- [v2.3 Plan 17-04]: DOMContentLoaded runs an initial pollActiveOperation() before the 5s setInterval starts — single call site replaces the deleted `if (bgTask.status === 'running')` conditional, idempotent due to evtSource guard
+- [v2.3 Plan 17-04]: 1s heartbeat ticker re-derives active step from snapshot every tick (stateless + cheap); brief flash of '(completado)' between step transitions until next 5s poll is acceptable
+- [v2.3 Plan 17-04]: Network errors in pollActiveOperation are warned but DO NOT hide the card — leaves last good snapshot visible (transient blip should not flicker the operator's view)
+- [v2.3 Plan 17-04]: formatRelative declared as `function formatRelative(...)` (not arrow / const) to match hoisting + global-scope pattern of other shared.js helpers — file is loaded as `<script src>` tag, no module.exports
+- [v2.3 Plan 17-04]: Comment-stripped grep checks in scripts/verify-schedule-html-2b.js — when documentation references a removed buggy pattern (JSDoc explaining the fix), strip /* */ and // before structural negative checks to avoid false positives
+- [v2.3 Phase 17 COMPLETE]: All 5 OBS requirements (OBS-01 through OBS-05) implemented across 4 plans. All 13 D-XX decisions in 17-CONTEXT.md realized. Operator now has full visibility into lock state and step heartbeats — diagnostic foundation for the original "HTTP 409 permanente" bug investigation is in place.
 
 ### Pending Todos
 
@@ -83,6 +91,6 @@ Progress: [████████░░] 75%
 
 ## Session Continuity
 
-Last session: 2026-04-27T19:11:03Z
-Stopped at: Phase 17 Plan 03 complete (background.js + CronScheduler.js step instrumentation; runtime now populates the stepProgress wire shape Plan 17-02 locked)
-Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-04-PLAN.md (when written) — UI card + polling + schedule.html bug fix
+Last session: 2026-04-27T19:30:00Z
+Stopped at: Phase 17 COMPLETE (Plan 17-04 done; UI card + 5s polling + 1s heartbeat + D-04 bug fix + manual verification PASSED). All 5 OBS requirements satisfied.
+Resume file: TBD — Phase 18 (Auto-release & Manual Override) needs CONTEXT.md + plan files written. Next session should run `/gsd-discover-phase 18` or equivalent to begin Phase 18 planning.
