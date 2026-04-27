@@ -164,6 +164,32 @@
                         </div>
                     </div>
 
+                    <!-- Active Operation Card (Phase 17 — OBS-01, OBS-02) -->
+                    <div id="active-operation-card" class="card mb-4" style="display: none;">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-play-circle me-2"></i>Operación en curso</span>
+                            <span id="active-op-badge"></span>
+                        </div>
+                        <div class="card-body">
+                            <div id="active-op-summary" class="mb-2">
+                                <span class="text-muted">Operación:</span>
+                                <code id="active-op-type">background-cycle</code>
+                                <span class="text-muted ms-3">ID:</span>
+                                <code id="active-op-id" title="">—</code>
+                            </div>
+                            <div class="mb-1">
+                                <i class="fas fa-clock me-1 text-muted"></i>
+                                <span class="text-muted">Iniciada:</span>
+                                <span id="active-op-elapsed" title="">—</span>
+                            </div>
+                            <div id="active-op-step-line">
+                                <i class="fas fa-spinner fa-spin me-1 text-primary"></i>
+                                <span class="text-muted">Step actual:</span>
+                                <span id="active-op-step">Inicializando ciclo…</span>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Real-time Timeline Card -->
                     <div class="card mb-4">
                         <div class="card-header">
@@ -231,6 +257,7 @@
             createPurchaseOrders: 'Crear Ordenes de Compra',
             processOrderChanges: 'Procesar Cambios de Ordenes',
             closePurchaseOrders: 'Cerrar Ordenes de Compra',
+            startChildProcess: 'Importar CFDIs (proceso hijo)',
         };
 
         let evtSource = null;
@@ -274,11 +301,6 @@
                     if (bgTask) {
                         currentTask = bgTask;
                         renderScheduleStatus(bgTask);
-
-                        // Auto-detect running operations
-                        if (bgTask.status === 'running') {
-                            await detectRunningOperation();
-                        }
                     }
                 }
 
@@ -576,24 +598,6 @@
                     icon.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
                 }
             });
-        }
-
-        /* ====================================================================
-         * Auto-detect Running Operations
-         * ==================================================================== */
-
-        async function detectRunningOperation() {
-            try {
-                const res = await apiCall('GET', '/api/operations/status');
-                if (res.success && res.data && res.data.operations) {
-                    const bgOp = res.data.operations.find(op => op.taskId === 'background-cycle');
-                    if (bgOp && bgOp.operationId) {
-                        connectSSE(bgOp.operationId);
-                    }
-                }
-            } catch (err) {
-                console.error('Error detectando operaciones en curso:', err);
-            }
         }
 
         /* ====================================================================
