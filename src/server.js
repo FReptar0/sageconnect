@@ -26,10 +26,17 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'x-api-key'],
 }));
 
-// Global API rate limiter -- 200 requests per 15 minutes
+// Global API rate limiter -- 2000 requests per 15 minutes
+// Calibrated for the Phase 17 dashboard polling pattern:
+//   - GET /api/operations/status every 5s = 12/min = 180/window
+//   - GET /api/license/status periodic
+//   - Plus initial loads, dropdowns, manual nav, multiple tabs
+// Per-tab realistic usage is ~270/window, so 2000 leaves headroom for several
+// operator tabs while still serving as a guardrail against runaway clients.
+// The writeLimiter below (10/min) is the real abuse guard for state-changing endpoints.
 app.use('/api', rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 200,
+    limit: 2000,
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: {
