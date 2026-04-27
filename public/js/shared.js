@@ -50,6 +50,19 @@ function setTenantIndex(idx) {
  * ======================================================================== */
 
 /**
+ * Resolves the API key to send with same-origin requests.
+ * Priority: server-injected <meta name="x-app-key"> > localStorage fallback.
+ * Returns null if neither is present.
+ * @returns {string|null}
+ */
+function resolveApiKey() {
+    const meta = document.querySelector('meta[name="x-app-key"]');
+    const fromMeta = meta && meta.getAttribute('content');
+    if (fromMeta) return fromMeta;
+    return localStorage.getItem(API_KEY_STORAGE);
+}
+
+/**
  * Performs an API call with standard headers and optional API key.
  * @param {string} method - HTTP method (GET, POST, PUT, etc.)
  * @param {string} path   - URL path (e.g. '/api/payments/reconcile')
@@ -62,7 +75,7 @@ async function apiCall(method, path, body = null) {
         'Accept': 'application/json; charset=utf-8',
     };
 
-    const apiKey = localStorage.getItem(API_KEY_STORAGE);
+    const apiKey = resolveApiKey();
     if (apiKey) {
         headers['x-api-key'] = apiKey;
     }

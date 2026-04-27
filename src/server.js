@@ -1,9 +1,11 @@
+const fs = require('fs');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const { rateLimit } = require('express-rate-limit');
 const { logGenerator } = require('./utils/LogGenerator');
 const { errorResult } = require('./utils/ResultEnvelope');
+const config = require('./config');
 
 /**
  * SageConnect Web Server
@@ -103,12 +105,45 @@ app.use('/js', express.static(process.cwd() + '/public/js'));
 
 // ---------------------------------------------------------------------------
 // Clean URL routes for operational pages
+//
+// HTML pages are served with a server-injected <meta name="x-app-key"> tag
+// so the dashboard JS can authenticate same-origin API calls without the
+// operator needing to configure anything in the browser.
 // ---------------------------------------------------------------------------
 
-app.get('/schedule.html', (_req, res) => res.sendFile(process.cwd() + '/public/schedule.html'));
-app.get('/payments.html', (_req, res) => res.sendFile(process.cwd() + '/public/payments.html'));
-app.get('/pos.html', (_req, res) => res.sendFile(process.cwd() + '/public/pos.html'));
-app.get('/logs.html', (_req, res) => res.sendFile(process.cwd() + '/public/logs.html'));
+function escapeAttr(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function serveHtmlWithKey(relativePath) {
+    return (_req, res) => {
+        const filePath = process.cwd() + '/public/' + relativePath;
+        let html;
+        try {
+            html = fs.readFileSync(filePath, 'utf8');
+        } catch (err) {
+            return res.status(500).send('Failed to read page: ' + err.message);
+        }
+
+        const key = config.security.apiKey || '';
+        if (key && html.includes('</head>')) {
+            const meta = `<meta name="x-app-key" content="${escapeAttr(key)}">`;
+            html = html.replace('</head>', `    ${meta}\n</head>`);
+        }
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(html);
+    };
+}
+
+app.get('/schedule.html', serveHtmlWithKey('schedule.html'));
+app.get('/payments.html', serveHtmlWithKey('payments.html'));
+app.get('/pos.html', serveHtmlWithKey('pos.html'));
+app.get('/logs.html', serveHtmlWithKey('logs.html'));
 
 // ---------------------------------------------------------------------------
 // Routes
@@ -170,4 +205,6 @@ module.exports = {
     app,
     startServer,
     writeLimiter,
+    serveHtmlWithKey,
+    escapeAttr,
 };
