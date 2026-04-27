@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
 status: in-progress
-stopped_at: Phase 17 Plan 02 complete; ready to execute Plan 03 (background.js + CronScheduler.js instrumentation)
-last_updated: "2026-04-27T19:01:54Z"
-last_activity: 2026-04-27 — Plan 17-02 complete (operations-routes.js wire shape locked; 8 integration tests pass)
+stopped_at: Phase 17 Plan 03 complete; ready to execute Plan 04 (UI card + polling + schedule.html bug fix)
+last_updated: "2026-04-27T19:11:03Z"
+last_activity: 2026-04-27 — Plan 17-03 complete (background.js 7-step instrumentation + CronScheduler startChildProcess wrap; 17 cron-scheduler tests pass)
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 4
-  completed_plans: 2
-  percent: 50
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 Observability in progress (2/4 plans done)
+**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 Observability nearly complete (3/4 plans done; only UI card remains)
 
 ## Current Position
 
 Phase: 17 — Observability & Diagnostics (in-progress)
-Plan: 2/4 complete (17-01, 17-02 done; 17-03, 17-04 pending)
-Status: Ready to execute Plan 17-03 (background.js + CronScheduler.js instrumentation)
-Last activity: 2026-04-27 — Plan 17-02 complete; 8 operations-routes tests pass; commits 7ce3412 + cbadb59
+Plan: 3/4 complete (17-01, 17-02, 17-03 done; 17-04 pending)
+Status: Ready to execute Plan 17-04 (UI card + polling + schedule.html bug fix)
+Last activity: 2026-04-27 — Plan 17-03 complete; 17 cron-scheduler tests pass; commits 4bfcc70 + 9b109f5 + 98d41f5
 
-Progress: [█████░░░░░] 50%
+Progress: [████████░░] 75%
 
 ### Phase 17 Plan Layout
 
@@ -38,7 +38,7 @@ Progress: [█████░░░░░] 50%
 |------|------|-------|------------|------|--------|
 | 1 | 17-01 | OperationManager.js + tests | yes | OBS-03 | ✓ done (4c1367d, a804422, 132a316) |
 | 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 | ✓ done (7ce3412, cbadb59) |
-| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | pending |
+| 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | ✓ done (4bfcc70, 9b109f5, 98d41f5) |
 | 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 | pending |
 
 ## Accumulated Context
@@ -63,6 +63,11 @@ Progress: [█████░░░░░] 50%
 - [v2.3 Plan 17-02]: Bug fix de schedule.html:589 (operations.find on a map) NO se hace acá — pertenece a Plan 17-04 con el card UI
 - [v2.3 Plan 17-02]: Test de Array.isArray===false + Object.keys es regression guard explícito contra el patrón del bug schedule.html:589 a nivel API
 - [v2.3 Plan 17-02]: SSE endpoint (/:operationId/stream) byte-identical post-edit — verificado por 3 tests SSE supervivientes
+- [v2.3 Plan 17-03]: Block-scoped `{ const __step; let __stepError; try/catch/finally }` por step evita colisiones de const entre los 7 hermanos del mismo for-loop iteration
+- [v2.3 Plan 17-03]: Inner catch captura+re-throw es obligatorio (no try/finally puro) — el catch escribe el mensaje de error al stepProgress entry vía endStep, después re-throw para que el OUTER tenant catch maneje el continue
+- [v2.3 Plan 17-03]: tenant=null literal (no 'global', no 'null' string) para startChildProcess — match con la wire shape locked en Plan 17-02
+- [v2.3 Plan 17-03]: Task 2 commit BEFORE Task 3 (production code antes que mock) — produce un broken-tests state visible en git como artefacto educativo de que la mock extension es REQUERIDA, no opcional
+- [v2.3 Plan 17-03]: Verification scripts (scripts/verify-bg-instrumentation.js, scripts/verify-cron-instrumentation.js) commitidos como regression guards permanentes (no throwaway), encoden el contrato estructural (exactamente 7 startStep/7 endStep en background.js, exactamente 1 en CronScheduler con tenant=null)
 
 ### Pending Todos
 
@@ -78,6 +83,6 @@ Progress: [█████░░░░░] 50%
 
 ## Session Continuity
 
-Last session: 2026-04-27T19:01:54Z
-Stopped at: Phase 17 Plan 02 complete (operations-routes.js wire shape locked)
-Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-03-PLAN.md
+Last session: 2026-04-27T19:11:03Z
+Stopped at: Phase 17 Plan 03 complete (background.js + CronScheduler.js step instrumentation; runtime now populates the stepProgress wire shape Plan 17-02 locked)
+Resume file: .planning/milestones/v2.3-phases/17-observability-diagnostics/17-04-PLAN.md (when written) — UI card + polling + schedule.html bug fix

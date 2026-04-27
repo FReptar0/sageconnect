@@ -9,10 +9,10 @@
 ### Observability (OBS)
 
 - [ ] **OBS-01**: Operador puede ver en `schedule.html` qué locks están actualmente held, con `operationType`, `operationId`, y `startedAt` (hace cuánto).
-- [ ] **OBS-02**: Operador puede ver el último heartbeat timestamp por step del ciclo (buildProvidersXML, downloadCFDI, checkPayments, uploadPayments, createPurchaseOrders, processOrderChanges, closePurchaseOrders, startChildProcess).
+- [ ] **OBS-02**: Operador puede ver el último heartbeat timestamp por step del ciclo (buildProvidersXML, downloadCFDI, checkPayments, uploadPayments, createPurchaseOrders, processOrderChanges, closePurchaseOrders, startChildProcess). _(Backend instrumentation completado en Plan 17-03; UI surfacing pendiente en Plan 17-04)_
 - [x] **OBS-03**: `OperationManager.acquireLock` registra `stepProgress` (timestamps por step) accesibles vía `getRunningOperations()`. _(Completado en Plan 17-01)_
 - [x] **OBS-04**: Endpoint `GET /api/operations/status` retorna locks activos + `startedAt` + `stepProgress` para diagnóstico sin UI. _(Completado en Plan 17-02)_
-- [ ] **OBS-05**: Cada step de `forResponse` emite un evento de progreso con timestamp al `OperationManager` (reutiliza `emitProgress` existente pero persiste el último).
+- [x] **OBS-05**: Cada step de `forResponse` emite un evento de progreso con timestamp al `OperationManager` (reutiliza `emitProgress` existente pero persiste el último). _(Completado en Plan 17-03)_
 
 ### Recovery (REC)
 
@@ -34,10 +34,10 @@
 | REQ-ID | Phase | Phase Name | Notes |
 |--------|-------|------------|-------|
 | OBS-01 | 17 | Observability & Diagnostics | UI card |
-| OBS-02 | 17 | Observability & Diagnostics | Step heartbeat UI |
+| OBS-02 | 17 | Observability & Diagnostics | Step heartbeat UI — backend instrumented in Plan 17-03 (4bfcc70 + 9b109f5); UI card pending in Plan 17-04 |
 | OBS-03 | 17 | Observability & Diagnostics | OperationManager extension — ✓ done (Plan 17-01, commits 4c1367d + a804422) |
 | OBS-04 | 17 | Observability & Diagnostics | API endpoint — ✓ done (Plan 17-02, commits 7ce3412 + cbadb59) |
-| OBS-05 | 17 | Observability & Diagnostics | background.js instrumentation |
+| OBS-05 | 17 | Observability & Diagnostics | background.js instrumentation — ✓ done (Plan 17-03, commits 4bfcc70 + 9b109f5 + 98d41f5) |
 | REC-01 | 18 | Auto-release & Manual Override | Auto-timeout |
 | REC-02 | 18 | Auto-release & Manual Override | Audit log + email |
 | REC-03 | 18 | Auto-release & Manual Override | UI button |
