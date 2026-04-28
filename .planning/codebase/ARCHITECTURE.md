@@ -1,6 +1,6 @@
 # Architecture
 
-**Analysis Date:** 2026-03-12
+**Analysis Date:** 2026-03-12 (initial), updated 2026-04-27 (always-on patterns from Phase 17 hotfix cascade)
 
 ## Pattern Overview
 
@@ -123,6 +123,50 @@
 - Examples: `src/services/LogDashboardService.js`
 - Pattern: Scan log directory → Parse lines → Return by log type → Serve via API
 
+## Always-On Patterns (added 2026-04-27)
+
+The following patterns were introduced or hardened as part of the Phase 17 + hotfix cascade. They exist specifically to make the codebase safe under the **always-on regime** (process never exits between cycles, runs as Servy Windows service). Each one replaces a batch-era assumption that broke once the process stopped restarting. Full forensic context: `.planning/forensics/report-20260427-220000.md`.
+
+**Winston Logger Cache Pattern (PR #14):**
+- Purpose: Prevent FD leak from creating a new winston transport per `logGenerator()` call. Previously each call instantiated File transports without closing them, causing `EMFILE: too many open files` after enough cycles.
+- Files: `src/utils/LogGenerator.js`
+- Pattern: Module-scope `Map` keyed by `${date}|${fileName}` → first call constructs transport + caches → subsequent calls reuse cached logger → end-of-day key change naturally rotates → no manual close required.
+- Always-on motivation: Under batch mode, process exit reclaimed all FDs. Under always-on, only an explicit cache + reuse keeps FD count bounded.
+
+**Always-Prepend `USE [DB]` Pattern (PR #16):**
+- Purpose: Make pool-reused connections safe under multi-DB workloads. Previously `runQuery(query, db)` only emitted `USE [db]` conditionally; pool reuse retained the prior `USE` state and silently routed queries to the wrong DB (observed in prod when COPDAT/FESA both share the pool).
+- Files: `src/utils/SQLServerConnection.js`
+- Pattern: `runQuery(query, database = config.database.database)` → builds `USE [${database}]; ${query}` unconditionally → pool reuse cannot leak DB context across calls. Default resolves at call-time from `config.database.database`.
+- Caveat: Default-value change broke 7 callers that depended on literal `'FESA'` (PR #19 made all FESA-bound calls explicit). See "Implicit Defaults in Shared Helpers" in CONCERNS.md.
+- Always-on motivation: Under batch mode, the pool was effectively single-use per script invocation, so context state didn't matter. Under always-on, the singleton pool reuses connections across many cycles and many DB targets — explicit `USE` per call is the only reliable invariant.
+
+**Server-Side HTML Key Injection (PR #18):**
+- Purpose: Authenticate dashboard XHR calls without requiring operator action (no manual `localStorage.setItem`). The API key serves dual purpose — dashboard auth (`requireApiKey` middleware) AND license-server client identifier (`LicenseValidator.js`). Operators should never see or paste it.
+- Files: `src/server.js` (`serveHtmlWithKey()` factory + `escapeAttr()` helper), `public/js/shared.js` (`resolveApiKey()` reader). Wired routes: `/schedule.html`, `/payments.html`, `/pos.html`, `/logs.html`. Tests: `tests/api/html-key-injection.test.js`.
+- Pattern: Server reads requested HTML file → injects `<meta name="x-app-key" content="...">` before `</head>` with attribute escaping → client `apiCall()` reads via `resolveApiKey()` (meta-tag first, localStorage fallback) → `apiCall()` sends as `X-API-Key` header.
+- Security: `escapeAttr()` prevents HTML attribute injection; key is never logged; key never appears in URLs.
+- Always-on motivation: Under batch mode + manual scripts, an operator pasting the key was acceptable. Under always-on with operators interacting via dashboard, every additional manual step is an outage waiting to happen.
+
+**Polling + Heartbeat UI Pattern (Phase 17, Plan 17-04):**
+- Purpose: Keep dashboard "Operación en curso" card live and recoverable across page reload, even when SSE connection drops.
+- Files: `public/js/shared.js`, `public/schedule.html`
+- Pattern: Two cooperating tickers — (a) **5s `pollActiveOperation()`** owns the card snapshot, fetches `/api/operations/status`, survives reload by always re-hydrating from server state; (b) **1s heartbeat ticker** re-derives "active step" from the snapshot purely client-side (stateless, cheap), giving sub-second visual feedback between polls. SSE feeds only the existing timeline (it does NOT touch the card) — clean separation prevents D-04-style cross-wiring bugs.
+- Network resilience: `pollActiveOperation` errors log a warning but do NOT hide the card — last good snapshot stays visible (transient blip should not flicker).
+- Always-on motivation: Always-on means operators DO reload mid-cycle, DO leave tabs open for hours, DO see network blips; polling-as-source-of-truth is the only model that survives all three.
+
+**Read-Only Diagnostic Script Pattern (PR #15):**
+- Purpose: Investigate prod DB issues without write access via discrete `safeRun()` checks, where one failure doesn't abort the rest.
+- Files: `src/scripts/diagnose-sage-tables.js` (template). 8 checks: db existence, similar-name dbs, session context, INFORMATION_SCHEMA, HAS_PERMS_BY_NAME, table COUNT(*), schemas, name variants.
+- Pattern: Each check wrapped in `safeRun(label, fn)` → catches + logs error → continues to next → emits a single coherent report. Operator sees what worked AND what failed in one run.
+- Always-on motivation: This script class exists because there is no direct SQL access in prod (see `project_no_sql_access.md`). Every prod investigation must ship as a self-contained script that can be run by ops without SSMS.
+
+**Servy Log Rotation Pattern (PR #20):**
+- Purpose: Bound the size of active `servy-stdout` / `servy-stderr` files without breaking servy's open file handles.
+- Files: `scripts/Rotate-SageConnectLogs.ps1`
+- Pattern: PowerShell scheduled task → moves rotated files (`.YYYYMMDD_HHMMSS` suffix, no longer held by servy) → snapshots active files via `Copy-Item` → truncates active files via `Clear-Content` (preserves file handle). Active files MUST use `Clear-Content`; `Remove-Item` will fail and `>` redirection can break the handle.
+- Archive target: `C:\Logs\sageconnect\servy\YYYY-MM-DD\` (separate disk from `E:\sageconnect-dist\`). Retention: 30 days default.
+- Always-on motivation: Under batch mode, restart cleared the log file. Under always-on, servy's open handle prevents both rotation and deletion through normal means — `Clear-Content` is the only safe truncation.
+
 ## Entry Points
 
 **Web Server Entry:**
@@ -186,16 +230,21 @@
 
 ## Cross-Cutting Concerns
 
-**Logging:** Winston-based file logging to `logs/sageconnect/YYYY-MM-DD/[LogType].log`; also console output for debugging. LogGenerator utility called throughout codebase.
+**Logging:** Winston-based file logging to `logs/sageconnect/YYYY-MM-DD/[LogType].log` (per-app, per-date). LogGenerator caches transports by `${date}|${fileName}` to bound FD usage under always-on (see "Winston Logger Cache Pattern" above). Servy's stdout/stderr written to `E:\sageconnect-dist\logs\` in prod, rotated daily to `C:\Logs\sageconnect\servy\YYYY-MM-DD\`.
 
 **Validation:** Joi schemas in `src/models/PurchaseOrder.js` for external purchase order API requests (addresses, line items, taxes, metadata).
 
-**Authentication:** Static tenant credentials via environment variables (API_KEY, API_SECRET); passed as headers to FocalTec API calls.
+**Authentication:**
+- *FocalTec Portal API:* per-tenant `API_KEY` + `API_SECRET` via env, passed as headers from controllers.
+- *Dashboard (operator-facing) API:* `SAGECONNECT_API_KEY` enforced by `requireApiKey` middleware on `/api/*` routes. Browser receives the key via server-side `<meta name="x-app-key">` injection (no operator paste required) — see "Server-Side HTML Key Injection" above.
+- *License server:* same `SAGECONNECT_API_KEY` doubles as license-client identifier (`LicenseValidator.js` sends it to the Vercel license endpoint). Single key, dual purpose — never expose in client-facing UI/docs.
 
 **Multi-tenancy:** Tenant index passed through entire call stack (forResponse → controllers → services → utilities) to ensure data isolation.
 
 **Graceful Shutdown:** Handled via SIGTERM/SIGINT signals in server; AutoShutdownService provides web-only mode timeout for preventing process conflicts.
 
+**Always-On Runtime:** Service runs as `SageConnect` Windows service via Servy (`servy-cli`). Process never exits between cron cycles (default `*/15 * * * *`) — every primitive that retains state must explicitly bound its lifetime (FD cache, pool reuse, listener cleanup, log rotation). New code must be reviewed under "would this work if I never restarted?" lens.
+
 ---
 
-*Architecture analysis: 2026-03-12*
+*Architecture analysis: 2026-03-12 (initial), updated 2026-04-27 (always-on patterns)*

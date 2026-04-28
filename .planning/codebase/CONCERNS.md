@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-12
+**Analysis Date:** 2026-03-12 (initial), updated 2026-04-27 (post-Phase 17 hotfix cascade)
 
 ## Tech Debt
 
@@ -16,15 +16,12 @@
 - Impact: Attackers could exploit these injection points to extract sensitive data, modify database records, or escalate privileges if malicious data enters these functions (e.g., via API responses, file uploads).
 - Fix approach: Replace all direct string interpolation with parameterized queries using mssql's prepared statements or use `pool.request().input()` method instead of template literals.
 
-**Database Connection Pooling Issues:**
-- Issue: `SQLServerConnection.js` creates a new connection pool for every query execution and immediately closes it, defeating the purpose of connection pooling. This creates significant overhead.
-- Files: `src/utils/SQLServerConnection.js` (lines 14-26)
-- Impact:
-  - Performance degradation from constant connection create/destroy cycles
-  - Potential exhaustion of database connections under load
-  - Increased latency for database operations
-  - Wasted resources for repeated authentication
-- Fix approach: Implement a singleton connection pool pattern that is created once and reused across the application. Consider using `mssql` with pre-configured pool settings.
+**Database Connection Pooling Issues:** *(partially resolved 2026-04-27 by PR #16 — singleton pool + always-prepend `USE [DB]`)*
+- Original issue: `SQLServerConnection.js` created a new connection pool per query and closed it immediately, defeating pooling.
+- Resolution status: Singleton pool implemented; `runQuery` now always prepends `USE [database]` so pool reuse cannot leak DB context (prod regression observed where session retained `USE [FESA]` then queries against COPDAT failed silently). Default DB now resolves at runtime from `config.database.database`.
+- Remaining gap: No retry logic for transient connection failures (see "Missing Connection Error Handling" below). No bounded pool size override (uses mssql defaults — see "Database Connection Limits" under Scaling).
+- Files: `src/utils/SQLServerConnection.js`, `tests/SQLServerConnection.test.js`
+- Lessons captured: see "Implicit Defaults in Shared Helpers" tech-debt entry below — PR #16 changed the `database` default and broke 7 callers (PR #19 follow-up).
 
 **Missing TODO Items:**
 - Issue: 3 TODO comments indicate unfinished functionality related to metadata value handling in purchase order creation
@@ -56,6 +53,40 @@
 - Files: `src/background.js` (line 21), `src/controller/PortalOC_LifecycleManager.js` (line 6), and many others
 - Impact: Cannot easily switch between development/staging/production credentials without code changes. Deployment flexibility limited.
 - Fix approach: Use a single centralized configuration loader that reads from environment variable to determine which credentials file to load.
+
+### Always-On Cutover Debt (added 2026-04-27)
+
+The v2.0 Servy cutover (Phase 10) was a mechanical wrap of the existing batch-mode Node process; the *implications* of going from "exits each cycle" to "runs forever" were never audited. Phase 17's deploy day surfaced 5 latent bugs in 1h56m. See `.planning/forensics/report-20260427-220000.md` for full analysis. Remaining debt items below.
+
+**Always-On Assumption Gap:**
+- Issue: Several primitives across the codebase still assume the process exits between cycles (FD reclamation, pool short-lifetime, occasional API calls, no operator interaction). Phase 17 patched the worst symptoms but other always-on assumptions likely remain in `setInterval`, `setTimeout`, EventEmitter listeners, child_process spawns, and any module that retains state in module scope.
+- Files: System-wide. Notable already-fixed examples: `src/utils/LogGenerator.js` (logger cache, PR #14), `src/utils/SQLServerConnection.js` (pool reuse, PR #16), `src/server.js` (rate limit, PR #17). Notable to-audit: `src/services/CronScheduler.js` (`node-cron` long-lived), `src/services/OperationManager.js` (Map state retained across cycles + EventEmitter listeners), `src/background.js` (child_process orchestration).
+- Impact: Each unaudited always-on assumption is a potential production incident waiting for the right trigger. Phase 18 touches `setTimeout` for stuck-lock auto-release — exactly the class of primitive that decays under always-on without explicit retention/cleanup.
+- Fix approach: Pre-Phase 18 — read `.planning/phases/<phase-18>/CONTEXT.md` through the lens "what assumes the process exits?" Write `always-on` as a first-class constraint into `CLAUDE.md` or `.planning/PROJECT.md` so future code reviews catch it. Long-term — add a soak-test harness (see "No Long-Running Soak Test" below).
+
+**Implicit Defaults in Shared Helpers:**
+- Issue: `runQuery(query, database = config.database.database)` is the cautionary tale. PR #16 changed the default *correctly in isolation*, but 7 callers had silently depended on the old literal `'FESA'` default. PR #19 fixed it by passing `'FESA'` explicitly to all 7 sites. The same pattern likely lives elsewhere — any function-with-default in a shared utility is a latent regression vector if the default ever changes.
+- Files: Audit needed across `src/utils/` and `src/services/`. Confirmed instances post-PR #19: `src/utils/GetTypesCFDI.js` (4 sites), `src/controller/CFDI_Downloader.js` (1 site), `src/controller/SagePaymentController.js` (2 sites) — all now explicit.
+- Impact: Hidden coupling — a "safe" default change in a shared helper can break N callers across N files without any compile-time signal. Tests caught one of the 7 cases (FESA test); the other 6 only manifested in production.
+- Fix approach: Long-term — consider making `database` a *required* parameter on `runQuery`, eliminating the default entirely. Verbose but eliminates the bug class. Short-term — when modifying any shared helper signature, grep for all call sites and verify intent of each.
+
+**No Long-Running Soak Test:**
+- Issue: There is no test class — local, CI, or staging — that runs the service for 30+ minutes under synthetic load (cron tick + dashboard polling) and asserts FD count stable, pool stats stable, memory stable, log size bounded. This is the test that would have caught EMFILE (PR #14), pool reuse (PR #16), and rate-limit exhaustion (PR #17) before deploy.
+- Files: `tests/` has only unit tests; no harness for the always-on regime.
+- Impact: Always-on regression class is invisible until production. Each future phase that touches long-running primitives is exposed.
+- Fix approach: Add a `tests/soak/` harness that boots the service, hits `/api/operations/status` every 5s for 30 min, fires a synthetic cron tick every 5 min, then asserts `lsof -p <pid>` count, `/api/operations/status` shape stability, log file growth bounded, and process RSS stable within ±20%.
+
+**Hardcoded Rate Limits:**
+- Issue: `src/server.js` has `windowMs` and `limit` literals (currently 15-min / 2000 req post-PR #17). Changing the polling cadence again requires a code commit + deploy, when the operational reality is this is a config-shaped concern.
+- Files: `src/server.js`
+- Impact: Operational tuning requires code changes; can't be hot-tuned in prod by editing `.env`. Likelihood of getting caught again with wrong number under load.
+- Fix approach: Move to `.env` as `RATE_LIMIT_WINDOW_MS` + `RATE_LIMIT_MAX`. Default to current values for backward compat.
+
+**Undocumented Always-On Constraint:**
+- Issue: Neither `CLAUDE.md` nor `.planning/PROJECT.md` explicitly states "this service is always-on; assume the process never restarts when writing new code." Future developers (human or LLM) will reintroduce batch-era assumptions because the constraint is implicit.
+- Files: `CLAUDE.md` (root), `.planning/PROJECT.md`, possibly `docs/ARCHITECTURE.md`
+- Impact: Re-forgetting the constraint guarantees re-experiencing the cascade.
+- Fix approach: Add a clearly labelled "Runtime Constraint: Always-On" section to PROJECT.md that lists the consequences (FD lifecycle, pool reuse, polling load, default-stability, etc.) and links to `.planning/forensics/report-20260427-220000.md` as the worked example.
 
 ## Known Bugs
 

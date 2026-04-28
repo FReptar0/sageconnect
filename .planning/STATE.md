@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: Scheduler Lock Recovery
 status: completed-phase
-stopped_at: Phase 17 COMPLETE (4/4 plans done; 5/5 OBS requirements satisfied); ready to plan Phase 18 (Auto-release & Manual Override)
-last_updated: "2026-04-27T19:30:00Z"
-last_activity: 2026-04-27 — Plan 17-04 complete (UI card + 5s polling + 1s heartbeat + D-04 bug fix; manual verification PASSED via orchestrator)
+stopped_at: Phase 17 COMPLETE + 5 prod hotfixes deployed (PRs #14, #16, #17, #18, #19); ready to plan Phase 18 after investigating "ciertos archivos no se procesan" report
+last_updated: "2026-04-27T22:00:00Z"
+last_activity: 2026-04-27 — Phase 17 deploy + hotfix cascade (1h56m firefight); forensics report written; pending file-processing investigation flagged by user
 progress:
   total_phases: 3
   completed_phases: 1
@@ -77,11 +77,28 @@ Progress: [██████████] 100%
 - [v2.3 Plan 17-04]: Comment-stripped grep checks in scripts/verify-schedule-html-2b.js — when documentation references a removed buggy pattern (JSDoc explaining the fix), strip /* */ and // before structural negative checks to avoid false positives
 - [v2.3 Phase 17 COMPLETE]: All 5 OBS requirements (OBS-01 through OBS-05) implemented across 4 plans. All 13 D-XX decisions in 17-CONTEXT.md realized. Operator now has full visibility into lock state and step heartbeats — diagnostic foundation for the original "HTTP 409 permanente" bug investigation is in place.
 
+### Recent Hotfixes (2026-04-27 deploy day)
+
+Phase 17 deployment exposed 5 latent always-on bugs that landed as hotfixes within ~2 hours. Full forensic analysis: `.planning/forensics/report-20260427-220000.md`.
+
+| PR | Time | Subsystem | Root cause |
+|----|------|-----------|------------|
+| #14 | 13:52 | LogGenerator (winston) | Logger transport not cached → FD leak → EMFILE under always-on |
+| #16 | 14:26 | SQLServerConnection | Pool reuse retained `USE [DB]` state across calls → cross-DB queries hit wrong DB |
+| #17 | 14:53 | server.js (rate limiter) | 200/15min budget exhausted by Phase 17's 5s dashboard polling |
+| #18 | 15:11 | server.js + shared.js | Dashboard had no way to send API key → all manual triggers 401'd; fixed via server-side `<meta name="x-app-key">` injection |
+| #19 | 15:34 | GetTypesCFDI/SagePaymentController/CFDI_Downloader | PR #16 default change broke 7 callers that had silently relied on literal `'FESA'` default |
+
+Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage DB diagnostic) + `scripts/Rotate-SageConnectLogs.ps1` (PR #20, daily servy log rotation to `C:\Logs\sageconnect\servy\`).
+
 ### Pending Todos
 
 - Fix uploadPayments 7-day lookback (PortalPaymentController.js:70) — prevents missed payments when auto-cycle skips a day
 - Support partial payment completion — handle incomplete uploads and split payments (multi-PY for same invoice)
-- Bug producción `EMFILE: too many open files` al servir `404.html` — file descriptor leak; abrir como nuevo phase/milestone (no en alcance v2.3)
+- ~~Investigate "ciertos archivos no se procesan"~~ (resolved 2026-04-27 — pipeline OK, reporte stale; ver `.planning/forensics/report-20260427-220000.md` y conversación de 2026-04-27)
+- ~~Decide: PR #20 stays as PowerShell script vs. inline scheduled task action~~ (resolved — kept as PS1 script, deployed 2026-04-28)
+- Audit always-on assumptions before Phase 18 starts (timer leaks in `setInterval`/`setTimeout`, callback retention in OperationManager)
+- **Refactor `scripts/obfuscate.js` allowlist → blocklist for `scripts/`** — current `COPY_AS_IS` requires manually adding each new file in `scripts/` to ship to prod (PR #20 was silently dropped from the dist by this until manual fix). Better model: copy everything in `scripts/` *except* what `EXCLUDED` lists. Eliminates "I merged but it didn't deploy" bug class.
 
 ### Blockers/Concerns
 
@@ -91,6 +108,6 @@ Progress: [██████████] 100%
 
 ## Session Continuity
 
-Last session: 2026-04-27T19:30:00Z
-Stopped at: Phase 17 COMPLETE (Plan 17-04 done; UI card + 5s polling + 1s heartbeat + D-04 bug fix + manual verification PASSED). All 5 OBS requirements satisfied.
-Resume file: TBD — Phase 18 (Auto-release & Manual Override) needs CONTEXT.md + plan files written. Next session should run `/gsd-discover-phase 18` or equivalent to begin Phase 18 planning.
+Last session: 2026-04-27T22:00:00Z
+Stopped at: Phase 17 deployed + 5 hotfixes shipped (#14, #16, #17, #18, #19) + log rotation script (#20). Forensics report written (`.planning/forensics/report-20260427-220000.md`). Documentation refresh complete (STATE/CONCERNS/ARCHITECTURE).
+Resume next: investigate "ciertos archivos no se procesan" report (user-flagged, symptoms TBD) BEFORE running `/gsd-discuss-phase 18`. Then proceed to Phase 18 (Auto-release & Manual Override) planning.
