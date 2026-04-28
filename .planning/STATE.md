@@ -108,6 +108,6 @@ Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage 
 
 ## Session Continuity
 
-Last session: 2026-04-27T22:00:00Z
-Stopped at: Phase 17 deployed + 5 hotfixes shipped (#14, #16, #17, #18, #19) + log rotation script (#20). Forensics report written (`.planning/forensics/report-20260427-220000.md`). Documentation refresh complete (STATE/CONCERNS/ARCHITECTURE).
-Resume next: investigate "ciertos archivos no se procesan" report (user-flagged, symptoms TBD) BEFORE running `/gsd-discuss-phase 18`. Then proceed to Phase 18 (Auto-release & Manual Override) planning.
+Last session: 2026-04-28T19:30:00Z
+Stopped at: PR #20 (Servy log rotation) deployed end-to-end + 2 follow-up hotfixes (obfuscate.js allowlist, rotation script filename format). "Ciertos archivos no se procesan" investigation closed: no bug, ~3 days waiting for Capstone authorization + ~6h of post-authorization in-our-pipeline delay from EMFILE bug cascade. Capstone confirmed orange column now populated. Real production impact documented in CONCERNS.md "Always-On Assumption Gap".
+Resume next: `/gsd-discuss-phase 18` — Auto-release & Manual Override. Before discussing, read planned phase scope through the lens "what assumes the process exits?" (timer leaks, callback retention in OperationManager `setTimeout` for stuck-lock auto-release).
