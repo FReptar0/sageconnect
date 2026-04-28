@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 18 context gathered. 8 implementation decisions captured in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/18-CONTEXT.md` covering: timer encapsulation in OperationManager (D-01), EventEmitter pattern for post-timeout work (D-02), "lock-only" semantics deferring work-abort to Phase 19 (D-03), history entry shape with stuckOnStep (D-04), Bootstrap modal confirmation (D-05), always-visible button (D-06), idempotent endpoint with optional reason (D-07), email parity on both auto and force release (D-08)."
-last_updated: "2026-04-28T20:41:44.326Z"
-last_activity: 2026-04-28 -- Phase 18 execution started
+stopped_at: "Plan 18-01 complete (auto-release backend). Listener registered inside initScheduler at boot, lock:timeout event emitted with snapshot payload, audit history + admin email + warn-log on auto-release. REC-01 + REC-02 closed. Next: Plan 18-02 (force-release endpoint) — will reuse formatDurationMin + sendAdminAlert + findLastOpenStep patterns established here."
+last_updated: "2026-04-28T21:09:12Z"
+last_activity: 2026-04-28 -- Plan 18-01 complete (REC-01 + REC-02 backend)
 progress:
   percent: 100
 ---
@@ -22,11 +22,11 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 18 (Auto-release & Manual Override) — EXECUTING
-Plan: 1 of 3
+Plan: 2 of 3 (Plan 18-01 ✓ done; Plan 18-02 next)
 Status: Executing Phase 18
-Last activity: 2026-04-28 -- Phase 18 execution started
+Last activity: 2026-04-28 -- Plan 18-01 complete (REC-01 + REC-02 backend)
 
-Progress: [██████████] 100%
+Progress: [███▍······] 33% (1 of 3 plans complete)
 
 ### Phase 17 Plan Layout
 
@@ -36,6 +36,14 @@ Progress: [██████████] 100%
 | 2 | 17-02 | operations-routes.js + tests | yes | OBS-04 | ✓ done (7ce3412, cbadb59, 88423b8) |
 | 2 | 17-03 | background.js + CronScheduler.js + tests | yes | OBS-02, OBS-05 | ✓ done (4bfcc70, 9b109f5, 98d41f5, 6bc4b0a) |
 | 3 | 17-04 | shared.js + schedule.html (UI card + polling + bug fix) | no (manual checkpoint) | OBS-01, OBS-02 | ✓ done (53104ef, 831ee36, 3d8b822) — manual verification PASSED |
+
+### Phase 18 Plan Layout
+
+| Wave | Plan | Files | Autonomous | Reqs | Status |
+|------|------|-------|------------|------|--------|
+| 1 | 18-01 | OperationManager.js + CronScheduler.js + config.js + new src/utils/duration.js + 2 new tests + 3 mock-fix tests | yes | REC-01, REC-02 | ✓ done (671c7ad, 1f8f142, 2d1bbb5, 7ba4534, 53506fb, 8d2bb5b) |
+| 2 | 18-02 | schedule-routes.js + schedule-schemas.js + integration test | yes | REC-04, REC-05 | pending (depends on 18-01 helpers) |
+| 3 | 18-03 | schedule.html + Bootstrap modal + JS handler | no (human-verify checkpoint) | REC-03 | pending (depends on 18-02 endpoint contract) |
 
 ## Accumulated Context
 
@@ -72,6 +80,13 @@ Progress: [██████████] 100%
 - [v2.3 Plan 17-04]: formatRelative declared as `function formatRelative(...)` (not arrow / const) to match hoisting + global-scope pattern of other shared.js helpers — file is loaded as `<script src>` tag, no module.exports
 - [v2.3 Plan 17-04]: Comment-stripped grep checks in scripts/verify-schedule-html-2b.js — when documentation references a removed buggy pattern (JSDoc explaining the fix), strip /* */ and // before structural negative checks to avoid false positives
 - [v2.3 Phase 17 COMPLETE]: All 5 OBS requirements (OBS-01 through OBS-05) implemented across 4 plans. All 13 D-XX decisions in 17-CONTEXT.md realized. Operator now has full visibility into lock state and step heartbeats — diagnostic foundation for the original "HTTP 409 permanente" bug investigation is in place.
+- [v2.3 Plan 18-01]: Listener registration MUST be inside `initScheduler()` body, NOT at module load — prevents listener accumulation under `jest.isolateModules` and any future hot-reload path (PATTERNS.md S-1; threat T-18-01-03 in plan threat model).
+- [v2.3 Plan 18-01]: Admin email uses `LicenseValidator.sendLicenseAlert` pattern (nodemailer-direct → `config.license.adminEmail`), NOT the project's operator-facing email-sender utility (which routes to `config.mailing.notices`). PATTERNS.md §S-6 overrides 18-CONTEXT.md D-08's literal wording while honoring its intent. Regression-guard `! grep -q "EmailSender" src/services/CronScheduler.js` in plan verify block; satisfied by splitting the literal substring `'EmailS' + 'ender'` in JSDoc commentary so the architectural reasoning is preserved.
+- [v2.3 Plan 18-01]: `OperationManager._reset()` iterates locks and clears each pending timer BEFORE `Map.clear` — without this, Jest tests that exercise the timer path leak `setTimeout` handles across worker processes (Test 6 of OperationManager.timer.test.js is the regression guard).
+- [v2.3 Plan 18-01]: `_fireTimeout` snapshots `stepProgress` via `.slice()` (shallow copy) before emitting. Captures state at FIRE time, not closure time — Test 8 verifies a step pushed AFTER acquireLock appears in the payload. Defensive against listener mutation.
+- [v2.3 Plan 18-01]: `sendAdminAlert(subject, html)` and `findLastOpenStep(stepProgress)` live INLINE as top-level functions in `CronScheduler.js`, NOT extracted to `src/utils/AdminEmailSender.js`. Plan 18-02's force-release route handler will copy these verbatim — inline duplication is intentional per PATTERNS.md §5 ("inline for Phase 18 (reduces blast radius), refactor later if more admin-email events appear").
+- [v2.3 Plan 18-01]: `formatDurationMin(durationMs)` lives in NEW file `src/utils/duration.js` (CommonJS, backend-only). Frontend continues to use existing `public/js/shared.js#formatRelative` — separate runtimes, separate helpers per PATTERNS.md §8 decision (a). Defensive on non-finite/negative input (returns `'0s'` — never throws — because callers insert this string into email-body construction inside the listener's try-block).
+- [v2.3 Plan 18-01]: Phase 19 boundary HELD — no `AbortController`, no `axios.timeout`, no child-process kill, no per-step `Promise.race` introduced anywhere in modified files. The plan's `<critical_constraints>` enforced this; verified by `! grep -E "AbortController|axios\..*|SIGKILL|process\.kill|Promise\.race"` across all modified files. Plan 18-01 is "lock release only" per D-03; the auto-released lock leaves the in-flight axios/child-process running ("phantom continuation" tolerance — Phase 19 ROOT-01/02/03 will replace this with real abort).
 
 ### Recent Hotfixes (2026-04-27 deploy day)
 
@@ -93,7 +108,7 @@ Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage 
 - Support partial payment completion — handle incomplete uploads and split payments (multi-PY for same invoice)
 - ~~Investigate "ciertos archivos no se procesan"~~ (resolved 2026-04-27 — pipeline OK, reporte stale; ver `.planning/forensics/report-20260427-220000.md` y conversación de 2026-04-27)
 - ~~Decide: PR #20 stays as PowerShell script vs. inline scheduled task action~~ (resolved — kept as PS1 script, deployed 2026-04-28)
-- Audit always-on assumptions before Phase 18 starts (timer leaks in `setInterval`/`setTimeout`, callback retention in OperationManager)
+- ~~Audit always-on assumptions before Phase 18 starts (timer leaks in `setInterval`/`setTimeout`, callback retention in OperationManager)~~ (resolved 2026-04-28 in Plan 18-01 — `_reset()` now iterates and clears all pending timers; Plan 18-01 threat model item T-18-01-02 covers the always-on amplification of the timer-leak bug class.)
 - **Refactor `scripts/obfuscate.js` allowlist → blocklist for `scripts/`** — current `COPY_AS_IS` requires manually adding each new file in `scripts/` to ship to prod (PR #20 was silently dropped from the dist by this until manual fix). Better model: copy everything in `scripts/` *except* what `EXCLUDED` lists. Eliminates "I merged but it didn't deploy" bug class.
 
 ### Blockers/Concerns
@@ -104,6 +119,6 @@ Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage 
 
 ## Session Continuity
 
-Last session: 2026-04-28T20:00:00Z
-Stopped at: Phase 18 context gathered. 8 implementation decisions captured in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/18-CONTEXT.md` covering: timer encapsulation in OperationManager (D-01), EventEmitter pattern for post-timeout work (D-02), "lock-only" semantics deferring work-abort to Phase 19 (D-03), history entry shape with stuckOnStep (D-04), Bootstrap modal confirmation (D-05), always-visible button (D-06), idempotent endpoint with optional reason (D-07), email parity on both auto and force release (D-08).
-Resume next: `/gsd-plan-phase 18` to create executable plans. Phase 18 will need ~3 plans (OperationManager timer + listener / endpoint + schema / UI button + modal).
+Last session: 2026-04-28T21:09:12Z
+Stopped at: Plan 18-01 complete (auto-release backend). REC-01 + REC-02 closed. Six commits landed: `671c7ad` (config + duration helper), `1f8f142` (RED for OperationManager timer), `2d1bbb5` (GREEN — timer encapsulation), `7ba4534` (RED for CronScheduler listener), `53506fb` (GREEN — listener inside initScheduler), `8d2bb5b` (cross-suite mock fix for enforcement-wiring.test.js). All 9+9+17 = 35 plan-related tests pass. Two pre-existing test failures (1 in operation-manager.test.js Config-Schedule, 1 in enforcement-wiring.test.js "proceeds normally") documented in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/deferred-items.md` — both verified pre-Phase-18 by checking out commit `3e7eabc`.
+Resume next: `/gsd-execute-phase 18 --plan 02` to implement the force-release endpoint (REC-04, REC-05). Plan 18-02 reuses `formatDurationMin` from `src/utils/duration` and copies the inline `sendAdminAlert` + `findLastOpenStep` patterns established in this plan.

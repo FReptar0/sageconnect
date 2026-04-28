@@ -16,8 +16,8 @@
 
 ### Recovery (REC)
 
-- [ ] **REC-01**: Lock `background-cycle` se auto-libera después de N minutos (configurable via env `LOCK_TIMEOUT_MS`, default 14 minutos ≈ 93% de la cadencia cron de 15 min).
-- [ ] **REC-02**: Cuando un lock se auto-libera por timeout, el evento se registra en `addHistory` con `success: false` y `summary: "Timeout — lock forzosamente liberado después de Xm"` + se envía email al `LICENSE_ADMIN_EMAIL`.
+- [x] **REC-01**: Lock `background-cycle` se auto-libera después de N minutos (configurable via env `LOCK_TIMEOUT_MS`, default 14 minutos ≈ 93% de la cadencia cron de 15 min). _(Completado en Plan 18-01: timer encapsulado en OperationManager.acquireLock con `setTimeout(_fireTimeout, lockTimeoutMs)` + `clearTimeout` en releaseLock; config knob `config.schedule.lockTimeoutMs` con env override `LOCK_TIMEOUT_MS` y validación `< 60000ms`. Commits 671c7ad + 2d1bbb5)_
+- [x] **REC-02**: Cuando un lock se auto-libera por timeout, el evento se registra en `addHistory` con `success: false` y `summary: "Timeout — lock forzosamente liberado después de Xm"` + se envía email al `LICENSE_ADMIN_EMAIL`. _(Completado en Plan 18-01: listener registrado dentro de `initScheduler()` que escucha `lock:timeout` event y dispara addHistory + admin email + warn log con prefix `[TIMEOUT]`. Commits 7ba4534 + 53506fb)_
 - [ ] **REC-03**: Operador puede hacer click en botón "Forzar liberación" en `schedule.html` cuando el lock esté held. Muestra confirmación bilingüe antes de ejecutar.
 - [ ] **REC-04**: Endpoint `POST /api/schedule/:taskId/force-release` libera el lock especificado. Requiere `x-api-key` + `writeLimiter`. Retorna `ResultEnvelope` con `{released: boolean, previousLock: {...}}`.
 - [ ] **REC-05**: Force-release genera entrada en `addHistory` con `success: false`, `summary: "Lock forzado manualmente por operador"`, para dejar auditoría.
@@ -38,8 +38,8 @@
 | OBS-03 | 17 | Observability & Diagnostics | OperationManager extension — ✓ done (Plan 17-01, commits 4c1367d + a804422) |
 | OBS-04 | 17 | Observability & Diagnostics | API endpoint — ✓ done (Plan 17-02, commits 7ce3412 + cbadb59) |
 | OBS-05 | 17 | Observability & Diagnostics | background.js instrumentation — ✓ done (Plan 17-03, commits 4bfcc70 + 9b109f5 + 98d41f5) |
-| REC-01 | 18 | Auto-release & Manual Override | Auto-timeout |
-| REC-02 | 18 | Auto-release & Manual Override | Audit log + email |
+| REC-01 | 18 | Auto-release & Manual Override | Auto-timeout — ✓ done (Plan 18-01, commits 671c7ad + 2d1bbb5) |
+| REC-02 | 18 | Auto-release & Manual Override | Audit log + email — ✓ done (Plan 18-01, commits 7ba4534 + 53506fb) |
 | REC-03 | 18 | Auto-release & Manual Override | UI button |
 | REC-04 | 18 | Auto-release & Manual Override | API endpoint |
 | REC-05 | 18 | Auto-release & Manual Override | Audit entry |

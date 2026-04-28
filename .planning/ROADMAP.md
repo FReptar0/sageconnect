@@ -9,7 +9,7 @@
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
 | 17 — Observability & Diagnostics | 4 | 4 | ✓ Complete (17-01, 17-02, 17-03, 17-04 all done) |
-| 18 — Auto-release & Manual Override | 3 | 0 | planned (3 plans, 3 waves) |
+| 18 — Auto-release & Manual Override | 3 | 1 | executing (18-01 done; 18-02, 18-03 pending) |
 | 19 — Root Cause Timeouts | TBD | 0 | pending |
 
 ## Phase Overview
@@ -62,7 +62,7 @@
 5. Email al `LICENSE_ADMIN_EMAIL` incluye contexto: operationId, startedAt, duración, step activo al momento del timeout.
 
 **Plans:** 3 plans
-- [ ] 18-01-PLAN.md — Backend timer (acquireLock/releaseLock encapsulation), lock:timeout event, listener (addHistory + admin email + log), config knob, helper, tests. Wave 1. Covers REC-01, REC-02.
+- [x] 18-01-PLAN.md — Backend timer (acquireLock/releaseLock encapsulation), lock:timeout event, listener (addHistory + admin email + log), config knob, helper, tests. Wave 1. Covers REC-01, REC-02. **✓ done 2026-04-28** (commits 671c7ad, 1f8f142, 2d1bbb5, 7ba4534, 53506fb, 8d2bb5b — see [18-01-SUMMARY.md](milestones/v2.3-phases/18-auto-release-manual-override/18-01-SUMMARY.md)).
 - [ ] 18-02-PLAN.md — Backend POST /:taskId/force-release endpoint (idempotent ResultEnvelope, audit history, parity admin email), Joi schemas, integration tests. Wave 2 (depends on 18-01 helper + email pattern). Covers REC-04, REC-05.
 - [ ] 18-03-PLAN.md — Frontend button + Bootstrap modal in schedule.html, state machine, optimistic UI hide, focus management, XSS-safe context line. Wave 3 (depends on 18-02 endpoint contract). Covers REC-03. NOT autonomous (ends with human-verify checkpoint against UI-SPEC.md).
 
@@ -98,8 +98,8 @@
 | OBS-03 | 17 | ✓ mapped |
 | OBS-04 | 17 | ✓ mapped |
 | OBS-05 | 17 | ✓ mapped |
-| REC-01 | 18 | ✓ mapped |
-| REC-02 | 18 | ✓ mapped |
+| REC-01 | 18 | ✓ done (Plan 18-01, commits 671c7ad + 2d1bbb5) |
+| REC-02 | 18 | ✓ done (Plan 18-01, commits 53506fb) |
 | REC-03 | 18 | ✓ mapped |
 | REC-04 | 18 | ✓ mapped |
 | REC-05 | 18 | ✓ mapped |
