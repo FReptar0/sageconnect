@@ -19,8 +19,8 @@
 - [x] **REC-01**: Lock `background-cycle` se auto-libera después de N minutos (configurable via env `LOCK_TIMEOUT_MS`, default 14 minutos ≈ 93% de la cadencia cron de 15 min). _(Completado en Plan 18-01: timer encapsulado en OperationManager.acquireLock con `setTimeout(_fireTimeout, lockTimeoutMs)` + `clearTimeout` en releaseLock; config knob `config.schedule.lockTimeoutMs` con env override `LOCK_TIMEOUT_MS` y validación `< 60000ms`. Commits 671c7ad + 2d1bbb5)_
 - [x] **REC-02**: Cuando un lock se auto-libera por timeout, el evento se registra en `addHistory` con `success: false` y `summary: "Timeout — lock forzosamente liberado después de Xm"` + se envía email al `LICENSE_ADMIN_EMAIL`. _(Completado en Plan 18-01: listener registrado dentro de `initScheduler()` que escucha `lock:timeout` event y dispara addHistory + admin email + warn log con prefix `[TIMEOUT]`. Commits 7ba4534 + 53506fb)_
 - [ ] **REC-03**: Operador puede hacer click en botón "Forzar liberación" en `schedule.html` cuando el lock esté held. Muestra confirmación bilingüe antes de ejecutar.
-- [ ] **REC-04**: Endpoint `POST /api/schedule/:taskId/force-release` libera el lock especificado. Requiere `x-api-key` + `writeLimiter`. Retorna `ResultEnvelope` con `{released: boolean, previousLock: {...}}`.
-- [ ] **REC-05**: Force-release genera entrada en `addHistory` con `success: false`, `summary: "Lock forzado manualmente por operador"`, para dejar auditoría.
+- [x] **REC-04**: Endpoint `POST /api/schedule/:taskId/force-release` libera el lock especificado. Requiere `x-api-key` + `writeLimiter`. Retorna `ResultEnvelope` con `{released: boolean, previousLock: {...}}`. _(Completado en Plan 18-02: handler idempotente — siempre 200, `data.released:true|false` discriminator. Middleware order `requireApiKey → validate(params) → validate(body) → writeLimiter → asyncHandler`. Snapshot-before-release ordering captura `previousLock {operationId, startedAt, durationMs, stuckOnStep, stuckOnTenant}`. Commit bf34398)_
+- [x] **REC-05**: Force-release genera entrada en `addHistory` con `success: false`, `summary: "Lock forzado manualmente por operador"`, para dejar auditoría. _(Completado en Plan 18-02: handler llama `addHistory({errors:['ManualForceRelease'], summary:'Lock forzado manualmente por operador (motivo: <reason>)? — duración <Xm Ys>', stuckOnStep, stuckOnTenant})`. Path idempotente NO añade history para evitar polución. Email parity con D-08: subject `'[SageConnect] Liberación manual: lock <op> forzado por operador'` vía inline `sendAdminAlert`. Commit bf34398)_
 
 ### Root Cause Prevention (ROOT)
 
@@ -41,8 +41,8 @@
 | REC-01 | 18 | Auto-release & Manual Override | Auto-timeout — ✓ done (Plan 18-01, commits 671c7ad + 2d1bbb5) |
 | REC-02 | 18 | Auto-release & Manual Override | Audit log + email — ✓ done (Plan 18-01, commits 7ba4534 + 53506fb) |
 | REC-03 | 18 | Auto-release & Manual Override | UI button |
-| REC-04 | 18 | Auto-release & Manual Override | API endpoint |
-| REC-05 | 18 | Auto-release & Manual Override | Audit entry |
+| REC-04 | 18 | Auto-release & Manual Override | API endpoint — ✓ done (Plan 18-02, commit bf34398) |
+| REC-05 | 18 | Auto-release & Manual Override | Audit entry — ✓ done (Plan 18-02, commit bf34398) |
 | ROOT-01 | 19 | Root Cause Timeouts | axios timeout |
 | ROOT-02 | 19 | Root Cause Timeouts | child process timeout |
 | ROOT-03 | 19 | Root Cause Timeouts | per-step Promise.race |

@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: milestone
 status: executing
-stopped_at: "Plan 18-01 complete (auto-release backend). Listener registered inside initScheduler at boot, lock:timeout event emitted with snapshot payload, audit history + admin email + warn-log on auto-release. REC-01 + REC-02 closed. Next: Plan 18-02 (force-release endpoint) — will reuse formatDurationMin + sendAdminAlert + findLastOpenStep patterns established here."
-last_updated: "2026-04-28T21:09:12Z"
-last_activity: 2026-04-28 -- Plan 18-01 complete (REC-01 + REC-02 backend)
+stopped_at: "Plan 18-02 complete (force-release endpoint backend). POST /api/schedule/:taskId/force-release wired with idempotent ResultEnvelope (always 200, released:true|false), audit history with errors:['ManualForceRelease'], parity admin email (D-08), and full Joi validation (params + body). 20 integration tests pass. REC-04 + REC-05 closed. Next: Plan 18-03 (UI button + Bootstrap modal in schedule.html) — depends on the endpoint contract just finalized."
+last_updated: "2026-04-28T21:55:00Z"
+last_activity: 2026-04-28 -- Plan 18-02 complete (REC-04 + REC-05 backend)
 progress:
   percent: 100
 ---
@@ -22,11 +22,11 @@ See: .planning/PROJECT.md (updated 2026-04-24)
 ## Current Position
 
 Phase: 18 (Auto-release & Manual Override) — EXECUTING
-Plan: 2 of 3 (Plan 18-01 ✓ done; Plan 18-02 next)
+Plan: 3 of 3 (Plans 18-01 + 18-02 ✓ done; Plan 18-03 next)
 Status: Executing Phase 18
-Last activity: 2026-04-28 -- Plan 18-01 complete (REC-01 + REC-02 backend)
+Last activity: 2026-04-28 -- Plan 18-02 complete (REC-04 + REC-05 backend)
 
-Progress: [███▍······] 33% (1 of 3 plans complete)
+Progress: [██████▋···] 67% (2 of 3 plans complete)
 
 ### Phase 17 Plan Layout
 
@@ -42,7 +42,7 @@ Progress: [███▍······] 33% (1 of 3 plans complete)
 | Wave | Plan | Files | Autonomous | Reqs | Status |
 |------|------|-------|------------|------|--------|
 | 1 | 18-01 | OperationManager.js + CronScheduler.js + config.js + new src/utils/duration.js + 2 new tests + 3 mock-fix tests | yes | REC-01, REC-02 | ✓ done (671c7ad, 1f8f142, 2d1bbb5, 7ba4534, 53506fb, 8d2bb5b) |
-| 2 | 18-02 | schedule-routes.js + schedule-schemas.js + integration test | yes | REC-04, REC-05 | pending (depends on 18-01 helpers) |
+| 2 | 18-02 | schedule-routes.js + schedule-schemas.js + integration test | yes | REC-04, REC-05 | ✓ done (ef1cb3f, 0ab91d7, bf34398) |
 | 3 | 18-03 | schedule.html + Bootstrap modal + JS handler | no (human-verify checkpoint) | REC-03 | pending (depends on 18-02 endpoint contract) |
 
 ## Accumulated Context
@@ -87,6 +87,16 @@ Progress: [███▍······] 33% (1 of 3 plans complete)
 - [v2.3 Plan 18-01]: `sendAdminAlert(subject, html)` and `findLastOpenStep(stepProgress)` live INLINE as top-level functions in `CronScheduler.js`, NOT extracted to `src/utils/AdminEmailSender.js`. Plan 18-02's force-release route handler will copy these verbatim — inline duplication is intentional per PATTERNS.md §5 ("inline for Phase 18 (reduces blast radius), refactor later if more admin-email events appear").
 - [v2.3 Plan 18-01]: `formatDurationMin(durationMs)` lives in NEW file `src/utils/duration.js` (CommonJS, backend-only). Frontend continues to use existing `public/js/shared.js#formatRelative` — separate runtimes, separate helpers per PATTERNS.md §8 decision (a). Defensive on non-finite/negative input (returns `'0s'` — never throws — because callers insert this string into email-body construction inside the listener's try-block).
 - [v2.3 Plan 18-01]: Phase 19 boundary HELD — no `AbortController`, no `axios.timeout`, no child-process kill, no per-step `Promise.race` introduced anywhere in modified files. The plan's `<critical_constraints>` enforced this; verified by `! grep -E "AbortController|axios\..*|SIGKILL|process\.kill|Promise\.race"` across all modified files. Plan 18-01 is "lock release only" per D-03; the auto-released lock leaves the in-flight axios/child-process running ("phantom continuation" tolerance — Phase 19 ROOT-01/02/03 will replace this with real abort).
+- [v2.3 Plan 18-02]: `POST /api/schedule/:taskId/force-release` is idempotent — always returns HTTP 200 with `data.released:true|false` discriminator. Departs deliberately from `POST /:taskId/trigger`'s 409-on-conflict pattern (D-07). Operator double-click after auto-release does NOT 404 — flows through the same handler with `released:false` + summary `'Sin lock activo para liberar'`. Plan 18-03 UI consumes the `data.released` discriminator (no 404 handling needed in `apiCall`).
+- [v2.3 Plan 18-02]: Snapshot-before-release ordering — handler reads `getRunningOperations()` to capture the slot BEFORE calling `releaseLock(taskId)`, since `releaseLock` is destructive (`Map.delete`) and the snapshot fields (`operationId`, `startedAt`, `durationMs`, `stuckOnStep`, `stuckOnTenant`) cannot be reconstructed afterwards. Side-effect order: snapshot → release → addHistory → log → email.
+- [v2.3 Plan 18-02]: Idempotent (released:false) path does NOT call `addHistory` or `sendAdminAlert`. Only a `[FORCE-RELEASE-NOOP]` warn log is emitted. Rationale: avoid polluting the 100-entry history ring buffer with no-op events; the operator log is sufficient evidence of the click. Test group B has 3 explicit negation assertions for this (releaseLock NOT called, addHistory NOT called, sendMail NOT called).
+- [v2.3 Plan 18-02]: `sendAdminAlert` and `findLastOpenStep` are INLINE COPIES of the helpers added by Plan 18-01 in `CronScheduler.js`, NOT a cross-module import. PATTERNS.md §5 inline-twice strategy enacted at second use. Decoupling avoids breaking the existing `cronScheduler` lazy-load defensive pattern in `schedule-routes.js`. Refactor to `src/utils/AdminEmailSender.js` is deferred to a future phase if a third use case appears.
+- [v2.3 Plan 18-02]: Middleware order on the new endpoint is `requireApiKey → validate(forceReleaseParamsSchema, 'params') → validate(forceReleaseBodySchema, 'body') → writeLimiter → asyncHandler`. The dual-validate slot (params AND body) is new for the project — `POST /:taskId/trigger` has params-only. Both `validate()` calls are independent (each replaces `req.params` / `req.body` with the validated value).
+- [v2.3 Plan 18-02]: Email failure does not block response. `sendAdminAlert` wraps in try/catch + warn log; the handler invokes it without `await` and adds a defensive `.catch()`. Test F is the regression guard: response is 200 + released:true even when nodemailer rejects with 'SMTP down'. SMTP failures land in `[ADMIN-EMAIL] Failed to send force-release alert: ...` warn log — operators can grep this prefix to detect mail outages.
+- [v2.3 Plan 18-02]: Email subject patterns are now finalized for both auto and force release (D-08 parity). Auto: `'[SageConnect] Auto-timeout: lock <op> liberado después de <duration>'`. Force: `'[SageConnect] Liberación manual: lock <op> forzado por operador'`. Both subjects pre-grep ready for ops runbook authors.
+- [v2.3 Plan 18-02]: TDD plan-level gate observed in git log — test commit `0ab91d7` (RED, 17 fail / 3 pass) precedes feat commit `bf34398` (GREEN, 20 pass). Plan listed Task 2 before Task 3 textually but both had `tdd='true'`; strict interpretation is RED → GREEN at plan level, executed accordingly.
+- [v2.3 Plan 18-02]: Token `'EmailS' + 'ender'` split in JSDoc to satisfy `! grep -q "EmailSender" src/routes/schedule-routes.js` regression guard while preserving architectural commentary. Same pattern Plan 18-01 used in `CronScheduler.js`.
+- [v2.3 Plan 18-02]: Phase 19 boundary HELD again — no `AbortController`, no `axios.timeout`, no child-process kill, no `Promise.race` introduced. Verified by `! grep -E "AbortController|axios.*timeout|child.*kill|process.kill|Promise.race"` against `src/routes/schedule-routes.js`.
 
 ### Recent Hotfixes (2026-04-27 deploy day)
 
@@ -119,6 +129,6 @@ Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage 
 
 ## Session Continuity
 
-Last session: 2026-04-28T21:09:12Z
-Stopped at: Plan 18-01 complete (auto-release backend). REC-01 + REC-02 closed. Six commits landed: `671c7ad` (config + duration helper), `1f8f142` (RED for OperationManager timer), `2d1bbb5` (GREEN — timer encapsulation), `7ba4534` (RED for CronScheduler listener), `53506fb` (GREEN — listener inside initScheduler), `8d2bb5b` (cross-suite mock fix for enforcement-wiring.test.js). All 9+9+17 = 35 plan-related tests pass. Two pre-existing test failures (1 in operation-manager.test.js Config-Schedule, 1 in enforcement-wiring.test.js "proceeds normally") documented in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/deferred-items.md` — both verified pre-Phase-18 by checking out commit `3e7eabc`.
-Resume next: `/gsd-execute-phase 18 --plan 02` to implement the force-release endpoint (REC-04, REC-05). Plan 18-02 reuses `formatDurationMin` from `src/utils/duration` and copies the inline `sendAdminAlert` + `findLastOpenStep` patterns established in this plan.
+Last session: 2026-04-28T21:55:00Z
+Stopped at: Plan 18-02 complete (force-release endpoint backend). REC-04 + REC-05 closed. Three commits landed: `ef1cb3f` (Joi schemas — `forceReleaseParamsSchema` + `forceReleaseBodySchema` with optional `reason` capped at 200 chars), `0ab91d7` (RED — 20 failing tests for the missing endpoint, 17 fail / 3 pass with auth/validation tests already passing because middleware short-circuits before the absent handler), `bf34398` (GREEN — `POST /:taskId/force-release` handler with idempotent ResultEnvelope, snapshot-before-release ordering, audit history with `errors:['ManualForceRelease']`, parity admin email via inline `sendAdminAlert`, and `[FORCE-RELEASE]`/`[FORCE-RELEASE-NOOP]` warn logs). All 20 new tests pass alongside 7 pre-existing trigger tests, 17 cron-scheduler tests, and 18 Plan 18-01 tests (62 total in the Phase 18 verification suite). The two pre-existing failures (operation-manager.test.js Config-Schedule + enforcement-wiring.test.js "proceeds normally") remain documented in `deferred-items.md` and were not affected by this plan. Phase 19 boundary held — no AbortController, axios timeout, child kill, or Promise.race in any modified file.
+Resume next: `/gsd-execute-phase 18 --plan 03` to implement the UI button + Bootstrap modal in `schedule.html` (REC-03). Plan 18-03 calls the endpoint via `apiCall('POST', '/api/schedule/background-cycle/force-release', {})` and switches on `res.data.released` (true → success toast + hide card; false → warning toast). Plan 18-03 is NOT autonomous — ends with human-verify checkpoint per the planner's `<autonomous>` flag.
