@@ -168,7 +168,18 @@
                     <div id="active-operation-card" class="card mb-4" style="display: none;">
                         <div class="card-header d-flex justify-content-between align-items-center">
                             <span><i class="fas fa-play-circle me-2"></i>Operación en curso</span>
-                            <span id="active-op-badge"></span>
+                            <div class="d-flex align-items-center gap-2">
+                                <span id="active-op-badge"></span>
+                                <button id="btn-force-release"
+                                        type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        title="Liberar manualmente el lock background-cycle (admin only)"
+                                        aria-label="Forzar liberación del lock background-cycle"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#forceReleaseModal">
+                                    <i class="fas fa-unlock-alt me-1"></i>Forzar liberación
+                                </button>
+                            </div>
                         </div>
                         <div class="card-body">
                             <div id="active-op-summary" class="mb-2">
@@ -765,6 +776,48 @@
             }
         });
     </script>
+
+    <!-- Phase 18 (REC-03): force-release confirmation modal -->
+    <div class="modal fade"
+         id="forceReleaseModal"
+         tabindex="-1"
+         aria-labelledby="forceReleaseModalTitle"
+         aria-describedby="forceReleaseModalBody"
+         aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="forceReleaseModalTitle">
+                        <i class="fas fa-unlock-alt me-2 text-danger"></i>Forzar liberación de lock
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body" id="forceReleaseModalBody">
+                    <p class="mb-2">¿Liberar el lock <code>background-cycle</code> actualmente en curso?</p>
+                    <p id="forceReleaseModalContext" class="mb-0 text-muted small">—</p>
+                    <div class="alert alert-warning py-2 mb-0 mt-3">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Esta acción cancelará el ciclo en curso y disparará un email al administrador.
+                        El siguiente cron tick podrá ejecutar normalmente.
+                    </div>
+                    <div id="forceReleaseModalError" class="mt-2" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button"
+                            id="btn-force-release-cancel"
+                            class="btn btn-secondary"
+                            data-bs-dismiss="modal">
+                        Cancelar
+                    </button>
+                    <button type="button"
+                            id="btn-force-release-confirm"
+                            class="btn btn-danger">
+                        <i class="fas fa-unlock-alt me-1"></i>Confirmar liberación
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
