@@ -165,8 +165,16 @@ const config = {
     schedule: {
         cronExpression: process.env.CRON_SCHEDULE || '*/15 * * * *',
         operationDelayMs: parseInt(process.env.OPERATION_DELAY_MS, 10) || 5000,
+        // REC-01 (D-01): auto-release timeout for OperationManager locks. Env override: LOCK_TIMEOUT_MS. Default 14 min (~93% of 15 min cron cadence).
+        lockTimeoutMs: parseInt(process.env.LOCK_TIMEOUT_MS, 10) || 14 * 60 * 1000,
     },
 };
+
+// REC-01 (D-01): defensive bound — values < 60000 ms (1 min) almost certainly indicate misconfiguration.
+if (config.schedule.lockTimeoutMs < 60000) {
+    console.error('[CONFIG ERROR] LOCK_TIMEOUT_MS must be >= 60000 (1 min). Got: ' + config.schedule.lockTimeoutMs);
+    process.exit(1);
+}
 
 // Warn if API key protection is disabled (optional -- not fatal)
 if (!config.security.apiKey) {
