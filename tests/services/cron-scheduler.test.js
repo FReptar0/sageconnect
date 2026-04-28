@@ -38,6 +38,10 @@ jest.mock('../../src/config', () => ({
 }));
 
 // Mock OperationManager
+// Phase 18: minimal additive change — initScheduler() registers operationManager.on('lock:timeout', ...).
+// The plain-object mock previously sufficed; we now add a no-op `on` so initScheduler can call it
+// without throwing. The lock:timeout listener side-effects are covered by
+// tests/services/CronScheduler.timeout-listener.test.js (which uses a real EventEmitter mock).
 const mockOperationManager = {
     acquireLock: jest.fn(() => true),
     releaseLock: jest.fn(),
@@ -45,6 +49,8 @@ const mockOperationManager = {
     emitProgress: jest.fn(),
     startStep: jest.fn(),
     endStep: jest.fn(),
+    on: jest.fn(),
+    removeAllListeners: jest.fn(),
 };
 jest.mock('../../src/services/OperationManager', () => mockOperationManager);
 

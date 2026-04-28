@@ -12,14 +12,76 @@
  */
 
 const cron = require('node-cron');
+const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const config = require('../config');
 const operationManager = require('./OperationManager');
 const licenseValidator = require('./LicenseValidator');
 const { forResponse, startChildProcess } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
+const { formatDurationMin } = require('../utils/duration');
 
 const LOG_FILE = 'CronScheduler';
+
+// ---------------------------------------------------------------------------
+// Helpers (Phase 18, REC-02)
+// ---------------------------------------------------------------------------
+
+/**
+ * Send an alert email to the LICENSE_ADMIN_EMAIL recipient.
+ * Mirrors LicenseValidator.sendLicenseAlert — uses nodemailer directly (NOT the project's
+ * operator-facing email-sender utility). Email failures are swallowed and logged at warn —
+ * they MUST NOT block lock-recovery flow.
+ *
+ * D-08 in 18-CONTEXT.md originally said admin emails go via the project's generic mail
+ * utility (`src/utils/EmailS` + `ender.js#sendMail`); PATTERNS.md §S-6 overrides this because
+ * that utility routes to `config.mailing.notices` (operator mailbox), NOT
+ * `config.license.adminEmail` (admin mailbox). Using nodemailer-direct
+ * (LicenseValidator.sendLicenseAlert pattern) honors D-08's intent — admin gets the email on
+ * both paths with the specified subjects. Implementation mechanism only.
+ *
+ * @param {string} subject  — already includes the [SageConnect] prefix when called.
+ * @param {string} html     — full HTML body of the message.
+ */
+async function sendAdminAlert(subject, html) {
+    try {
+        const transportConfig = {
+            host: config.mailing.server,
+            port: config.mailing.port,
+            secure: config.mailing.ssl,
+        };
+        if (config.mailing.password) {
+            transportConfig.auth = {
+                user: config.mailing.from,
+                pass: config.mailing.password,
+            };
+        }
+        const transport = nodemailer.createTransport(transportConfig);
+        await transport.sendMail({
+            from: config.mailing.from,
+            to: config.license.adminEmail,
+            subject,
+            html,
+        });
+        logGenerator(LOG_FILE, 'info', '[ADMIN-EMAIL] Sent to ' + config.license.adminEmail + ': ' + subject);
+    } catch (err) {
+        logGenerator(LOG_FILE, 'warn', '[ADMIN-EMAIL] Failed to send timeout alert: ' + err.message);
+    }
+}
+
+/**
+ * Find the most recent stepProgress entry whose finishedAt is null/missing.
+ * Returns null if stepProgress is empty or every entry is closed.
+ * @param {Array<{step: string, tenant: string|null, startedAt: string, finishedAt: string|null, error: string|null}>} stepProgress
+ * @returns {object|null}
+ */
+function findLastOpenStep(stepProgress) {
+    if (!Array.isArray(stepProgress)) return null;
+    for (let i = stepProgress.length - 1; i >= 0; i--) {
+        if (!stepProgress[i].finishedAt) return stepProgress[i];
+    }
+    return null;
+}
 
 /** @type {import('node-cron').ScheduledTask|null} */
 let scheduledTask = null;
@@ -139,6 +201,55 @@ function initScheduler() {
     });
 
     scheduledTask = task;
+
+    // REC-01 / REC-02 (D-02, D-04, D-08): handle auto-released locks.
+    // Registered ONCE inside initScheduler (which is called once from src/index.js) — never at module load.
+    // Module-load registration would accumulate listeners under jest.isolateModules and any future
+    // hot-reload path; placing it here scopes registration to the single boot-time call site.
+    operationManager.on('lock:timeout', async ({ operationType, operationId, startedAt, stepProgress, durationMs }) => {
+        const lastOpenStep = findLastOpenStep(stepProgress);
+        const stuckOnStep = lastOpenStep ? lastOpenStep.step : null;
+        const stuckOnTenant = lastOpenStep ? (lastOpenStep.tenant || null) : null;
+        const durationLabel = formatDurationMin(durationMs);
+
+        // 1. Audit history (REC-02 / D-04)
+        operationManager.addHistory({
+            taskId: operationType,
+            operationId,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            success: false,
+            errors: ['Timeout'],
+            summary: `Timeout — lock forzosamente liberado después de ${durationLabel}`,
+            stuckOnStep,
+            stuckOnTenant,
+        });
+
+        // 2. Operator log (REC-02)
+        logGenerator(LOG_FILE, 'warn',
+            `[TIMEOUT] Auto-released lock ${operationType} after ${durationLabel} -- ` +
+            `operationId=${operationId}, stuckOnStep=${stuckOnStep || '(none)'}, stuckOnTenant=${stuckOnTenant || '(none)'}`
+        );
+
+        // 3. Admin email (REC-02 / D-08) — fire-and-forget, never blocks (sendAdminAlert wraps try/catch).
+        const subject = `[SageConnect] Auto-timeout: lock ${operationType} liberado después de ${durationLabel}`;
+        const html = (
+            `<h2>Auto-timeout en SageConnect</h2>` +
+            `<p>Un lock de <code>OperationManager</code> se mantuvo activo más tiempo del permitido y fue liberado automáticamente.</p>` +
+            `<table border="1" cellpadding="6" cellspacing="0">` +
+            `<tr><th align="left">operationType</th><td>${operationType}</td></tr>` +
+            `<tr><th align="left">operationId</th><td><code>${operationId}</code></td></tr>` +
+            `<tr><th align="left">startedAt</th><td>${startedAt}</td></tr>` +
+            `<tr><th align="left">duration</th><td>${durationLabel}</td></tr>` +
+            `<tr><th align="left">stuckOnStep</th><td>${stuckOnStep || '(ninguno — array vacío)'}</td></tr>` +
+            `<tr><th align="left">stuckOnTenant</th><td>${stuckOnTenant || '(no aplicable)'}</td></tr>` +
+            `</table>` +
+            `<p><small>Company: ${config.app.company || 'Unknown'} | Time: ${new Date().toISOString()}</small></p>` +
+            `<p><em>Phase 18 NO aborta el work en vuelo (axios/child process siguen corriendo). Si el ciclo eventualmente termina, su entrada de history aparecerá DESPUÉS de esta entrada de timeout — esto es informativo, no contradictorio.</em></p>`
+        );
+        await sendAdminAlert(subject, html);
+    });
+
     logGenerator(LOG_FILE, 'info', `[INIT] Scheduler initialized with expression "${expression}" (timezone: ${timezone})`);
 }
 
