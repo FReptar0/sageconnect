@@ -40,6 +40,7 @@ const COPY_AS_IS = [
     '.env.example',
     '.env.credentials.example',
     'scripts/migrate-env.js',
+    'scripts/Rotate-SageConnectLogs.ps1',
 ];
 
 // Carpetas cuyo JS se ofuscará
