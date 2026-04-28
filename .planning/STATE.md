@@ -108,6 +108,6 @@ Operational adds: `src/scripts/diagnose-sage-tables.js` (PR #15, read-only Sage 
 
 ## Session Continuity
 
-Last session: 2026-04-28T19:30:00Z
-Stopped at: PR #20 (Servy log rotation) deployed end-to-end + 2 follow-up hotfixes (obfuscate.js allowlist, rotation script filename format). "Ciertos archivos no se procesan" investigation closed: no bug, ~3 days waiting for Capstone authorization + ~6h of post-authorization in-our-pipeline delay from EMFILE bug cascade. Capstone confirmed orange column now populated. Real production impact documented in CONCERNS.md "Always-On Assumption Gap".
-Resume next: `/gsd-discuss-phase 18` — Auto-release & Manual Override. Before discussing, read planned phase scope through the lens "what assumes the process exits?" (timer leaks, callback retention in OperationManager `setTimeout` for stuck-lock auto-release).
+Last session: 2026-04-28T20:00:00Z
+Stopped at: Phase 18 context gathered. 8 implementation decisions captured in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/18-CONTEXT.md` covering: timer encapsulation in OperationManager (D-01), EventEmitter pattern for post-timeout work (D-02), "lock-only" semantics deferring work-abort to Phase 19 (D-03), history entry shape with stuckOnStep (D-04), Bootstrap modal confirmation (D-05), always-visible button (D-06), idempotent endpoint with optional reason (D-07), email parity on both auto and force release (D-08).
+Resume next: `/gsd-plan-phase 18` to create executable plans. Phase 18 will need ~3 plans (OperationManager timer + listener / endpoint + schema / UI button + modal).
