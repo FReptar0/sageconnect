@@ -296,6 +296,72 @@
 
             // Phase 17 (D-08): client-side heartbeat refresh every 1s without re-fetching.
             activeOpHeartbeatHandle = setInterval(refreshActiveOperationHeartbeat, 1000);
+
+            // Phase 18 (REC-03): force-release modal wiring.
+            // (1) On show.bs.modal: clear stale error, populate the dynamic context line
+            //     from activeOpSnapshot (operationId truncated to 8 chars + relative startedAt
+            //     + last-open-step label + tenant). All dynamic values escapeHtml'd.
+            // (2) On shown.bs.modal: focus the Cancelar button (overrides Bootstrap's default
+            //     "first focusable" behavior — UI-SPEC §"Focus management"). Defense against
+            //     accidental Enter-confirms on a freshly-opened destructive modal.
+            // (3) Click handler on the Confirmar button → submitForceRelease().
+            const forceModalEl = document.getElementById('forceReleaseModal');
+            if (forceModalEl) {
+                forceModalEl.addEventListener('show.bs.modal', () => {
+                    const ctxEl = document.getElementById('forceReleaseModalContext');
+                    const errorSlot = document.getElementById('forceReleaseModalError');
+                    // Always reset error slot when re-opening (UI-SPEC line 327-329).
+                    errorSlot.style.display = 'none';
+                    errorSlot.innerHTML = '';
+
+                    if (!activeOpSnapshot) {
+                        // Race: card visible at click time, but snapshot already cleared (next-poll race).
+                        ctxEl.innerHTML = '<em>Sin contexto disponible (la operación pudo haberse liberado entre el render y el click).</em>';
+                        return;
+                    }
+
+                    const opIdRaw = activeOpSnapshot.operationId || '';
+                    const shortId = opIdRaw.substring(0, 8) || '—';
+                    const startedRel = formatRelative(activeOpSnapshot.startedAt);
+                    const sp = Array.isArray(activeOpSnapshot.stepProgress) ? activeOpSnapshot.stepProgress : [];
+
+                    // Find last open step (mirror of backend findLastOpenStep) — pick LAST when all closed.
+                    let stepLabel;
+                    if (sp.length === 0) {
+                        stepLabel = '<em>inicializando ciclo</em>';
+                    } else {
+                        let active = null;
+                        for (let i = sp.length - 1; i >= 0; i--) {
+                            if (!sp[i].finishedAt) { active = sp[i]; break; }
+                        }
+                        const display = active || sp[sp.length - 1];
+                        const labelText = STEP_LABELS[display.step] || display.step;
+                        const tenantPart = display.tenant ? ' (' + escapeHtml(display.tenant) + ')' : '';
+                        stepLabel = '<code>' + escapeHtml(labelText) + '</code>' + tenantPart;
+                    }
+
+                    // Build the line via string concatenation. shortId/startedRel are derived from
+                    // already-validated polling data; we still escapeHtml the dynamic values
+                    // defensively (operationId is server-generated UUID v4, but defense in depth:
+                    // a malicious or corrupt poll response should not be able to inject markup).
+                    ctxEl.innerHTML =
+                        'Operación <code>' + escapeHtml(shortId) + '</code>, iniciada ' +
+                        escapeHtml(startedRel) + '. Step actual: ' + stepLabel + '.';
+                });
+
+                forceModalEl.addEventListener('shown.bs.modal', () => {
+                    // Override Bootstrap's default focus (which would land on the close X) so that
+                    // pressing Enter or Space on a freshly-opened modal does NOT confirm the
+                    // destructive action (UI-SPEC §"Focus management" + T-18-03-08 mitigation).
+                    const cancelBtn = document.getElementById('btn-force-release-cancel');
+                    if (cancelBtn) cancelBtn.focus();
+                });
+            }
+
+            const forceConfirmBtn = document.getElementById('btn-force-release-confirm');
+            if (forceConfirmBtn) {
+                forceConfirmBtn.addEventListener('click', submitForceRelease);
+            }
         });
 
         // Schedule is global -- tenant change does not reload schedule data
@@ -755,6 +821,93 @@
             const status = active ? '' : ' (completado)';
             const stepEl = document.getElementById('active-op-step');
             if (stepEl) stepEl.textContent = label + tenantPart + heartbeatPart + status;
+        }
+
+        /* ====================================================================
+         * Phase 18 (REC-03): Force-release flow
+         * ==================================================================== */
+
+        /**
+         * REC-03 (D-05/D-07): handle the confirm button click of the force-release modal.
+         * State machine documented in 18-UI-SPEC.md §"Destructive confirmation summary":
+         *   idle -> loading (disable both modal buttons, swap label/icon to spinner)
+         *   on 200/released:true  -> close modal, hideActiveOperationCard() (optimistic), no toast.
+         *   on 200/released:false -> close modal, warning toast "El lock ya se había liberado", hideActiveOperationCard().
+         *   on 4xx/5xx/network    -> stay open, re-enable both buttons, render inline alert-danger
+         *                            inside #forceReleaseModalError.
+         *
+         * Phase 19 boundary held: no AbortController, no client-side timeout. Trust the server.
+         */
+        async function submitForceRelease() {
+            const confirmBtn = document.getElementById('btn-force-release-confirm');
+            const cancelBtn  = document.getElementById('btn-force-release-cancel');
+            const errorSlot  = document.getElementById('forceReleaseModalError');
+
+            // Capture original (idle) HTML for restoration in finally
+            const idleConfirmHtml = '<i class="fas fa-unlock-alt me-1"></i>Confirmar liberación';
+
+            // Loading state
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Liberando...';
+            errorSlot.style.display = 'none';
+            errorSlot.innerHTML = '';
+
+            try {
+                const res = await apiCall('POST', '/api/schedule/background-cycle/force-release', {});
+
+                if (res && res.success) {
+                    // Close the modal via the cached Bootstrap instance.
+                    // (The instance was lazily created by the data-bs-toggle="modal" trigger;
+                    //  getInstance returns it.)
+                    const modalEl = document.getElementById('forceReleaseModal');
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) modalInstance.hide();
+
+                    // Idempotent path warning (UI-SPEC line 122 / D-07)
+                    if (res.data && res.data.released === false) {
+                        showToast('El lock ya se había liberado', 'warning');
+                    }
+
+                    // Optimistic UI: hide the card immediately so the operator sees instant feedback.
+                    // The next 5s poll will independently confirm and idempotently re-hide if needed.
+                    hideActiveOperationCard();
+                } else {
+                    throw new Error(
+                        (res && (res.summary || res.message || (Array.isArray(res.errors) && res.errors[0])))
+                        || 'Error desconocido'
+                    );
+                }
+            } catch (err) {
+                // Inline error rendering — modal stays open, operator can retry.
+                const safeMsg = (err && err.message) || 'Error desconocido';
+                errorSlot.innerHTML =
+                    '<div class="alert alert-danger py-2 mb-0">' +
+                    '<i class="fas fa-times-circle me-2"></i>' +
+                    'Error al liberar el lock: ' + escapeHtml(safeMsg) + '. ' +
+                    'Intentá nuevamente o revisá los logs del servidor.' +
+                    '</div>';
+                errorSlot.style.display = 'block';
+            } finally {
+                // Restore idle state. If the modal closed on success, these properties simply
+                // update an unmounted-from-view DOM — harmless.
+                confirmBtn.disabled = false;
+                cancelBtn.disabled = false;
+                confirmBtn.innerHTML = idleConfirmHtml;
+            }
+        }
+
+        /**
+         * Minimal HTML-escape helper — used inside the modal context line and the inline
+         * error slot (where err.message may contain "<", ">", "&", etc. from a server
+         * error like 'invalid <foo>'). Why: we use innerHTML for those slots intentionally
+         * (we want to render <code>, <em>, alert classes), so dynamic values must be
+         * escaped before concatenation. T-18-03-01..03 mitigation.
+         */
+        function escapeHtml(s) {
+            return String(s).replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
         }
 
         /* ====================================================================
