@@ -1,16 +1,12 @@
 ---
 gsd_state_version: 1.0
 milestone: v2.3
-milestone_name: Scheduler Lock Recovery
-status: completed-phase
-stopped_at: Phase 17 COMPLETE + 5 prod hotfixes deployed (PRs #14, #16, #17, #18, #19); ready to plan Phase 18 after investigating "ciertos archivos no se procesan" report
-last_updated: "2026-04-27T22:00:00Z"
-last_activity: 2026-04-27 — Phase 17 deploy + hotfix cascade (1h56m firefight); forensics report written; pending file-processing investigation flagged by user
+milestone_name: milestone
+status: executing
+stopped_at: "Phase 18 context gathered. 8 implementation decisions captured in `.planning/milestones/v2.3-phases/18-auto-release-manual-override/18-CONTEXT.md` covering: timer encapsulation in OperationManager (D-01), EventEmitter pattern for post-timeout work (D-02), "lock-only" semantics deferring work-abort to Phase 19 (D-03), history entry shape with stuckOnStep (D-04), Bootstrap modal confirmation (D-05), always-visible button (D-06), idempotent endpoint with optional reason (D-07), email parity on both auto and force release (D-08)."
+last_updated: "2026-04-28T20:41:44.326Z"
+last_activity: 2026-04-28 -- Phase 18 execution started
 progress:
-  total_phases: 3
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
   percent: 100
 ---
 
@@ -21,14 +17,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.3 Scheduler Lock Recovery — Phase 17 COMPLETE (4/4 plans, 5/5 OBS requirements); ready to plan Phase 18 (Recovery)
+**Current focus:** Phase 18 — Auto-release & Manual Override
 
 ## Current Position
 
-Phase: 17 — Observability & Diagnostics (✓ COMPLETE)
-Plan: 4/4 complete (17-01, 17-02, 17-03, 17-04 all done)
-Status: Phase 17 done. Ready to plan Phase 18 (Auto-release & Manual Override)
-Last activity: 2026-04-27 — Plan 17-04 complete (UI card + 5s polling + 1s heartbeat + D-04 bug fix); manual verification PASSED via orchestrator; commits 53104ef + 831ee36 + 3d8b822
+Phase: 18 (Auto-release & Manual Override) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 18
+Last activity: 2026-04-28 -- Phase 18 execution started
 
 Progress: [██████████] 100%
 
