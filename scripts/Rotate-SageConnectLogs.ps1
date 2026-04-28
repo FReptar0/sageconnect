@@ -74,11 +74,13 @@ Add-Content -LiteralPath $rotationLog -Value $logLine
 
 # --------------------------------------------------------------------------
 # 1) Move servy's already-rotated files (servy auto-rotates at ~10 MB).
-#    Files match: servy-st*.YYYYMMDD_HHMMSS  (no extension, just suffix)
+#    Files match: servy-st*.YYYYMMDD_HHMMSS.log  (timestamp inserted before .log)
+#    Active files (servy-stdout.log / servy-stderr.log) deliberately excluded
+#    by the regex anchor — only rotated siblings are moved.
 # --------------------------------------------------------------------------
 $movedCount = 0
 Get-ChildItem -Path $SourceDir -Filter 'servy-st*' -File |
-    Where-Object { $_.Name -match '\.\d{8}_\d{6}$' } |
+    Where-Object { $_.Name -match '\.\d{8}_\d{6}\.log$' } |
     ForEach-Object {
         Move-Item -LiteralPath $_.FullName -Destination $destDir -Force
         $movedCount++
@@ -90,10 +92,12 @@ Get-ChildItem -Path $SourceDir -Filter 'servy-st*' -File |
 #    Servy's open handle. Clear-Content truncates the file in place.
 # --------------------------------------------------------------------------
 $snapshotCount = 0
-foreach ($name in @('servy-stdout', 'servy-stderr')) {
+foreach ($name in @('servy-stdout.log', 'servy-stderr.log')) {
     $live = Join-Path $SourceDir $name
     if (Test-Path -LiteralPath $live) {
-        $snapshot = Join-Path $destDir ("{0}.{1}" -f $name, $timeStamp)
+        $base     = [System.IO.Path]::GetFileNameWithoutExtension($name)  # 'servy-stdout'
+        $ext      = [System.IO.Path]::GetExtension($name)                  # '.log'
+        $snapshot = Join-Path $destDir ("{0}.{1}{2}" -f $base, $timeStamp, $ext)
         Copy-Item   -LiteralPath $live -Destination $snapshot -Force
         Clear-Content -LiteralPath $live
         $snapshotCount++
