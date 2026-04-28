@@ -14,6 +14,7 @@ const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals
 jest.mock('../../src/config', () => ({
     database: { user: 'test', password: 'test', server: 'localhost', database: 'TEST' },
     paths: { logs: '/tmp/logs' },
+    schedule: { lockTimeoutMs: 1000 }, // Phase 18: required by acquireLock auto-release timer
 }));
 
 // Mock LogGenerator to prevent file I/O

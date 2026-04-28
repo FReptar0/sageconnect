@@ -11,13 +11,14 @@
  */
 
 const { EventEmitter } = require('events');
+const config = require('../config');
 
 const MAX_HISTORY = 100;
 
 class OperationManager extends EventEmitter {
     constructor() {
         super();
-        /** @type {Map<string, { operationId: string, startedAt: string, stepProgress: Array<{ step: string, tenant: string|null, startedAt: string, finishedAt: string|null, error: string|null }> }>} */
+        /** @type {Map<string, { operationId: string, startedAt: string, stepProgress: Array<{ step: string, tenant: string|null, startedAt: string, finishedAt: string|null, error: string|null }>, timeoutHandle?: NodeJS.Timeout }>} */
         this.locks = new Map();
         /** @type {Array<Object>} */
         this.history = [];
@@ -48,6 +49,7 @@ class OperationManager extends EventEmitter {
             operationId,
             startedAt: new Date().toISOString(),
             stepProgress: [],
+            timeoutHandle: setTimeout(() => this._fireTimeout(operationType), config.schedule.lockTimeoutMs),
         });
 
         return true;
@@ -55,10 +57,36 @@ class OperationManager extends EventEmitter {
 
     /**
      * Release a per-operation-type lock. Discards stepProgress (volatile by design — see Phase 17 D-01).
+     * Cancels the auto-release timer (REC-01 / D-01) BEFORE deleting the slot to prevent fire-after-release.
      * @param {string} operationType
      */
     releaseLock(operationType) {
+        const slot = this.locks.get(operationType);
+        if (slot && slot.timeoutHandle) {
+            clearTimeout(slot.timeoutHandle);
+        }
         this.locks.delete(operationType);
+    }
+
+    /**
+     * Internal: fired by setTimeout when a lock exceeds config.schedule.lockTimeoutMs.
+     * Snapshots slot state, releases the lock, and emits 'lock:timeout' for downstream listeners.
+     * No-op if the slot has already been released (handles race between schedule and fire).
+     * @private
+     * @param {string} operationType
+     */
+    _fireTimeout(operationType) {
+        const slot = this.locks.get(operationType);
+        if (!slot) return;
+        const snapshot = {
+            operationType,
+            operationId: slot.operationId,
+            startedAt: slot.startedAt,
+            stepProgress: slot.stepProgress.slice(),
+            durationMs: Date.now() - new Date(slot.startedAt).getTime(),
+        };
+        this.releaseLock(operationType);
+        this.emit('lock:timeout', snapshot);
     }
 
     /**
@@ -164,9 +192,15 @@ class OperationManager extends EventEmitter {
 
     /**
      * Reset internal state (for testing only).
+     * Clears pending lock-timeout timers BEFORE clearing slots — without this,
+     * Jest tests that exercise the timer path would leak setTimeout handles
+     * across worker processes and hang the test runner.
      * @private
      */
     _reset() {
+        for (const slot of this.locks.values()) {
+            if (slot.timeoutHandle) clearTimeout(slot.timeoutHandle);
+        }
         this.locks.clear();
         this.history = [];
         this.removeAllListeners();
