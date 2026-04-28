@@ -9,7 +9,7 @@
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
 | 17 — Observability & Diagnostics | 4 | 4 | ✓ Complete (17-01, 17-02, 17-03, 17-04 all done) |
-| 18 — Auto-release & Manual Override | TBD | 0 | pending |
+| 18 — Auto-release & Manual Override | 3 | 0 | planned (3 plans, 3 waves) |
 | 19 — Root Cause Timeouts | TBD | 0 | pending |
 
 ## Phase Overview
@@ -60,6 +60,11 @@
 3. `curl -H "x-api-key: X" POST /api/schedule/background-cycle/force-release` retorna 200 con `{data: {released: true, previousLock: {...}}}`.
 4. Después de force-release, el botón "Ejecutar Ahora" permite disparar un nuevo ciclo sin 409.
 5. Email al `LICENSE_ADMIN_EMAIL` incluye contexto: operationId, startedAt, duración, step activo al momento del timeout.
+
+**Plans:** 3 plans
+- [ ] 18-01-PLAN.md — Backend timer (acquireLock/releaseLock encapsulation), lock:timeout event, listener (addHistory + admin email + log), config knob, helper, tests. Wave 1. Covers REC-01, REC-02.
+- [ ] 18-02-PLAN.md — Backend POST /:taskId/force-release endpoint (idempotent ResultEnvelope, audit history, parity admin email), Joi schemas, integration tests. Wave 2 (depends on 18-01 helper + email pattern). Covers REC-04, REC-05.
+- [ ] 18-03-PLAN.md — Frontend button + Bootstrap modal in schedule.html, state machine, optimistic UI hide, focus management, XSS-safe context line. Wave 3 (depends on 18-02 endpoint contract). Covers REC-03. NOT autonomous (ends with human-verify checkpoint against UI-SPEC.md).
 
 ---
 
