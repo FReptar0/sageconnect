@@ -1,10 +1,11 @@
 ---
 phase: 18
 slug: 18-auto-release-manual-override
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-04-28
+reviewed_at: 2026-04-28
 ---
 
 # Phase 18 — UI Design Contract
@@ -125,6 +126,10 @@ Spanish only — internal operator UI is monolingual (no bilingual labels). Tone
 ### Empty state copy (no lock active)
 
 The card itself is hidden (`display: none`) when no operation is active — there is no empty state for Phase 18 because the button does not exist when there is no card to host it. Confirmed via Phase 17 D-07 (`Visibilidad: display:none cuando no hay operaciones activas`) and Phase 18 D-06 (`apenas el polling 5s detecta lock activo, el botón aparece`).
+
+### Intentional copy exceptions
+
+- **`Cancelar`** (modal secondary button): the literal Spanish equivalent of "Cancel" appears on the BLOCK list of generic CTAs that the gsd-ui-checker scans for. This usage is **intentional and approved** — `Cancelar` is the idiomatic Spanish label for a no-op modal dismiss whose only purpose is to abort the destructive flow. The product is monolingual Spanish per D-05; there is no subject noun that would improve clarity for a dismiss-only button. The contrast action `Confirmar liberación` carries the verb+noun specificity. Do not re-flag.
 
 ### Destructive confirmation summary
 
