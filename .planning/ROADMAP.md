@@ -10,7 +10,7 @@
 |-------|-------|-----------|--------|
 | 17 — Observability & Diagnostics | 4 | 4 | ✓ Complete (17-01, 17-02, 17-03, 17-04 all done) |
 | 18 — Auto-release & Manual Override | 3 | 3 | ✓ Complete (18-01, 18-02, 18-03 all done) |
-| 19 — Root Cause Timeouts | 3 | 0 | pending (3 plans created) |
+| 19 — Root Cause Timeouts | 3 | 1 | in progress (19-01 ✓ done; 19-02, 19-03 pending) |
 
 ## Phase Overview
 
