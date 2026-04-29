@@ -290,7 +290,21 @@ SELECT A.* FROM (
                     'Content-Type': 'application/json'
                 }
             }).catch(err => {
-                logGenerator(logFileName, 'error', `Error POST payment: ${err.message}`);
+                // ROOT-04 (D-13/D-14/D-16): differentiate axios timeouts from generic errors so [TIMEOUT]
+                // entries segregan via grep para forensia. ECONNABORTED es el err.code canónico de axios v1.7.7
+                // cuando el timeout configurado (config.portal.httpTimeoutMs vía PortalClient) dispara.
+                // Fallback textual /timeout/i.test(err.message) — match con el wording de axios 'timeout of Xms exceeded'.
+                const isTimeout = err.code === 'ECONNABORTED' || /timeout/i.test(err.message || '');
+                if (isTimeout) {
+                    // D-16: keys obligatorios step + tenant + url + durationMs.
+                    // step=uploadPayments porque PortalPaymentController es invocado desde el step uploadPayments;
+                    // url=endpoint actual; durationMs=timeout config (no medimos elapsed real porque axios aborta cerca del límite).
+                    logGenerator(logFileName, 'error',
+                        `[TIMEOUT] step=uploadPayments tenant=${tenantIds[index]} url=${endpoint} ` +
+                        `durationMs=${config.portal.httpTimeoutMs} err=${err.message}`);
+                } else {
+                    logGenerator(logFileName, 'error', `Error POST payment: ${err.message}`);
+                }
                 return err.response || { status: 500, data: err.message };
             });
 
