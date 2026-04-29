@@ -123,6 +123,9 @@ const config = {
     portal: {
         url: process.env.URL,
         tenants: parseTenants(),
+        // ROOT-01 (D-03): timeout para todas las llamadas axios al portal de proveedores.
+        // Env override: PORTAL_HTTP_TIMEOUT_MS. Default 30s (texto literal de REQ ROOT-01).
+        httpTimeoutMs: parseInt(process.env.PORTAL_HTTP_TIMEOUT_MS, 10) || 30000,
     },
 
     mailing: buildMailing(),
@@ -173,6 +176,12 @@ const config = {
 // REC-01 (D-01): defensive bound — values < 60000 ms (1 min) almost certainly indicate misconfiguration.
 if (config.schedule.lockTimeoutMs < 60000) {
     console.error('[CONFIG ERROR] LOCK_TIMEOUT_MS must be >= 60000 (1 min). Got: ' + config.schedule.lockTimeoutMs);
+    process.exit(1);
+}
+
+// ROOT-01 (D-03): axios timeout puede legitimamente ser sub-segundo en pruebas, pero < 1000ms es signal de misconfig.
+if (config.portal.httpTimeoutMs < 1000) {
+    console.error('[CONFIG ERROR] PORTAL_HTTP_TIMEOUT_MS must be >= 1000 (1 sec). Got: ' + config.portal.httpTimeoutMs);
     process.exit(1);
 }
 
