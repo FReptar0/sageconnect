@@ -1,6 +1,6 @@
 const notifier = require('node-notifier');
 const config = require('../config');
-const axios = require('axios');
+const portalClient = require('./PortalClient');
 const { getCurrentDateString } = require('./TimezoneHelper');
 const { logGenerator } = require('./LogGenerator');
 
@@ -25,7 +25,7 @@ async function getProviders(index) {
     let today = getCurrentDateString();
     console.log('[INFO] Today:', today);
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?statusExpedient=ACCEPTED&expedientAcceptedFrom=${today}&expedientAcceptedTo=${today}&status=ENABLED&pageSize=-1`,
             {
@@ -72,7 +72,7 @@ async function getProviderByExternalId(index, externalId) {
             return null;
         }
 
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) + `?externalId=${encodeURIComponent(externalIdClean)}&pageSize=-1`,
             {
                 headers: {

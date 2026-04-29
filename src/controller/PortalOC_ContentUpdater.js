@@ -1,6 +1,6 @@
 // src/controller/PortalOC_ContentUpdater.js
 
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const config = require('../config');
 
 // Address configuration (from centralized config)
@@ -129,7 +129,7 @@ class PortalOCContentUpdater {
             // Send PUT request to update the order
             const endpoint = `${urlBase(tenantIndex)}/purchase-orders/${idFocaltec}`;
             
-            const response = await axios.put(
+            const response = await portalClient.put(
                 endpoint,
                 orderPayload,
                 {
@@ -137,8 +137,7 @@ class PortalOCContentUpdater {
                         'PDPTenantKey': apiKeys[tenantIndex],
                         'PDPTenantSecret': apiSecrets[tenantIndex],
                         'Content-Type': 'application/json'
-                    },
-                    timeout: 30000
+                    }
                 }
             );
 

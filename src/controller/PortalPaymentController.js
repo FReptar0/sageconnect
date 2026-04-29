@@ -3,7 +3,7 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const { resolveUuidByFolio } = require('../services/UuidResolver');
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const notifier = require('node-notifier');
 const config = require('../config');
 
@@ -283,7 +283,7 @@ SELECT A.* FROM (
             // 4.4) Enviar al portal
             const endpoint = `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}/payments`;
             console.log(`  [INFO] POST ${endpoint}`);
-            const resp = await axios.post(endpoint, payload, {
+            const resp = await portalClient.post(endpoint, payload, {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
                     'PDPTenantSecret': apiSecrets[index],

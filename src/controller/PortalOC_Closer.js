@@ -1,6 +1,6 @@
 // src/controller/PortalPurchaseOrderCancellation.js
 
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const config = require('../config');
 
 // utileria de conexion
@@ -87,7 +87,7 @@ async function closePurchaseOrders(index) {
         console.log(idFocaltec)
         const endpoint = `${urlBase(index)}/purchase-orders/${idFocaltec}/status`;
         try {
-            const resp = await axios.put(
+            const resp = await portalClient.put(
                 endpoint,
                 { status: 'CLOSED' },
                 {
@@ -95,8 +95,7 @@ async function closePurchaseOrders(index) {
                         'PDPTenantKey': apiKeys[index],
                         'PDPTenantSecret': apiSecrets[index],
                         'Content-Type': 'application/json'
-                    },
-                    timeout: 30000
+                    }
                 }
             );
             console.log(

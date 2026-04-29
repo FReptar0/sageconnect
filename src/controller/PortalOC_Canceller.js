@@ -1,6 +1,6 @@
 // src/controller/PortalPurchaseOrderCancellation.js
 
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const config = require('../config');
 
 // utileria de conexion
@@ -71,7 +71,7 @@ async function cancellationPurchaseOrders(index) {
         const idFocaltec = existing[0].idFocaltec;
         const endpoint = `${urlBase(index)}/purchase-orders/${idFocaltec}/status`;
         try {
-            const resp = await axios.put(
+            const resp = await portalClient.put(
                 endpoint,
                 { status: 'CANCELLED' },
                 {
@@ -79,8 +79,7 @@ async function cancellationPurchaseOrders(index) {
                         'PDPTenantKey': apiKeys[index],
                         'PDPTenantSecret': apiSecrets[index],
                         'Content-Type': 'application/json'
-                    },
-                    timeout: 30000
+                    }
                 }
             );
             logGenerator(logFileName, 'info', `[OK] PO ${ponumber} cancelada en portal. Status: ${resp.status} ${resp.statusText}`);

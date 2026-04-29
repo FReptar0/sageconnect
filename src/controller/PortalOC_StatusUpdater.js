@@ -3,7 +3,7 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const http = require('http');
 const https = require('https');
 const config = require('../config');
@@ -87,7 +87,7 @@ async function updatePOStatus(ocSage, status, idDatabase) {
         const endpoint = `${urlBase(dbIndex)}/purchase-orders/${idFocaltec}/status`;
         let apiResp;
         try {
-            apiResp = await axios.put(
+            apiResp = await portalClient.put(
                 endpoint,
                 { status },
                 {
@@ -97,8 +97,7 @@ async function updatePOStatus(ocSage, status, idDatabase) {
                         'Content-Type': 'application/json'
                     },
                     httpAgent,
-                    httpsAgent,
-                    timeout: 30000
+                    httpsAgent
                 }
             );
             logGenerator(logFileName, 'info', `[INFO] Portal respondio ${apiResp.status} para OC=${ocSage}`);

@@ -1,5 +1,5 @@
 const config = require('../config');
-const axios = require('axios');
+const portalClient = require('./PortalClient');
 const { getOneMonthAgoString } = require('./TimezoneHelper');
 const { runQuery } = require('./SQLServerConnection');
 const { logGenerator } = require('./LogGenerator');
@@ -18,7 +18,7 @@ async function getTypeP(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
@@ -43,7 +43,7 @@ async function getTypeP(index) {
                 if (item.payment_complement_info && item.payment_complement_info[0].payment_id) {
                     const paymentId = item.payment_complement_info[0].payment_id;
                     try {
-                        const paymentResponse = await axios.get(
+                        const paymentResponse = await portalClient.get(
                             `${url}/api/1.0/extern/tenants/${tenantIds[index]}/payments/${paymentId}`,
                             {
                                 headers: {
@@ -120,7 +120,7 @@ async function getTypeI(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
@@ -198,7 +198,7 @@ async function getTypeIToSend(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
@@ -306,7 +306,7 @@ async function getTypeE(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
@@ -399,7 +399,7 @@ async function getCfdisByProvider(index, providerId) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await axios.get(
+        const response = await portalClient.get(
             urlBase(index) +
             `?from=${dateFrom}-01` +
             `&documentTypes=CFDI` +
@@ -465,7 +465,7 @@ async function requestPendingToPayPage(index, offset, pageSize, from, to, logFil
             if (from) query += `&from=${from}`;
             if (to) query += `&to=${to}`;
 
-            return await axios.get(urlBase(index) + query, {
+            return await portalClient.get(urlBase(index) + query, {
                 headers: {
                     'PDPTenantKey': apiKeys[index],
                     'PDPTenantSecret': apiSecrets[index]

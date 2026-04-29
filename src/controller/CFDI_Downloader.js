@@ -1,5 +1,5 @@
 const { getTypeE, getTypeI } = require('../utils/GetTypesCFDI');
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const config = require('../config');
 const fs = require('fs');
 const path = require('path');
@@ -104,7 +104,7 @@ async function downloadCFDI(index) {
     }
 
     for (let i = 0; i < cfdiData.length; i++) {
-        const response = await axios.get(`${urlBase(index)}/cfdis/${cfdiData[i].cfdiId}/files`, {
+        const response = await portalClient.get(`${urlBase(index)}/cfdis/${cfdiData[i].cfdiId}/files`, {
             headers: {
                 'PDPTenantKey': apiKey,
                 'PDPTenantSecret': apiSecret,
@@ -121,7 +121,7 @@ async function downloadCFDI(index) {
         const name = path.basename(urls[i]).split('?')[0];
         const outPath = path.join(downloadsDir, name);
         outPathWFileNames.push(outPath);
-        const fileStream = await axios.get(urls[i], { responseType: 'stream' });
+        const fileStream = await portalClient.get(urls[i], { responseType: 'stream' });
         const xmlPath = outPath;
 
         fileStream.data
@@ -156,7 +156,7 @@ function agregarEtiquetaAddenda(xmlPath, dataCfdi, index, logFileName = 'CFDI_Do
 
         const apiKey = apiKeys[index];
         const apiSecret = apiSecrets[index];
-        const response = await axios.get(`${urlBase(index)}/providers/${dataCfdi.providerId}`, {
+        const response = await portalClient.get(`${urlBase(index)}/providers/${dataCfdi.providerId}`, {
             headers: {
                 'PDPTenantKey': apiKey,
                 'PDPTenantSecret': apiSecret

@@ -1,4 +1,4 @@
-const axios = require('axios');
+const portalClient = require('../utils/PortalClient');
 const config = require('../config');
 
 // Variables de configuracion de direcciones por defecto para ordenes de compra
@@ -264,7 +264,7 @@ order by A.PONUMBER, B.PORLREV;
     // 4.4) Enviar al portal (usar validatedPO que tiene los valores transformados por Joi)
     const endpoint = `${urlBase(index)}/purchase-orders`;
     try {
-      const resp = await axios.post(
+      const resp = await portalClient.post(
         endpoint,
         validatedPO,
         {
@@ -272,8 +272,7 @@ order by A.PONUMBER, B.PORLREV;
             'PDPTenantKey': apiKeys[index],
             'PDPTenantSecret': apiSecrets[index],
             'Content-Type': 'application/json'
-          },
-          timeout: 30000
+          }
         }
       );
       console.log(
