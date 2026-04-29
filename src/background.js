@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const { checkPayments } = require('./controller/SagePaymentController');
 const { uploadPayments } = require('./controller/PortalPaymentController');
 const { downloadCFDI } = require('./controller/CFDI_Downloader');
@@ -9,6 +9,7 @@ const { buildProvidersXML } = require('./controller/Providers_Downloader');
 const { sendMail } = require('./utils/EmailSender');
 const { logGenerator } = require('./utils/LogGenerator');
 const { getCurrentDate } = require('./utils/TimezoneHelper');
+const { formatDurationMin } = require('./utils/duration');
 const config = require('./config');
 const notifier = require('node-notifier');
 
@@ -279,7 +280,23 @@ async function forResponse(options = {}) {
 function startChildProcess() {
     return new Promise((resolve, reject) => {
         const logFileName = 'ChildProcess';
-        
+
+        // ROOT-02 / D-06: closure-scoped state for the kill cascade.
+        // hasSettled prevents double-settle if `close` fires during the grace period
+        // (process terminated cleanly between SIGTERM and taskkill — must settle exactly once).
+        // killTimer + graceTimer are cleared in the settle wrapper BEFORE invoking resolve/reject
+        // to avoid fire-after-resolve (timer firing on an already-finalized PID).
+        let hasSettled = false;
+        let killTimer = null;
+        let graceTimer = null;
+        const settle = (fn) => {
+            if (hasSettled) return;
+            hasSettled = true;
+            if (killTimer) clearTimeout(killTimer);
+            if (graceTimer) clearTimeout(graceTimer);
+            fn();
+        };
+
         console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${config.app.importRoute}`);
         console.log(`[INFO] ARG: ${config.app.arg}`);
         logGenerator(logFileName, 'info', `[INFO] Iniciando proceso de importación - ROUTE: ${config.app.importRoute}, ARG: ${config.app.arg}`);
@@ -287,6 +304,45 @@ function startChildProcess() {
         if (config.app.importRoute && config.app.arg) {
             const childProcess = spawn(config.app.importRoute, [config.app.arg]);
             logGenerator(logFileName, 'info', `[INFO] Child process iniciado con PID: ${childProcess.pid}`);
+
+            // ROOT-02 / D-05 / D-06: kill cascade — SIGTERM → 30s grace hardcoded → taskkill /F /T
+            // The reject error message wording `'Child process timeout'` is LOAD-BEARING:
+            // CronScheduler.js detects it via /Child process timeout/ regex to dispatch admin email (D-15).
+            killTimer = setTimeout(() => {
+                const durationMs = config.schedule.childProcessTimeoutMs;
+                const durationLabel = formatDurationMin(durationMs);
+
+                // ROOT-04 / D-13 / D-14: log [TIMEOUT] entry to ChildProcess.log con context (D-16: step + tenant=global + pid + durationMs).
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=startChildProcess tenant=global pid=${childProcess.pid} ` +
+                    `durationMs=${durationMs} action=SIGTERM`);
+
+                childProcess.kill();    // SIGTERM (Unix) / mapped exit signal (Windows via Node)
+
+                // 30s grace period — hardcoded, NOT env-configurable (D-05 specifics).
+                // Gives the exe a chance to close cleanly (file handles, buffer flush) before hard kill.
+                graceTimer = setTimeout(() => {
+                    if (childProcess.exitCode === null) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=startChildProcess pid=${childProcess.pid} action=taskkill /F /T`);
+                        // /T: tree kill (matches PowerShell Stop-Process -Force semantics; kills helpers spawneados por el exe).
+                        // /F: force without prompt.
+                        // PID is integer-typed by Node — no shell injection risk (T-19-02-02).
+                        // Fire-and-forget callback — reject already dispatched via settle.
+                        exec(`taskkill /F /T /PID ${childProcess.pid}`, (err) => {
+                            if (err) {
+                                logGenerator(logFileName, 'warn',
+                                    `[TIMEOUT] taskkill exec failed: ${err.message}`);
+                            }
+                        });
+                    }
+                }, 30000);
+
+                // Settle (reject) — wording sentinel `Child process timeout` is load-bearing (see CronScheduler.js).
+                settle(() => reject(new Error(
+                    `Child process timeout after ${durationLabel} — killed (PID was ${childProcess.pid})`
+                )));
+            }, config.schedule.childProcessTimeoutMs);
 
             // Stdout is used to capture the data messages
             childProcess.stdout.on('data', (data) => {
@@ -318,13 +374,13 @@ function startChildProcess() {
                 if (code === 0) {
                     console.log(`[OK] Proceso de importación finalizado correctamente con código ${code}`);
                     logGenerator(logFileName, 'info', `[CLOSE] Proceso de importación finalizado correctamente con código ${code}`);
-                    resolve(code);
+                    settle(() => resolve(code));
                 } else {
                     console.error(`[ERROR] Proceso de importación finalizó con código ${code}`);
                     logGenerator(logFileName, 'error', `[CLOSE] Proceso de importación finalizó con código de error ${code}`);
-                    reject(new Error(`Child process failed with code ${code}`));
+                    settle(() => reject(new Error(`Child process failed with code ${code}`)));
                 }
-                
+
                 // Mark that child process is complete
                 global.childProcessComplete = true;
             });
@@ -333,7 +389,7 @@ function startChildProcess() {
             childProcess.on('error', (error) => {
                 console.error(`[ERROR] Error iniciando proceso de importación: ${error.message}`);
                 logGenerator(logFileName, 'error', `[ERROR] Error iniciando proceso de importación: ${error.message}`);
-                reject(error);
+                settle(() => reject(error));
             });
         } else {
             console.warn('[WARN] No se ha definido la variable de entorno IMPORT_CFDIS_ROUTE o ARG. El proceso de importación de CFDIs no se ejecutará.');
@@ -353,8 +409,9 @@ function startChildProcess() {
                 logGenerator(logFileName, 'error', `[ERROR] Fallo al enviar correo de error de importación: ${error.message}`);
             });
 
-            // Resolve immediately since no child process will run
-            resolve(null);
+            // Resolve immediately since no child process will run.
+            // settle wrapper ensures idempotent semantics (no timer was armed in this branch).
+            settle(() => resolve(null));
         }
     });
 }
