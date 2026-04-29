@@ -142,13 +142,50 @@ function initScheduler() {
 
                 // Phase 17 (D-12): startChildProcess is cron-only (manual trigger does NOT call it).
                 // Instrument here so cron-tick stepProgress has 8 entries (7 per-tenant from forResponse + 1 global startChildProcess).
+                // Phase 19 (ROOT-02 / D-15): catch detects /Child process timeout/ wording sentinel
+                // emitted by background.js startChildProcess reject() and dispatches admin email.
                 let __scpError = null;
                 try {
                     operationManager.startStep('background-cycle', 'startChildProcess', null);
                     await startChildProcess();
                 } catch (scpErr) {
                     __scpError = scpErr.message || String(scpErr);
-                    throw scpErr;
+
+                    // ROOT-02 / D-15: detect child process timeout via wording sentinel and dispatch admin email.
+                    // Wording sentinel `'Child process timeout'` is set in src/background.js startChildProcess reject().
+                    // ROOT-04 / D-15 explicit: ONLY child timeouts dispatch email — axios/step timeouts (Plan 19-01/19-03) do NOT.
+                    const isChildTimeout = /Child process timeout/.test(__scpError);
+                    if (isChildTimeout) {
+                        const childDurationMs = config.schedule.childProcessTimeoutMs;
+                        const childDurationLabel = formatDurationMin(childDurationMs);
+
+                        // ROOT-04 / D-14: log [TIMEOUT] entry to CronScheduler.log indicando dispatch del admin email.
+                        // The ChildProcess.log entry was already emitted by startChildProcess itself (background.js timer).
+                        // Dual destination paridad with endStep that also writes to CronScheduler.log.
+                        logGenerator(LOG_FILE, 'error',
+                            `[TIMEOUT] step=startChildProcess operationId=${operationId} ` +
+                            `durationMs=${childDurationMs} action=admin-email-dispatched`);
+
+                        // ROOT-04 / D-15: admin email — fire-and-forget. sendAdminAlert wraps try/catch internally; never throws.
+                        // .catch(() => {}) is belt-and-suspenders against unexpected rejection (Phase 18 PATTERNS S-6 pattern).
+                        const subject = `[SageConnect] Child process timeout: ImportaFacturasFocaltec.exe killed después de ${childDurationLabel}`;
+                        const html = (
+                            `<h2>Child process timeout en SageConnect</h2>` +
+                            `<p>El proceso hijo <code>ImportaFacturasFocaltec.exe</code> excedió el límite ` +
+                            `de <strong>${childDurationLabel}</strong> y fue forzosamente terminado.</p>` +
+                            `<table border="1" cellpadding="6" cellspacing="0">` +
+                            `<tr><th align="left">step</th><td>startChildProcess</td></tr>` +
+                            `<tr><th align="left">operationId</th><td><code>${operationId}</code></td></tr>` +
+                            `<tr><th align="left">duration</th><td>${childDurationLabel}</td></tr>` +
+                            `<tr><th align="left">importRoute</th><td><code>${config.app.importRoute}</code></td></tr>` +
+                            `<tr><th align="left">error</th><td>${__scpError}</td></tr>` +
+                            `</table>` +
+                            `<p><small>Company: ${config.app.company || 'Unknown'} | Time: ${new Date().toISOString()}</small></p>`
+                        );
+                        sendAdminAlert(subject, html).catch(() => { /* sendAdminAlert ya swallow internamente */ });
+                    }
+
+                    throw scpErr;       // re-throw — preserva el flujo Phase 17 / outer catch + addHistory entrada
                 } finally {
                     operationManager.endStep('background-cycle', 'startChildProcess', null, { error: __scpError });
                 }
