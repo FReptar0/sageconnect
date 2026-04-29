@@ -9,7 +9,7 @@
 | Phase | Plans | Completed | Status |
 |-------|-------|-----------|--------|
 | 17 — Observability & Diagnostics | 4 | 4 | ✓ Complete (17-01, 17-02, 17-03, 17-04 all done) |
-| 18 — Auto-release & Manual Override | 3 | 2 | executing (18-01 + 18-02 done; 18-03 pending) |
+| 18 — Auto-release & Manual Override | 3 | 3 | ✓ Complete (18-01, 18-02, 18-03 all done) |
 | 19 — Root Cause Timeouts | TBD | 0 | pending |
 
 ## Phase Overview
@@ -64,7 +64,7 @@
 **Plans:** 3 plans
 - [x] 18-01-PLAN.md — Backend timer (acquireLock/releaseLock encapsulation), lock:timeout event, listener (addHistory + admin email + log), config knob, helper, tests. Wave 1. Covers REC-01, REC-02. **✓ done 2026-04-28** (commits 671c7ad, 1f8f142, 2d1bbb5, 7ba4534, 53506fb, 8d2bb5b — see [18-01-SUMMARY.md](milestones/v2.3-phases/18-auto-release-manual-override/18-01-SUMMARY.md)).
 - [x] 18-02-PLAN.md — Backend POST /:taskId/force-release endpoint (idempotent ResultEnvelope, audit history, parity admin email), Joi schemas, integration tests. Wave 2 (depends on 18-01 helper + email pattern). Covers REC-04, REC-05. **✓ done 2026-04-28** (commits ef1cb3f, 0ab91d7, bf34398 — see [18-02-SUMMARY.md](milestones/v2.3-phases/18-auto-release-manual-override/18-02-SUMMARY.md)).
-- [ ] 18-03-PLAN.md — Frontend button + Bootstrap modal in schedule.html, state machine, optimistic UI hide, focus management, XSS-safe context line. Wave 3 (depends on 18-02 endpoint contract). Covers REC-03. NOT autonomous (ends with human-verify checkpoint against UI-SPEC.md).
+- [x] 18-03-PLAN.md — Frontend button + Bootstrap modal in schedule.html, state machine, optimistic UI hide, focus management, XSS-safe context line. Wave 3 (depends on 18-02 endpoint contract). Covers REC-03. NOT autonomous (ends with human-verify checkpoint against UI-SPEC.md). **✓ done 2026-04-28** (commits c6d5b0e, d46778c — chrome-devtools MCP browser-automated verification PASSED 6/6 active rows; row 7 N/A — see [18-03-SUMMARY.md](milestones/v2.3-phases/18-auto-release-manual-override/18-03-SUMMARY.md)). Plan 18-01 collateral fix `061b7c5` (`fix(18-01): exclude timeoutHandle from getRunningOperations`) shipped during verification — 46/46 tests across affected suites.
 
 ---
 
@@ -100,7 +100,7 @@
 | OBS-05 | 17 | ✓ mapped |
 | REC-01 | 18 | ✓ done (Plan 18-01, commits 671c7ad + 2d1bbb5) |
 | REC-02 | 18 | ✓ done (Plan 18-01, commits 53506fb) |
-| REC-03 | 18 | ✓ mapped |
+| REC-03 | 18 | ✓ done (Plan 18-03, commits c6d5b0e + d46778c) |
 | REC-04 | 18 | ✓ done (Plan 18-02, commit bf34398) |
 | REC-05 | 18 | ✓ done (Plan 18-02, commit bf34398) |
 | ROOT-01 | 19 | ✓ mapped |
