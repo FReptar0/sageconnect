@@ -8,17 +8,19 @@ SageConnect es un servicio always-on de integración entre Sage 300 ERP y Portal
 
 La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
 
-## Current State (post v2.2)
+## Current State (post v2.3)
 
 - **Service:** Always-on via Servy Windows Service, node-cron v4 internal scheduler (every 15 min)
 - **License:** LicenseValidator validates against external server (sageconnect-license on Vercel) with HMAC-SHA256, anti-replay, three-state cache (24h TTL)
 - **Enforcement:** Startup fail-fast, cron guard, Express middleware (503), DNS bypass detection
-- **API:** 16 REST endpoints (7 payment + 9 PO) + 6 system endpoints (health, tenants, license, schedule, history, operations)
-- **Web UI:** 4 pages + license banner + expiry badge + OC status change form (pos.html "Cambiar Estado OC")
-- **Config:** `src/config.js` with fail-fast validation, 33+ env vars including LICENSE_API_URL, HMAC_SECRET, LICENSE_ADMIN_EMAIL
+- **API:** 17 REST endpoints (7 payment + 9 PO + 1 force-release) + 6 system endpoints (health, tenants, license, schedule, history, operations)
+- **Web UI:** 4 pages + license banner + expiry badge + OC status change form + "Operación en curso" card with 5s polling + 1s heartbeat ticker + Forzar liberación modal
+- **Config:** `src/config.js` with fail-fast validation, 36+ env vars (added LOCK_TIMEOUT_MS, PORTAL_HTTP_TIMEOUT_MS, CHILD_PROCESS_TIMEOUT_MS, STEP_TIMEOUT_MS) — 4 range guards + validate = 5 process.exit guards
+- **Scheduler hardening:** OperationManager.stepProgress + auto-release timer (lock:timeout EventEmitter) + force-release endpoint (idempotent) + PortalClient singleton (axios timeout 30s) + startChildProcess kill cascade (SIGTERM → 30s grace → taskkill /F /T) + per-step Promise.race via withStepTimeout helper. Defense-in-depth: axios (30s) < step (5m) < child (10m) < lock (14m).
+- **Logging:** Unified `[TIMEOUT] step=... tenant=... url=... durationMs=... err=...` cross-cutting format routed per source (ChildProcess.log + CronScheduler.log + ForResponse.log + caller-specific). Email alerts ONLY for child-process timeouts (avoids inbox flood).
 - **Scripts:** All 13 scripts + PortalOC_StatusUpdater return ResultEnvelope
 - **SQL:** Singleton connection pool with USE [database] switching, auto-reconnect
-- **Tests:** 200+ across the codebase (50 in PO routes alone)
+- **Tests:** 200+ across the codebase; 48/48 Phase 19 tests passing; 6 pre-existing failed suites carried from v2.0/v2.1
 - **Legacy removed:** AutoShutdownService, AUTO_TERMINATE, RunSageconnect.bat, --web-only all gone
 
 ## Requirements
@@ -57,31 +59,23 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 - ✓ PUT /api/pos/status endpoint with Joi validation (statusUpdateSchema) — v2.2
 - ✓ OC status change UI form in pos.html ("Cambiar Estado OC") with Spanish labels — v2.2
 
+- ✓ OperationManager.stepProgress + startStep/endStep API + GET /api/operations/status enriched wire shape — v2.3 (OBS-03, OBS-04, OBS-05)
+- ✓ "Operación en curso" Bootstrap card with 5s polling + 1s heartbeat ticker en schedule.html — v2.3 (OBS-01, OBS-02)
+- ✓ Auto-release timer en OperationManager.acquireLock con LOCK_TIMEOUT_MS env (default 14 min) + lock:timeout EventEmitter event + listener (audit history + admin email + warn log) — v2.3 (REC-01, REC-02)
+- ✓ POST /api/schedule/:taskId/force-release idempotent endpoint (always 200, released:true|false discriminator) — v2.3 (REC-04, REC-05)
+- ✓ Forzar liberación button + Bootstrap modal con state machine + escapeHtml + Cancelar focus override — v2.3 (REC-03)
+- ✓ PortalClient singleton (axios.create con httpTimeoutMs default 30s) cubriendo 18 axios call sites en 9 files — v2.3 (ROOT-01)
+- ✓ startChildProcess kill cascade (SIGTERM → 30s grace → taskkill /F /T tree-kill) con CHILD_PROCESS_TIMEOUT_MS env (default 10 min) — v2.3 (ROOT-02)
+- ✓ Per-step Promise.race via withStepTimeout helper en src/utils/duration.js, STEP_TIMEOUT_MS env (default 5 min) cubriendo 7 forResponse step blocks — v2.3 (ROOT-03)
+- ✓ Unified `[TIMEOUT]` log routing cross-cutting (ChildProcess + CronScheduler + ForResponse + caller-specific); email dispatch SOLO para child-process timeouts — v2.3 (ROOT-04)
+
 ### Active
 
-**v2.3 Scheduler Lock Recovery** (diagnóstico + fix del bug "Ejecutar Ahora" siempre 409)
+(None — v2.3 shipped 2026-04-29. v2.4 milestone TBD via `/gsd-new-milestone`.)
 
-- Observability del estado de locks del scheduler en UI + endpoint diagnóstico
-- Auto-release de locks por timeout (configurable, default 14 min)
-- Manual force-release endpoint + botón UI con confirmación
-- Timeout explícito en axios a portal de proveedores
-- Timeout en `startChildProcess` (ImportaFacturasFocaltec.exe)
-- Per-step timeout en `forResponse` vía Promise.race
+## Recently Shipped: v2.3 Scheduler Lock Recovery (2026-04-29)
 
-## Current Milestone: v2.3 Scheduler Lock Recovery
-
-**Goal:** Eliminar el bug donde el botón "Ejecutar Ahora" en `schedule.html` permanentemente retorna "ya en ejecución" por locks huérfanos en `OperationManager`. Agregar observability, recovery, y prevención de raíz.
-
-**Target features:**
-- Diagnóstico en UI del estado actual de locks y último heartbeat por step del ciclo
-- Recuperación del operador: timeout auto + botón force-release + endpoint admin
-- Prevención de causa raíz: timeouts en axios al portal, en child-process del importador, y per-step en el ciclo
-
-**Key context:**
-- Bug reportado 2026-04-24 en producción (server ZCL-RDS-02, cliente Capstone Copper)
-- Hipótesis principal: llamadas axios al portal sin `timeout` explícito cuelgan `forResponse` indefinidamente → `finally` nunca corre → lock stuck
-- Hipótesis secundaria: `ImportaFacturasFocaltec.exe` cuelga bajo Servy (sin sesión de escritorio)
-- No hay repro local (requiere BD Sage)
+**Outcome:** El bug HTTP 409 permanente en "Ejecutar Ahora" eliminado end-to-end con tres capas: visibility (Phase 17 — observability stack) + recovery (Phase 18 — auto-release timer + manual force-release UI/API) + prevention (Phase 19 — axios/child/step timeouts). Defense-in-depth invariant verificado runtime: axios (30s) < step (5m) < child (10m) < lock (14m). Ver `.planning/milestones/v2.3-ROADMAP.md` para detalle.
 
 ### Out of Scope
 
@@ -130,6 +124,22 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | PortalOC_StatusUpdater sobre PortalOC_StatusService | StatusUpdater retorna ResultEnvelope, compatible con sendResult | ✓ Good |
 | tenantIndex sin database override para status update | Simplifica UI, operadores no necesitan saber nombres de BD | ✓ Good |
 | Labels español en dropdown con valores inglés al API | Operadores ven "Cancelada", API envía "CANCELLED" | ✓ Good |
+| stepProgress como array (no Map) en lock slots | LIFO endStep iteration + releaseLock cleanup gratis (v2.3) | ✓ Good |
+| Polling-first UI hydration + SSE feed solo timeline existente | Mid-cycle reload reliable; card survives reload sin SSE (v2.3) | ✓ Good |
+| LOCK_TIMEOUT_MS default 14 min (93% de 15 min cron cadence) | Margen contra falsos positivos sin permitir backlog (v2.3) | ✓ Good |
+| Listener registration inside initScheduler() body (no module load) | Prevents listener accumulation under hot-reload + jest.isolateModules (v2.3) | ✓ Good |
+| Force-release endpoint idempotent (always 200, released:true\|false) | Operator double-click no 404; sigue mismo flujo (v2.3) | ✓ Good |
+| Cancelar focus override (no Confirmar) en modal destructivo | T-18-03-08 mitigación accidental Enter-confirm (v2.3) | ✓ Good |
+| escapeHtml() inline en schedule.html (no shared.js) | Defense-in-depth contra polling-data tampering XSS (v2.3) | ✓ Good |
+| PortalClient singleton (no class wrapper, no factory) | Mirror de LicenseValidator.licenseClient pattern; 18 sites unificados (v2.3) | ✓ Good |
+| httpAgent/httpsAgent preservados en PortalOC_StatusUpdater | localPort 3030 LOAD-BEARING para Capstone prod ZCL-RDS-02 (v2.3) | ✓ Good |
+| taskkill /F /T /PID shell-out (no in-process kill) | /T flag tree-kill helpers spawneados; /F sin prompt (v2.3) | ✓ Good |
+| 30s grace hardcoded entre SIGTERM y taskkill (no env knob) | Implementation detail, no operational policy (v2.3 D-05) | ✓ Good |
+| ONLY child timeouts dispatch admin email | Evita inbox flood + alert fatigue de transient axios timeouts (v2.3 D-15) | ✓ Good |
+| withStepTimeout helper hides Promise.race (no direct in background.js) | Phase 19 boundary keeps wrapper hidden (v2.3) | ✓ Good |
+| Wording sentinels LOAD-BEARING ('Child process timeout', 'Step timeout') | Regex detection gates email dispatch + log routing (v2.3) | ✓ Good |
+| sendAdminAlert + findLastOpenStep INLINE en CronScheduler + schedule-routes | PATTERNS.md §S-6 inline-twice antes de extraer; refactor pendiente al 3rd use (v2.3) | — Pending |
+| AbortController retrofit completo deferred | Phantom continuation NARROWED a step-level only es la forma actual; defer hasta evidencia operacional (v2.3 D-10) | — Pending |
 
 ## Evolution
 
@@ -149,4 +159,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-24 — started v2.3 Scheduler Lock Recovery*
+*Last updated: 2026-04-29 after v2.3 milestone — Scheduler Lock Recovery shipped (3 phases, 10 plans, 14 REQs delivered, 89 commits, 17/17 STRIDE threats closed)*
