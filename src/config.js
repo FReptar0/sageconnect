@@ -174,6 +174,11 @@ const config = {
         // Env override: CHILD_PROCESS_TIMEOUT_MS. Default 10 min (texto literal de REQ ROOT-02).
         // Effective ~10m 30s incluyendo el grace period — comfortably bajo los 14 min del lock auto-release.
         childProcessTimeoutMs: parseInt(process.env.CHILD_PROCESS_TIMEOUT_MS, 10) || 10 * 60 * 1000,
+        // ROOT-03 (D-11): per-step timeout para los 7 steps de forResponse (buildProviders, downloadCFDI,
+        // checkPayments, uploadPayments, createPurchaseOrders, processOrderChanges, closePurchaseOrders).
+        // Env override: STEP_TIMEOUT_MS. Default 5 min (texto literal de REQ ROOT-03).
+        // Cubre un step con hasta ~10 axios calls en serie con timeout 30s c/u (10 × 30s = 5 min).
+        stepTimeoutMs: parseInt(process.env.STEP_TIMEOUT_MS, 10) || 5 * 60 * 1000,
     },
 };
 
@@ -192,6 +197,13 @@ if (config.portal.httpTimeoutMs < 1000) {
 // ROOT-02 (D-07): mínimo 1 min para evitar misconfigs catastróficas (e.g., 10ms aborta antes de que el exe arranque).
 if (config.schedule.childProcessTimeoutMs < 60000) {
     console.error('[CONFIG ERROR] CHILD_PROCESS_TIMEOUT_MS must be >= 60000 (1 min). Got: ' + config.schedule.childProcessTimeoutMs);
+    process.exit(1);
+}
+
+// ROOT-03 (D-11): mínimo 30s para evitar timeouts triviales que disparen falso positivo en cada cycle.
+// Un step típico tiene 1-3 axios calls + DB roundtrips; <30s es trivial y produce falsos positivos.
+if (config.schedule.stepTimeoutMs < 30000) {
+    console.error('[CONFIG ERROR] STEP_TIMEOUT_MS must be >= 30000 (30 sec). Got: ' + config.schedule.stepTimeoutMs);
     process.exit(1);
 }
 
