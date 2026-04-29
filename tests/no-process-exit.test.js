@@ -154,12 +154,17 @@ describe('process.exit compliance', () => {
     });
 
     // ---------------------------------------------------------------------------
-    // Test 2: config.js contains exactly 1 process.exit call
+    // Test 2: config.js contains at least 1 process.exit call
     // ---------------------------------------------------------------------------
-    test('config.js contains exactly 1 process.exit call (startup validation)', () => {
+    // Updated 2026-04-29 (Plan 19-03): config.js now has 5 process.exit calls
+    // (validate + lockTimeoutMs + httpTimeoutMs + childProcessTimeoutMs + stepTimeoutMs
+    // range guards added by Phase 18 D-01 + Plan 19-01..19-03). Each new range guard
+    // adds one fail-fast process.exit. Test invariant relaxed from `=== 1` to `>= 1`
+    // since "at least one fail-fast guard exists" is the load-bearing assertion.
+    test('config.js contains at least 1 process.exit call (startup validation)', () => {
         const configPath = path.join(SRC_ROOT, 'config.js');
         const exitCalls = findProcessExitCalls(configPath);
-        expect(exitCalls.length).toBe(1);
+        expect(exitCalls.length).toBeGreaterThanOrEqual(1);
     });
 
     // ---------------------------------------------------------------------------
