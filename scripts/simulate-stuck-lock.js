@@ -17,6 +17,11 @@
  *   --no-step   Skip startStep so the modal context line shows the
  *               "inicializando ciclo" fallback (UI-SPEC line 107) instead of
  *               a populated step + tenant.
+ *   --xss       Inject HTML/JS payloads as step name + tenant
+ *               (`<img src=x onerror="alert(1)">` / `<svg/onload="alert(2)">`)
+ *               for the Plan 18-03 XSS regression test. The modal must render
+ *               these as literal text via escapeHtml() — no alert() should
+ *               fire. Mutually exclusive with --no-step (overrides it).
  *
  * NOT FOR PRODUCTION. Excluded from the obfuscated build because
  * scripts/obfuscate.js COPY_AS_IS allowlist does not include this file.
@@ -30,6 +35,7 @@ const portIdx = args.indexOf('--port');
 const PORT = portIdx !== -1 ? parseInt(args[portIdx + 1], 10) : 3030;
 const QUICK = args.includes('--quick');
 const NO_STEP = args.includes('--no-step');
+const XSS = args.includes('--xss');
 
 if (QUICK) {
     process.env.LOCK_TIMEOUT_MS = '120000'; // 2 min
@@ -81,7 +87,16 @@ const operationId = 'sim-' + Date.now().toString().slice(-8);
 
 const server = app.listen(PORT, () => {
     operationManager.acquireLock(TASK_ID, operationId);
-    if (!NO_STEP) {
+    if (XSS) {
+        // XSS spot-check: inject HTML/JS payloads as the step name and tenant.
+        // The frontend modal must render these as literal text via escapeHtml().
+        // If escapeHtml is missing, the browser executes alert(1) and alert(2).
+        operationManager.startStep(
+            TASK_ID,
+            '<img src=x onerror="alert(1)">',
+            '<svg/onload="alert(2)">'
+        );
+    } else if (!NO_STEP) {
         operationManager.startStep(TASK_ID, 'downloadCFDI', 'capstone');
     }
 
