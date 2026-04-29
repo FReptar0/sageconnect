@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.3
 milestone_name: milestone
 status: executing
-stopped_at: "Phase 19 context gathered. 4 áreas discutidas (todas con recomendación tomada): ROOT-01 axios timeout via cliente centralizado src/utils/PortalClient.js (patrón LicenseValidator) sobre los 10 sites del path always-on con default 30s; ROOT-02 child kill SIGTERM + 30s grace + taskkill /F /T fallback dentro del Promise constructor existente con default 10 min; ROOT-03 per-step Promise.race solo (phantom continuation tolerada — axios timeout actúa como red real) skip al siguiente tenant con default 5 min sobre los 7 steps de tenant; ROOT-04 logs [TIMEOUT] plain text distribuidos a los logs por dominio existentes con email al admin SOLO en child timeout (reusa sendAdminAlert de Phase 18 D-08). Phase 19 reemplaza la phantom continuation tolerada en Phase 18 D-03 con real abort semantics. AbortController retrofit defer hasta evidencia operacional. scripts/ CLI fuera de scope. Commit 79d0307 docs(19): capture phase context for Root Cause Timeouts (2 archivos: 19-CONTEXT.md + 19-DISCUSSION-LOG.md). Resume next: /clear → /gsd-plan-phase 19 (no UI gate — backend-only phase)."
-last_updated: "2026-04-28T18:30:00Z"
-last_activity: 2026-04-28 -- Phase 19 context captured (4 áreas discutidas, 16 D-XX decisions); 19-CONTEXT.md + 19-DISCUSSION-LOG.md committed as 79d0307
+stopped_at: "Phase 19 planned. 3 plans creados en 3 waves secuenciales (todos autonomous=true): Plan 19-01 Wave 1 (12 archivos: 1 nuevo PortalClient.js + 9 controllers/utils refactor + config knob portal.httpTimeoutMs default 30s + tests singleton/timeout, cubre ROOT-01); Plan 19-02 Wave 2 (5 archivos: startChildProcess kill cascade SIGTERM+30s grace+taskkill /F /T+hasSettled flag + reuso verbatim de sendAdminAlert gated por wording sentinel 'Child process timeout' + dual [TIMEOUT] log + config knob schedule.childProcessTimeoutMs default 10min + tests jest fake timers, cubre ROOT-02 + parte ROOT-04); Plan 19-03 Wave 3 (6 archivos: withStepTimeout helper en duration.js + envuelve los 7 step bodies en forResponse NO startChildProcess per D-12 + config knob schedule.stepTimeoutMs default 5min + PortalPaymentController ECONNABORTED enrichment + integration tests log routing, cubre ROOT-03 + ROOT-04 cross-cutting). Plan checker passed on first iteration (12/12 dimensions, 3 informational warnings, zero blockers). Coverage: 4/4 ROOT-XX REQs, 16/16 D-XX decisions. Pattern map 19-PATTERNS.md cubre 17 archivos con 14 analogs exactos + 3 role-match (tests). Phase 19 boundary lifting honored: 19-01 introduces axios.timeout, 19-02 introduces child kill, 19-03 introduces Promise.race. AbortController retrofit deferred (D-10 phantom continuation NARROWED a step-level only). Phase 18 helpers reused verbatim (sendAdminAlert + formatDurationMin). Commits: 6144b2a docs(19): plan Root Cause Timeouts (3 plans, 4 REQs) — 5 archivos. Resume next: /clear → /gsd-execute-phase 19 (Wave 1 → 19-01 → tests + smoke + commit; Wave 2 → 19-02; Wave 3 → 19-03; verifier final con goal-backward analysis)."
+last_updated: "2026-04-29T07:00:00Z"
+last_activity: 2026-04-29 -- Phase 19 planned (3 plans, 4 REQs, plan checker PASSED first iteration); 19-PATTERNS.md + 19-{01,02,03}-PLAN.md + ROADMAP.md update committed as 6144b2a
 progress:
   percent: 100
 ---
@@ -17,17 +17,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-24)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Phase 19 — Root Cause Timeouts (context captured, planning next)
+**Current focus:** Phase 19 — Root Cause Timeouts (planned, ready to execute)
 
 ## Current Position
 
-Phase: 19 (Root Cause Timeouts) — context captured
-Plan: 0 of TBD (no plans yet)
-Status: Phase 19 context gathered (4 áreas discutidas, 16 D-XX decisions); ready for /gsd-plan-phase 19
-Last activity: 2026-04-28 -- Phase 19 context captured (4 áreas discutidas, 16 D-XX decisions); 19-CONTEXT.md + 19-DISCUSSION-LOG.md committed as 79d0307
+Phase: 19 (Root Cause Timeouts) — planned, ready to execute
+Plan: 0 of 3 (Plans 19-01, 19-02, 19-03 created)
+Status: Phase 19 plans verified (PASSED on first iteration, 12/12 dimensions); ready for /gsd-execute-phase 19
+Last activity: 2026-04-29 -- Phase 19 planned (3 plans, 4 REQs, plan checker PASSED first iteration); 19-PATTERNS.md + 19-{01,02,03}-PLAN.md + ROADMAP.md update committed as 6144b2a
 
-Milestone v2.3 progress: [███████▌··] 67% (2 of 3 phases complete: Phase 17 + Phase 18; Phase 19 in context-gathering stage)
-Phase 19 progress: [██········] 20% (context captured, planning pending)
+Milestone v2.3 progress: [████████··] 75% (2 of 3 phases complete + Phase 19 planned)
+Phase 19 progress: [████······] 40% (context + plans complete, execution pending)
+
+### Phase 19 Plan Layout
+
+| Wave | Plan | Files | Autonomous | Reqs | Status |
+|------|------|-------|------------|------|--------|
+| 1 | 19-01 | PortalClient.js (NEW) + config.js + 9 controller/util refactor + tests/utils/PortalClient.test.js | yes | ROOT-01 | pending |
+| 2 | 19-02 | background.js (startChildProcess) + CronScheduler.js + config.js + tests/services/background.startChildProcess.timeout.test.js + tests/services/CronScheduler.timeout-listener.test.js (extend) | yes | ROOT-02 + ROOT-04 (child) | pending |
+| 3 | 19-03 | duration.js (withStepTimeout) + background.js (forResponse) + config.js + PortalPaymentController.js (ECONNABORTED enrichment) + tests/services/background.forResponse.stepTimeout.test.js + tests/integration/timeout-logging.test.js | yes | ROOT-03 + ROOT-04 (axios+step) | pending |
 
 ### Phase 17 Plan Layout
 
