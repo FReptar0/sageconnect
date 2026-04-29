@@ -129,6 +129,30 @@ describe('OperationManager - getRunningOperations', () => {
         const running = operationManager.getRunningOperations();
         expect(running).toEqual({});
     });
+
+    test('getRunningOperations strips timeoutHandle from each slot (private to OperationManager)', () => {
+        operationManager.acquireLock('background-cycle', 'op-1');
+        const running = operationManager.getRunningOperations();
+        expect(running['background-cycle']).not.toHaveProperty('timeoutHandle');
+        expect(running['background-cycle']).toHaveProperty('operationId', 'op-1');
+        expect(running['background-cycle']).toHaveProperty('startedAt');
+        expect(running['background-cycle']).toHaveProperty('stepProgress');
+    });
+
+    test('getRunningOperations output is JSON-serializable (regression: timeoutHandle is a Timer with circular refs)', () => {
+        // Repro for the Phase 18 bug where /api/operations/status returned 500
+        // "Converting circular structure to JSON" once acquireLock started arming
+        // a real setTimeout. The Timer object has internal _idlePrev / _idleNext
+        // back-references through TimersList that break JSON.stringify.
+        operationManager.acquireLock('background-cycle', 'op-circular');
+        operationManager.startStep('background-cycle', 'downloadCFDI', 'capstone');
+        const running = operationManager.getRunningOperations();
+        expect(() => JSON.stringify(running)).not.toThrow();
+        const parsed = JSON.parse(JSON.stringify(running));
+        expect(parsed['background-cycle'].operationId).toBe('op-circular');
+        expect(parsed['background-cycle'].stepProgress).toHaveLength(1);
+        expect(parsed['background-cycle'].stepProgress[0].step).toBe('downloadCFDI');
+    });
 });
 
 // ============================================================

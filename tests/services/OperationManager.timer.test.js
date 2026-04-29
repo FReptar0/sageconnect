@@ -58,7 +58,10 @@ describe('OperationManager timer (Phase 18, REC-01)', () => {
         expect(typeof ourCall[0]).toBe('function');
 
         // The slot must store the timer handle so releaseLock can cancel it.
-        const slot = operationManager.getRunningOperations()['background-cycle'];
+        // Use the private locks Map directly — getRunningOperations() strips
+        // timeoutHandle from its public shape (see operation-manager.test.js
+        // "JSON-serializable" regression test).
+        const slot = operationManager.locks.get('background-cycle');
         expect(slot).toBeDefined();
         expect(slot.timeoutHandle).toBeTruthy();
 

@@ -159,10 +159,21 @@ class OperationManager extends EventEmitter {
 
     /**
      * Get all currently running (locked) operations, including stepProgress.
+     *
+     * `timeoutHandle` (the auto-release setTimeout returned by Plan 18-01) is
+     * stripped from each slot — it is a Node Timer object with circular internal
+     * references (`_idlePrev` ↔ `_idleNext`) that breaks `JSON.stringify`. The
+     * timer is private to OperationManager and never part of the public shape.
+     *
      * @returns {Object} key=operationType, value={ operationId, startedAt, stepProgress: Array<{step, tenant, startedAt, finishedAt, error}> }
      */
     getRunningOperations() {
-        return Object.fromEntries(this.locks);
+        const result = {};
+        for (const [operationType, slot] of this.locks) {
+            const { timeoutHandle, ...serializableSlot } = slot;
+            result[operationType] = serializableSlot;
+        }
+        return result;
     }
 
     /**
