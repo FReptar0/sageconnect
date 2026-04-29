@@ -9,7 +9,7 @@ const { buildProvidersXML } = require('./controller/Providers_Downloader');
 const { sendMail } = require('./utils/EmailSender');
 const { logGenerator } = require('./utils/LogGenerator');
 const { getCurrentDate } = require('./utils/TimezoneHelper');
-const { formatDurationMin } = require('./utils/duration');
+const { formatDurationMin, withStepTimeout } = require('./utils/duration');
 const config = require('./config');
 const notifier = require('node-notifier');
 
@@ -53,10 +53,20 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando buildProvidersXML para el índice ${i}`);
-                    await buildProvidersXML(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    // Phantom continuation aceptada (D-10) — la promise original sigue corriendo en background
+                    // si el timeout dispara; ROOT-01 axios timeout (Plan 19-01) corta HTTP requests colgados.
+                    await withStepTimeout(buildProvidersXML(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] buildProvidersXML completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout (else logs as normal step error).
+                    // Wording sentinel `'Step timeout'` is set in src/utils/duration.js withStepTimeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -82,10 +92,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando downloadCFDI para el índice ${i}`);
-                    await downloadCFDI(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(downloadCFDI(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] downloadCFDI completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -111,10 +128,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando checkPayments para el índice ${i}`);
-                    await checkPayments(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(checkPayments(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] checkPayments completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -140,10 +164,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando uploadPayments para el índice ${i}`);
-                    await uploadPayments(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(uploadPayments(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] uploadPayments completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -169,10 +200,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando createPurchaseOrders para el índice ${i}`);
-                    await createPurchaseOrders(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(createPurchaseOrders(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] createPurchaseOrders completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -198,10 +236,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando processOrderChanges para el índice ${i}`);
-                    await processOrderChanges(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(processOrderChanges(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] processOrderChanges completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
@@ -227,10 +272,17 @@ async function forResponse(options = {}) {
                         });
                     }
                     logGenerator(logFileName, 'info', `[START] Iniciando closePurchaseOrders para el índice ${i}`);
-                    await closePurchaseOrders(i);
+                    // ROOT-03 (D-12): per-step timeout via Promise.race wrapping.
+                    await withStepTimeout(closePurchaseOrders(i), config.schedule.stepTimeoutMs, `step=${__step} tenant=${tenantIds[i]}`);
                     logGenerator(logFileName, 'info', `[COMPLETE] closePurchaseOrders completado para el índice ${i}`);
                 } catch (stepErr) {
                     __stepError = stepErr.message || String(stepErr);
+                    // ROOT-04 (D-13/D-16): log [TIMEOUT] entry IF this was a step timeout.
+                    if (/Step timeout/.test(__stepError)) {
+                        logGenerator(logFileName, 'error',
+                            `[TIMEOUT] step=${__step} tenant=${tenantIds[i]} url=n/a ` +
+                            `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+                    }
                     throw stepErr; // re-throw so the EXISTING tenant-level try/catch at background.js:145 still fires
                 } finally {
                     if (emitter && operationId) {
