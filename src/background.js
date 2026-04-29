@@ -284,8 +284,11 @@ function startChildProcess() {
         // ROOT-02 / D-06: closure-scoped state for the kill cascade.
         // hasSettled prevents double-settle if `close` fires during the grace period
         // (process terminated cleanly between SIGTERM and taskkill — must settle exactly once).
-        // killTimer + graceTimer are cleared in the settle wrapper BEFORE invoking resolve/reject
-        // to avoid fire-after-resolve (timer firing on an already-finalized PID).
+        // settle clears killTimer (the primary timeout that triggered SIGTERM) to prevent
+        // fire-after-resolve when the child closes BEFORE the timeout. graceTimer is NOT
+        // cleared in settle because by D-05 design, the grace period must continue running
+        // post-reject to fire taskkill — graceTimer is cleared only by close/error listeners
+        // that indicate the child terminated on its own.
         let hasSettled = false;
         let killTimer = null;
         let graceTimer = null;
@@ -293,8 +296,10 @@ function startChildProcess() {
             if (hasSettled) return;
             hasSettled = true;
             if (killTimer) clearTimeout(killTimer);
-            if (graceTimer) clearTimeout(graceTimer);
             fn();
+        };
+        const cancelGraceTimer = () => {
+            if (graceTimer) clearTimeout(graceTimer);
         };
 
         console.log(`[INFO] IMPORT_CFDIS_ROUTE: ${config.app.importRoute}`);
@@ -369,8 +374,10 @@ function startChildProcess() {
                 });
             });
 
-            // Close is used to capture the close event
+            // Close is used to capture the close event.
+            // cancelGraceTimer() invoked unconditionally — child terminated, no need for taskkill.
             childProcess.on('close', (code) => {
+                cancelGraceTimer();
                 if (code === 0) {
                     console.log(`[OK] Proceso de importación finalizado correctamente con código ${code}`);
                     logGenerator(logFileName, 'info', `[CLOSE] Proceso de importación finalizado correctamente con código ${code}`);
@@ -385,8 +392,10 @@ function startChildProcess() {
                 global.childProcessComplete = true;
             });
 
-            // Handle process errors
+            // Handle process errors.
+            // cancelGraceTimer() invoked unconditionally — spawn errored, no PID to taskkill.
             childProcess.on('error', (error) => {
+                cancelGraceTimer();
                 console.error(`[ERROR] Error iniciando proceso de importación: ${error.message}`);
                 logGenerator(logFileName, 'error', `[ERROR] Error iniciando proceso de importación: ${error.message}`);
                 settle(() => reject(error));
