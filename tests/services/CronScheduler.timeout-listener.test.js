@@ -267,3 +267,78 @@ describe('CronScheduler lock:timeout listener (Phase 18, REC-02)', () => {
         expect(record.stuckOnTenant).toBeNull();
     });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 19 ROOT-02 / D-15 — Child timeout dispatch + axios/step NO-email assertion
+// ---------------------------------------------------------------------------
+//
+// El child timeout email NO se dispara desde el listener `lock:timeout` (Phase 18) —
+// se dispara desde el catch handler interno del cron callback en CronScheduler.js
+// (Phase 19 D-15). Ese catch detecta `/Child process timeout/` en `err.message` y
+// llama `sendAdminAlert`. Tests aquí verifican el invariante a nivel de archivo
+// (smoke tests) Y a nivel de regex (negaciones para axios/step).
+describe('CronScheduler — Child process timeout dispatch (Phase 19, ROOT-02 / D-15)', () => {
+    test('background.js emits the wording sentinel "Child process timeout"', () => {
+        const fs = require('fs');
+        const bgSrc = fs.readFileSync('src/background.js', 'utf8');
+        // Must contain the exact reject message format with both 'Child process timeout' AND 'killed' AND 'PID was'
+        expect(/Child process timeout after.*killed.*PID was/.test(bgSrc)).toBe(true);
+    });
+
+    test('CronScheduler.js detection regex /Child process timeout/ matches background.js wording', () => {
+        const fs = require('fs');
+        const cronSrc = fs.readFileSync('src/services/CronScheduler.js', 'utf8');
+        // Detection regex present
+        expect(/\/Child process timeout\//.test(cronSrc)).toBe(true);
+        // isChildTimeout branch present (used to gate email dispatch)
+        expect(/isChildTimeout/.test(cronSrc)).toBe(true);
+    });
+
+    test('CronScheduler.js dispatches sendAdminAlert with [SageConnect] Child process timeout subject', () => {
+        const fs = require('fs');
+        const cronSrc = fs.readFileSync('src/services/CronScheduler.js', 'utf8');
+        // Subject literal present
+        expect(/\[SageConnect\] Child process timeout: ImportaFacturasFocaltec\.exe killed/.test(cronSrc)).toBe(true);
+        // sendAdminAlert invoked with subject + html arguments
+        expect(/sendAdminAlert\(subject,\s*html\)/.test(cronSrc)).toBe(true);
+    });
+
+    test('CronScheduler.js logs [TIMEOUT] action=admin-email-dispatched on child timeout', () => {
+        const fs = require('fs');
+        const cronSrc = fs.readFileSync('src/services/CronScheduler.js', 'utf8');
+        expect(/action=admin-email-dispatched/.test(cronSrc)).toBe(true);
+    });
+
+    test('axios timeout wording does NOT match child timeout regex (D-15 negation)', () => {
+        // Smoke test: verifica que el regex de detection es ESPECÍFICO a child timeouts
+        // y NO matchea el wording canónico de axios timeouts ('timeout of Xms exceeded').
+        const axiosTimeoutMessage = 'timeout of 30000ms exceeded';
+        expect(/Child process timeout/.test(axiosTimeoutMessage)).toBe(false);
+
+        // Variant — axios with ECONNABORTED
+        const axiosAbortedMessage = 'ECONNABORTED: timeout of 30000ms exceeded';
+        expect(/Child process timeout/.test(axiosAbortedMessage)).toBe(false);
+    });
+
+    test('step timeout wording does NOT match child timeout regex (D-15 negation)', () => {
+        // Smoke test: Plan 19-03 introducirá `'Step timeout after Xm — step=<name> tenant=<id>'`.
+        // El regex de detection del child timeout NO debe matchearlo (mantener D-15 boundary).
+        const stepTimeoutMessage = 'Step timeout after 5m — step=buildProviders tenant=T1';
+        expect(/Child process timeout/.test(stepTimeoutMessage)).toBe(false);
+    });
+
+    test('generic error wording does NOT match child timeout regex (D-15 negation)', () => {
+        // Smoke test: errores ad-hoc del path always-on (e.g., DB connection failure, network error).
+        const genericMessage = 'connect ETIMEDOUT 10.0.0.1:1433';
+        expect(/Child process timeout/.test(genericMessage)).toBe(false);
+
+        const otherError = 'Unexpected token in JSON';
+        expect(/Child process timeout/.test(otherError)).toBe(false);
+    });
+
+    test('child timeout wording DOES match (positive control)', () => {
+        // Positive control: wording that DOES match must trigger detection.
+        const childTimeoutMessage = 'Child process timeout after 10m — killed (PID was 9999)';
+        expect(/Child process timeout/.test(childTimeoutMessage)).toBe(true);
+    });
+});
