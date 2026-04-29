@@ -10,7 +10,7 @@
 |-------|-------|-----------|--------|
 | 17 — Observability & Diagnostics | 4 | 4 | ✓ Complete (17-01, 17-02, 17-03, 17-04 all done) |
 | 18 — Auto-release & Manual Override | 3 | 3 | ✓ Complete (18-01, 18-02, 18-03 all done) |
-| 19 — Root Cause Timeouts | 3 | 2 | in progress (19-01 ✓ done; 19-02 ✓ done; 19-03 pending) |
+| 19 — Root Cause Timeouts | 3 | 3 | ✓ Complete (19-01 ✓ done; 19-02 ✓ done; 19-03 ✓ done) |
 
 ## Phase Overview
 
@@ -88,9 +88,9 @@
 5. Env vars `PORTAL_HTTP_TIMEOUT_MS`, `CHILD_PROCESS_TIMEOUT_MS`, `STEP_TIMEOUT_MS` son opcionales con defaults sensatos si no se setean.
 
 **Plans:** 3 plans
-- [ ] 19-01-PLAN.md — Centralized PortalClient (axios.create with config-driven timeout) + 9 file refactor (18 axios call sites in path always-on) + config knob `portal.httpTimeoutMs` (default 30s, range guard >= 1000ms) + tests for cliente. Wave 1. Covers ROOT-01.
-- [x] 19-02-PLAN.md — Backend startChildProcess kill cascade (setTimeout + SIGTERM + 30s grace + taskkill /F /T fallback + hasSettled flag) + CronScheduler dispatch sendAdminAlert + dual log [TIMEOUT] when wording sentinel `Child process timeout` matches + config knob `schedule.childProcessTimeoutMs` (default 10 min, range guard >= 60000ms) + tests with jest fake timers + spawn EventEmitter mock. Wave 2 (orthogonal a 19-01, no file overlap excepto config.js distinct sections). Covers ROOT-02 + ROOT-04 (child) — DONE 2026-04-29 (commits ed6438d, 25bc329, 59972bb, 012b6ad, f40fe29, c0d5735).
-- [ ] 19-03-PLAN.md — Per-step Promise.race wrapper via `withStepTimeout` helper en `src/utils/duration.js` + envuelve los 7 `await stepFn(i)` calls in forResponse + log [TIMEOUT] cuando wording sentinel `Step timeout` matches + config knob `schedule.stepTimeoutMs` (default 5 min, range guard >= 30000ms) + enrichment de UN axios callsite ejemplo (PortalPaymentController) con [TIMEOUT] cuando ECONNABORTED + integration tests para log routing per timeout source. Wave 2 (depends_on 19-01 + 19-02). Covers ROOT-03 + ROOT-04.
+- [x] 19-01-PLAN.md — Centralized PortalClient (axios.create with config-driven timeout) + 9 file refactor (18 axios call sites in path always-on) + config knob `portal.httpTimeoutMs` (default 30s, range guard >= 1000ms) + tests for cliente. Wave 1. Covers ROOT-01 — DONE 2026-04-29 (commits eeebfe8, ec73a6a, 26c4d32 — see [19-01-SUMMARY.md](milestones/v2.3-phases/19-root-cause-timeouts/19-01-SUMMARY.md)).
+- [x] 19-02-PLAN.md — Backend startChildProcess kill cascade (setTimeout + SIGTERM + 30s grace + taskkill /F /T fallback + hasSettled flag) + CronScheduler dispatch sendAdminAlert + dual log [TIMEOUT] when wording sentinel `Child process timeout` matches + config knob `schedule.childProcessTimeoutMs` (default 10 min, range guard >= 60000ms) + tests with jest fake timers + spawn EventEmitter mock. Wave 2 (orthogonal a 19-01, no file overlap excepto config.js distinct sections). Covers ROOT-02 + ROOT-04 (child) — DONE 2026-04-29 (commits ed6438d, 25bc329, 59972bb, 012b6ad, f40fe29, c0d5735 — see [19-02-SUMMARY.md](milestones/v2.3-phases/19-root-cause-timeouts/19-02-SUMMARY.md)).
+- [x] 19-03-PLAN.md — Per-step Promise.race wrapper via `withStepTimeout` helper en `src/utils/duration.js` + envuelve los 7 `await stepFn(i)` calls in forResponse + log [TIMEOUT] cuando wording sentinel `Step timeout` matches + config knob `schedule.stepTimeoutMs` (default 5 min, range guard >= 30000ms) + enrichment de UN axios callsite ejemplo (PortalPaymentController) con [TIMEOUT] cuando ECONNABORTED + integration tests para log routing per timeout source. Wave 3 (depends_on 19-01 + 19-02). Covers ROOT-03 + ROOT-04 — DONE 2026-04-29 (commits 14896d6, 43dadd5, 2977b3a, a34cef1, ab42a69, c282926 — see [19-03-SUMMARY.md](milestones/v2.3-phases/19-root-cause-timeouts/19-03-SUMMARY.md)).
 
 ---
 
@@ -108,9 +108,9 @@
 | REC-03 | 18 | ✓ done (Plan 18-03, commits c6d5b0e + d46778c) |
 | REC-04 | 18 | ✓ done (Plan 18-02, commit bf34398) |
 | REC-05 | 18 | ✓ done (Plan 18-02, commit bf34398) |
-| ROOT-01 | 19 | ✓ mapped |
-| ROOT-02 | 19 | ✓ mapped |
-| ROOT-03 | 19 | ✓ mapped |
-| ROOT-04 | 19 | ✓ mapped |
+| ROOT-01 | 19 | ✓ done (Plan 19-01, commits eeebfe8 + ec73a6a + 26c4d32) |
+| ROOT-02 | 19 | ✓ done (Plan 19-02, commits ed6438d + 25bc329 + 59972bb) |
+| ROOT-03 | 19 | ✓ done (Plan 19-03, commits 14896d6 + 43dadd5) |
+| ROOT-04 | 19 | ✓ done (Plan 19-02 child + Plan 19-03 axios+step, commits 59972bb + 2977b3a + 43dadd5) |
 
-**Coverage:** 14/14 (100%) — todos los REQs mapeados a una phase única.
+**Coverage:** 14/14 (100%) — todos los REQs mapeados a una phase única + Phase 19 cierre 4/4 ROOT REQs delivered.

@@ -24,10 +24,10 @@
 
 ### Root Cause Prevention (ROOT)
 
-- [ ] **ROOT-01**: Todas las llamadas `axios.get/post` al portal de proveedores tienen `timeout` explícito (default 30s, configurable via env `PORTAL_HTTP_TIMEOUT_MS`).
+- [x] **ROOT-01**: Todas las llamadas `axios.get/post` al portal de proveedores tienen `timeout` explícito (default 30s, configurable via env `PORTAL_HTTP_TIMEOUT_MS`).
 - [x] **ROOT-02**: `startChildProcess` mata el proceso hijo (`ImportaFacturasFocaltec.exe`) si no termina en N minutos (default 10 min, configurable via env `CHILD_PROCESS_TIMEOUT_MS`), rejecta el Promise con error descriptivo.
-- [ ] **ROOT-03**: Cada step de `forResponse` tiene per-step timeout vía `Promise.race` (default 5 min por step, configurable via env `STEP_TIMEOUT_MS`). Timeout en un step no aborta los siguientes — se loggea y continúa con el siguiente tenant.
-- [ ] **ROOT-04**: Cuando un timeout (ROOT-01/02/03) dispara, el error se loggea a `CronScheduler.log` y `ForResponse.log` con contexto (step, tenant, URL, duración).
+- [x] **ROOT-03**: Cada step de `forResponse` tiene per-step timeout vía `Promise.race` (default 5 min por step, configurable via env `STEP_TIMEOUT_MS`). Timeout en un step no aborta los siguientes — se loggea y continúa con el siguiente tenant.
+- [x] **ROOT-04**: Cuando un timeout (ROOT-01/02/03) dispara, el error se loggea a `CronScheduler.log` y `ForResponse.log` con contexto (step, tenant, URL, duración).
 
 ### Traceability
 
@@ -43,10 +43,10 @@
 | REC-03 | 18 | Auto-release & Manual Override | UI button — ✓ done (Plan 18-03, commits c6d5b0e + d46778c) |
 | REC-04 | 18 | Auto-release & Manual Override | API endpoint — ✓ done (Plan 18-02, commit bf34398) |
 | REC-05 | 18 | Auto-release & Manual Override | Audit entry — ✓ done (Plan 18-02, commit bf34398) |
-| ROOT-01 | 19 | Root Cause Timeouts | axios timeout |
+| ROOT-01 | 19 | Root Cause Timeouts | axios timeout — ✓ done (Plan 19-01, commits eeebfe8 + ec73a6a + 26c4d32) |
 | ROOT-02 | 19 | Root Cause Timeouts | child process timeout — ✓ done (Plan 19-02, commits ed6438d + 25bc329 + 59972bb + 012b6ad + f40fe29 + c0d5735) |
-| ROOT-03 | 19 | Root Cause Timeouts | per-step Promise.race |
-| ROOT-04 | 19 | Root Cause Timeouts | Timeout logging |
+| ROOT-03 | 19 | Root Cause Timeouts | per-step Promise.race — ✓ done (Plan 19-03, commits 14896d6 + 43dadd5) |
+| ROOT-04 | 19 | Root Cause Timeouts | Timeout logging — ✓ done (Plan 19-02 child + Plan 19-03 axios+step, commits 59972bb + 2977b3a + 43dadd5) |
 
 ## Future Requirements (Deferred)
 
