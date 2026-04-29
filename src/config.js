@@ -170,6 +170,10 @@ const config = {
         operationDelayMs: parseInt(process.env.OPERATION_DELAY_MS, 10) || 5000,
         // REC-01 (D-01): auto-release timeout for OperationManager locks. Env override: LOCK_TIMEOUT_MS. Default 14 min (~93% of 15 min cron cadence).
         lockTimeoutMs: parseInt(process.env.LOCK_TIMEOUT_MS, 10) || 14 * 60 * 1000,
+        // ROOT-02 (D-07): timeout para el child process ImportaFacturasFocaltec.exe.
+        // Env override: CHILD_PROCESS_TIMEOUT_MS. Default 10 min (texto literal de REQ ROOT-02).
+        // Effective ~10m 30s incluyendo el grace period — comfortably bajo los 14 min del lock auto-release.
+        childProcessTimeoutMs: parseInt(process.env.CHILD_PROCESS_TIMEOUT_MS, 10) || 10 * 60 * 1000,
     },
 };
 
@@ -182,6 +186,12 @@ if (config.schedule.lockTimeoutMs < 60000) {
 // ROOT-01 (D-03): axios timeout puede legitimamente ser sub-segundo en pruebas, pero < 1000ms es signal de misconfig.
 if (config.portal.httpTimeoutMs < 1000) {
     console.error('[CONFIG ERROR] PORTAL_HTTP_TIMEOUT_MS must be >= 1000 (1 sec). Got: ' + config.portal.httpTimeoutMs);
+    process.exit(1);
+}
+
+// ROOT-02 (D-07): mínimo 1 min para evitar misconfigs catastróficas (e.g., 10ms aborta antes de que el exe arranque).
+if (config.schedule.childProcessTimeoutMs < 60000) {
+    console.error('[CONFIG ERROR] CHILD_PROCESS_TIMEOUT_MS must be >= 60000 (1 min). Got: ' + config.schedule.childProcessTimeoutMs);
     process.exit(1);
 }
 
