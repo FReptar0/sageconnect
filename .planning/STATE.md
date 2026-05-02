@@ -5,7 +5,7 @@ milestone_name: null
 status: idle
 stopped_at: "Milestone v2.3 Scheduler Lock Recovery COMPLETE — 3 phases, 10 plans, 14/14 REQs delivered, 89 commits, 17/17 STRIDE threats closed. Archive at .planning/milestones/v2.3-ROADMAP.md and v2.3-REQUIREMENTS.md. Git tag v2.3 created. Awaiting next milestone scope via /gsd-new-milestone."
 last_updated: "2026-04-29T20:30:00Z"
-last_activity: 2026-04-29 -- Milestone v2.3 closed; archive files committed (9651348); REQUIREMENTS.md removed via git rm
+last_activity: 2026-05-02 -- Quick task 260502-i7l completed pre-deploy: GetProviders re-throw + Providers_Downloader XML validation + extract sendAdminAlert helper (PATTERNS.md §S-6 3rd-use trigger fired; closes Pending item)
 progress:
   percent: 100
 ---
@@ -32,13 +32,19 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 | todo | 2026-04-16-fix-uploadpayments-lookback-to-prevent-missed-payments | pending — pre-existing, unrelated to v2.3 scope |
 | todo | 2026-04-16-support-partial-payment-completion-for-incomplete-uploads | pending — pre-existing, unrelated to v2.3 scope |
 
+**Quick Tasks Completed (pre-v2.3-deploy fixes):**
+
+| Quick ID | Description | Date | Commits | Notes |
+|----------|-------------|------|---------|-------|
+| 260502-i7l | validate XML providers + error reports | 2026-05-02 | 7bb2f63, aaa733e, 43d4fde | path-b chosen — extracted sendAdminAlert + findLastOpenStep to src/utils/AdminEmailSender.js with callerLogFile param (closes PATTERNS.md §S-6 3rd-use trigger). Closed 2 blind spots in XML proveedores flow: (1) GetProviders re-throw on portal error, (2) buildProvidersXML try/catch + post-write validation. 9 new tests, 0 regressions. |
+
 **Non-blocking follow-ups from v2.3 (recommendations, not REQs):**
 
 - AbortController retrofit completo — defer hasta evidencia operacional muestre necesidad concreta. Phantom continuation NARROWED a step-level only es la forma actual.
 - `apiCall` toast suppression para force-release call site (Plan 18-03 minor follow-up; UI-SPEC L123 prescribe "no toast — inline only" pero shared.js helper fires generic toast on every failed fetch)
 - Otros 8 axios callsites enrichment con `[TIMEOUT]` log entries (Plan 19-03 enriqueció solo PortalPaymentController.js como ejemplo cross-cutting)
 - `scripts/obfuscate.js` allowlist → blocklist refactor (PR #20 retrospective)
-- `sendAdminAlert` + `findLastOpenStep` extraction a `src/utils/AdminEmailSender.js` (defer hasta 3rd use; PATTERNS.md §S-6)
+- ~~`sendAdminAlert` + `findLastOpenStep` extraction a `src/utils/AdminEmailSender.js`~~ ✓ resolved 2026-05-02 via quick-260502-i7l (3rd-use trigger fired; both helpers extracted with callerLogFile param preserving log routing)
 
 ## Blockers/Concerns
 

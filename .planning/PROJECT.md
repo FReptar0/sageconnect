@@ -138,7 +138,10 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 | ONLY child timeouts dispatch admin email | Evita inbox flood + alert fatigue de transient axios timeouts (v2.3 D-15) | ✓ Good |
 | withStepTimeout helper hides Promise.race (no direct in background.js) | Phase 19 boundary keeps wrapper hidden (v2.3) | ✓ Good |
 | Wording sentinels LOAD-BEARING ('Child process timeout', 'Step timeout') | Regex detection gates email dispatch + log routing (v2.3) | ✓ Good |
-| sendAdminAlert + findLastOpenStep INLINE en CronScheduler + schedule-routes | PATTERNS.md §S-6 inline-twice antes de extraer; refactor pendiente al 3rd use (v2.3) | — Pending |
+| sendAdminAlert + findLastOpenStep INLINE en CronScheduler + schedule-routes | PATTERNS.md §S-6 inline-twice antes de extraer; refactor pendiente al 3rd use (v2.3) | ✓ Good (resolved 2026-05-02 via quick-260502-i7l: extracted to src/utils/AdminEmailSender.js with callerLogFile param to preserve log routing per call-site) |
+| Re-throw portal errors en getProviders (drop notifier swallow) | Servy no tiene sesión escritorio — notifier.notify era no-op invisible; re-throw permite caller distinguir error vs empty (quick 260502-i7l) | ✓ Good |
+| Post-write validation en buildProvidersXML (size + `<Proveedor>` match + writeFileSync error capture) | Defense-in-depth contra disk errors silenciosos pre-deploy Capstone; cubre 3 paths: error portal / size <= 200 / writeFileSync rejection (quick 260502-i7l) | ✓ Good |
+| sendAdminAlert extraído a src/utils/AdminEmailSender.js con callerLogFile param | 3rd use site (Providers_Downloader.js) triggered PATTERNS.md §S-6 refactor-just-in-time; param preserva [ADMIN-EMAIL] log routing por caller (CronScheduler.log, ScheduleRoutes.log, Providers_Downloader.log) (quick 260502-i7l) | ✓ Good |
 | AbortController retrofit completo deferred | Phantom continuation NARROWED a step-level only es la forma actual; defer hasta evidencia operacional (v2.3 D-10) | — Pending |
 
 ## Evolution
