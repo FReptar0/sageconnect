@@ -159,5 +159,5 @@ Given the financial nature of the data processed:
 ## Acknowledgments  
   
 We appreciate the security research community's efforts in responsibly disclosing vulnerabilities and helping improve the security of SAGECONNECT.  
-For more information, please refer to the [LICENSE.md](LICENSE.md) and [EULA.md](EULA.md) files in this repository.
+For more information, please refer to [LICENSE.md](LICENSE.md), [EULA-en.md](EULA-en.md) (controlling English version), or [EULA-es.md](EULA-es.md) (Spanish courtesy translation).
 This document is subject to change as new security practices are adopted and vulnerabilities are addressed. Please refer to the latest version in the repository for up-to-date security policies and practices.

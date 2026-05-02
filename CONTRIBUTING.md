@@ -202,7 +202,7 @@ This project is licensed under the **EULA** with Fernando Rodríguez Memije (Eff
 - You grant the project a **non‑exclusive, perpetual** license to use and distribute your contributions.
 - The EULA remains in force until revoked per its terms.
 
-Refer to `EULA.md` for full legal text.
+Refer to `EULA-en.md` for the full legal text (controlling English version) or `EULA-es.md` for the Spanish courtesy translation.
 
 ---
 

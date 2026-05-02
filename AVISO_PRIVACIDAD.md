@@ -43,7 +43,7 @@ Durante su operación normal en los servidores del cliente (**Licenciatario**), 
 
 ### 4.1 ¿Qué se transmite?
 
-Durante la validación periódica de licencia (cláusula 1.3 del EULA), SageConnect envía **únicamente** el siguiente dato al servidor de validación operado por el Licenciante:
+Durante la validación periódica de licencia (cláusula 1.3 del EULA — ver `EULA-en.md` versión controlante o `EULA-es.md` traducción), SageConnect envía **únicamente** el siguiente dato al servidor de validación operado por el Licenciante:
 
 ```
 GET /api/validate?key=<SAGECONNECT_API_KEY>
@@ -169,5 +169,5 @@ Licenciante / Responsable
 Ciudad de México, México
 2 de mayo de 2026
 
-Para términos completos del contrato de licencia, ver `EULA.md`.
+Para términos completos del contrato de licencia, ver `EULA-en.md` (versión controlante en inglés) o `EULA-es.md` (traducción de cortesía al español).
 Para reportes de seguridad, ver `SECURITY.md`.

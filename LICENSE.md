@@ -8,6 +8,9 @@ are the exclusive property of Fernando Rodríguez Memije. No part of this softwa
 copied, distributed, modified, or used in any form, in whole or in part, without
 the prior written consent of Fernando Rodríguez Memije.
 
-For details on how to request permission for internal use, see [EULA.md](EULA.md).
+For details on how to request permission for internal use, see the End-User License Agreement:
+- **English (controlling version):** [EULA-en.md](EULA-en.md)
+- **Spanish (courtesy translation):** [EULA-es.md](EULA-es.md)
+
 For data protection information, see [AVISO_PRIVACIDAD.md](AVISO_PRIVACIDAD.md).
 For security vulnerability reporting, see [SECURITY.md](SECURITY.md).
