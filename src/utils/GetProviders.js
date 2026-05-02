@@ -1,4 +1,3 @@
-const notifier = require('node-notifier');
 const config = require('../config');
 const portalClient = require('./PortalClient');
 const { getCurrentDateString } = require('./TimezoneHelper');
@@ -46,13 +45,7 @@ async function getProviders(index) {
     } catch (error) {
         console.error('[ERROR] Error fetching providers:', error);
         logGenerator(logFileName, 'ERROR', error);
-        notifier.notify({
-            title: 'Focaltec',
-            message: `[ERROR] Error fetching providers: ${error.message}`,
-            sound: true,
-            wait: true
-        });
-        return [];
+        throw error;
     }
 }
 
