@@ -174,7 +174,7 @@ Neither party shall be liable for any failure or delay in performance under this
 For questions, permission requests, or notices under this EULA, please contact:
 
 **Fernando Rodríguez Memije**
-Email: <fmemije00@gmail.com>
+Email: <hi@fernandomemije.dev>
 
 For data protection inquiries, see `AVISO_PRIVACIDAD.md`.
 For security vulnerability reports, see `SECURITY.md`.

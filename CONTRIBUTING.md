@@ -189,7 +189,7 @@ Fix any failures reported by the CI before requesting a merge.
 If you discover a security issue:
 
 1. **Do not** open a public issue.
-2. **Email** the maintainers at `<fmemije00@gmail.com>` with details.
+2. **Email** the maintainers at `<hi@fernandomemije.dev>` with details.
 3. We will coordinate a patch and disclosure timeline.
 
 ---
@@ -215,7 +215,7 @@ We appreciate every contribution, big or small. Special thanks to all past and f
 ## 15. Questions & Contact
 
 - For general questions, open an issue with the `question` label.
-- For private matters, email **Fernando Rodríguez Memije** at [fmemije00@gmail.com](mailto:fmemije00@gmail.com).
+- For private matters, email **Fernando Rodríguez Memije** at [hi@fernandomemije.dev](mailto:hi@fernandomemije.dev).
 
 ---
 

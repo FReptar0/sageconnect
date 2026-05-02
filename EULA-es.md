@@ -178,7 +178,7 @@ Ninguna de las partes será responsable por cualquier falla o retraso en el cump
 Para preguntas, solicitudes de permiso o notificaciones bajo este EULA, favor de contactar:
 
 **Fernando Rodríguez Memije**
-Correo electrónico: <fmemije00@gmail.com>
+Correo electrónico: <hi@fernandomemije.dev>
 
 Para consultas sobre protección de datos, ver `AVISO_PRIVACIDAD.md`.
 Para reportes de vulnerabilidades de seguridad, ver `SECURITY.md`.

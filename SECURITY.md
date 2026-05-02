@@ -153,8 +153,8 @@ Given the financial nature of the data processed:
 ## Security Contacts  
   
 - **Security Team:** Fernando Rodríguez Memije  
-- **Emergency Contact:** <fmemije00@gmail.com>  
-- **Business Contact:** <fmemije00@gmail.com>  
+- **Emergency Contact:** <hi@fernandomemije.dev>  
+- **Business Contact:** <hi@fernandomemije.dev>  
   
 ## Acknowledgments  
   

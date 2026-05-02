@@ -10,7 +10,7 @@
 
 **Responsable:** Fernando Rodríguez Memije
 **Domicilio para efectos del presente Aviso:** Ciudad de México, México
-**Correo electrónico de contacto:** <fmemije00@gmail.com>
+**Correo electrónico de contacto:** <hi@fernandomemije.dev>
 **Software:** SageConnect (sistema de integración entre Sage 300 ERP y Portal de Proveedores)
 
 ---
@@ -160,7 +160,7 @@ La instalación, acceso o uso de SageConnect por parte del Licenciatario constit
 | ¿Manda CFDIs, pagos, datos de proveedores? | **No.** Esos datos jamás salen de tu servidor. |
 | ¿Manda mi nombre, correo, RFC personal? | **No.** Nunca. |
 | ¿Qué pasa si me hacen una auditoría INAI? | Este Aviso documenta que no recolectamos datos personales, así que estás protegido. |
-| ¿Qué hago si tengo dudas? | Escribe a `fmemije00@gmail.com`. |
+| ¿Qué hago si tengo dudas? | Escribe a `hi@fernandomemije.dev`. |
 
 ---
 
