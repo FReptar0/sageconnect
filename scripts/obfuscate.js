@@ -35,6 +35,7 @@ const COPY_AS_IS = [
     'CONTRIBUTING.md',
     'EULA.md',
     'SECURITY.md',
+    'AVISO_PRIVACIDAD.md',
     'public',
     'scripts/install-service.ps1',
     '.env.example',
