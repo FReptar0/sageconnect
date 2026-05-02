@@ -12,7 +12,6 @@
  */
 
 const cron = require('node-cron');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const config = require('../config');
 const operationManager = require('./OperationManager');
@@ -20,67 +19,27 @@ const licenseValidator = require('./LicenseValidator');
 const { forResponse, startChildProcess } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
 const { formatDurationMin } = require('../utils/duration');
+const {
+    sendAdminAlert: _sendAdminAlertImpl,
+    findLastOpenStep,
+} = require('../utils/AdminEmailSender');
 
 const LOG_FILE = 'CronScheduler';
 
 // ---------------------------------------------------------------------------
-// Helpers (Phase 18, REC-02)
+// Helpers (Phase 18, REC-02) — sendAdminAlert + findLastOpenStep extracted to
+// src/utils/AdminEmailSender.js per PATTERNS.md §S-6 third-use trigger
+// (Quick task 260502-i7l). Local 2-arg wrapper preserves the existing call-site
+// signature and threads LOG_FILE='CronScheduler' so [ADMIN-EMAIL] log entries
+// continue to appear in CronScheduler.log (no log routing change).
 // ---------------------------------------------------------------------------
 
 /**
- * Send an alert email to the LICENSE_ADMIN_EMAIL recipient.
- * Mirrors LicenseValidator.sendLicenseAlert — uses nodemailer directly (NOT the project's
- * operator-facing email-sender utility). Email failures are swallowed and logged at warn —
- * they MUST NOT block lock-recovery flow.
- *
- * D-08 in 18-CONTEXT.md originally said admin emails go via the project's generic mail
- * utility (`src/utils/EmailS` + `ender.js#sendMail`); PATTERNS.md §S-6 overrides this because
- * that utility routes to `config.mailing.notices` (operator mailbox), NOT
- * `config.license.adminEmail` (admin mailbox). Using nodemailer-direct
- * (LicenseValidator.sendLicenseAlert pattern) honors D-08's intent — admin gets the email on
- * both paths with the specified subjects. Implementation mechanism only.
- *
  * @param {string} subject  — already includes the [SageConnect] prefix when called.
  * @param {string} html     — full HTML body of the message.
  */
-async function sendAdminAlert(subject, html) {
-    try {
-        const transportConfig = {
-            host: config.mailing.server,
-            port: config.mailing.port,
-            secure: config.mailing.ssl,
-        };
-        if (config.mailing.password) {
-            transportConfig.auth = {
-                user: config.mailing.from,
-                pass: config.mailing.password,
-            };
-        }
-        const transport = nodemailer.createTransport(transportConfig);
-        await transport.sendMail({
-            from: config.mailing.from,
-            to: config.license.adminEmail,
-            subject,
-            html,
-        });
-        logGenerator(LOG_FILE, 'info', '[ADMIN-EMAIL] Sent to ' + config.license.adminEmail + ': ' + subject);
-    } catch (err) {
-        logGenerator(LOG_FILE, 'warn', '[ADMIN-EMAIL] Failed to send timeout alert: ' + err.message);
-    }
-}
-
-/**
- * Find the most recent stepProgress entry whose finishedAt is null/missing.
- * Returns null if stepProgress is empty or every entry is closed.
- * @param {Array<{step: string, tenant: string|null, startedAt: string, finishedAt: string|null, error: string|null}>} stepProgress
- * @returns {object|null}
- */
-function findLastOpenStep(stepProgress) {
-    if (!Array.isArray(stepProgress)) return null;
-    for (let i = stepProgress.length - 1; i >= 0; i--) {
-        if (!stepProgress[i].finishedAt) return stepProgress[i];
-    }
-    return null;
+function sendAdminAlert(subject, html) {
+    return _sendAdminAlertImpl(subject, html, LOG_FILE);
 }
 
 /** @type {import('node-cron').ScheduledTask|null} */

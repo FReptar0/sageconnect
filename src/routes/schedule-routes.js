@@ -13,7 +13,6 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
 const router = express.Router();
 const { rateLimit } = require('express-rate-limit');
 const { validate } = require('../middleware/validate');
@@ -26,6 +25,10 @@ const { triggerSchema, forceReleaseParamsSchema, forceReleaseBodySchema } = requ
 const { forResponse } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
 const { formatDurationMin } = require('../utils/duration');
+const {
+    sendAdminAlert: _sendAdminAlertImpl,
+    findLastOpenStep,
+} = require('../utils/AdminEmailSender');
 
 const LOG_FILE = 'ScheduleRoutes';
 
@@ -57,71 +60,19 @@ const writeLimiter = rateLimit({
 });
 
 // ---------------------------------------------------------------------------
-// Helpers (Phase 18, REC-04 + REC-05) — INLINE COPY of CronScheduler#sendAdminAlert
-// (PATTERNS.md §5: inline-twice strategy. If a third use case appears, refactor
-// to src/utils/AdminEmailS' + 'ender.js — until then duplication keeps blast radius
-// tight and decouples the route module from CronScheduler.)
+// Helpers (Phase 18, REC-04 + REC-05) — sendAdminAlert + findLastOpenStep
+// extracted to src/utils/AdminEmailSender.js per PATTERNS.md §S-6 third-use
+// trigger (Quick task 260502-i7l). Local 2-arg wrapper preserves the existing
+// call-site signature and threads LOG_FILE='ScheduleRoutes' so [ADMIN-EMAIL]
+// log entries continue to appear in ScheduleRoutes.log (no log routing change).
 // ---------------------------------------------------------------------------
 
 /**
- * Send an alert email to the LICENSE_ADMIN_EMAIL recipient.
- * Mirrors LicenseValidator.sendLicenseAlert and the inline copy in
- * src/services/CronScheduler.js#sendAdminAlert added by Plan 18-01 — uses
- * nodemailer directly (NOT the project's operator-facing email-sender utility,
- * which routes to config.mailing.notices).
- *
- * D-08 in 18-CONTEXT.md originally said admin emails go via the project's
- * generic mail utility; PATTERNS.md §S-6 overrides this because that utility
- * routes to operator mailbox, NOT config.license.adminEmail (admin mailbox).
- * Using nodemailer-direct honors D-08's intent — admin gets email on both
- * paths with the specified subjects. Implementation mechanism only.
- *
- * Email failures are swallowed (warn log) and MUST NOT block the response.
- *
  * @param {string} subject  — already includes the [SageConnect] prefix.
  * @param {string} html     — full HTML body of the message.
  */
-async function sendAdminAlert(subject, html) {
-    try {
-        const transportConfig = {
-            host: config.mailing.server,
-            port: config.mailing.port,
-            secure: config.mailing.ssl,
-        };
-        if (config.mailing.password) {
-            transportConfig.auth = {
-                user: config.mailing.from,
-                pass: config.mailing.password,
-            };
-        }
-        const transport = nodemailer.createTransport(transportConfig);
-        await transport.sendMail({
-            from: config.mailing.from,
-            to: config.license.adminEmail,
-            subject,
-            html,
-        });
-        logGenerator(LOG_FILE, 'info', '[ADMIN-EMAIL] Sent to ' + config.license.adminEmail + ': ' + subject);
-    } catch (err) {
-        logGenerator(LOG_FILE, 'warn', '[ADMIN-EMAIL] Failed to send force-release alert: ' + err.message);
-    }
-}
-
-/**
- * Inline copy of CronScheduler#findLastOpenStep — derives stuckOnStep / stuckOnTenant
- * from a slot's stepProgress array. Iterates backwards to find the most recent entry
- * with finishedAt:null. Kept inline to avoid a cross-module dependency for a 5-line
- * helper.
- *
- * @param {Array<{step:string, tenant:string|null, startedAt:string, finishedAt:string|null, error:string|null}>} stepProgress
- * @returns {{step:string, tenant:string|null}|null}
- */
-function findLastOpenStep(stepProgress) {
-    if (!Array.isArray(stepProgress)) return null;
-    for (let i = stepProgress.length - 1; i >= 0; i--) {
-        if (!stepProgress[i].finishedAt) return stepProgress[i];
-    }
-    return null;
+function sendAdminAlert(subject, html) {
+    return _sendAdminAlertImpl(subject, html, LOG_FILE);
 }
 
 // ---------------------------------------------------------------------------
