@@ -8,6 +8,72 @@ const xml2js = require('xml2js');
 const { logGenerator } = require('../utils/LogGenerator');
 const { getCurrentDate } = require('../utils/TimezoneHelper');
 const { getProviders } = require('../utils/GetProviders');
+const { sendAdminAlert: _sendAdminAlertImpl } = require('../utils/AdminEmailSender');
+
+// ---------------------------------------------------------------------------
+// Local 2-arg wrapper threads 'Providers_Downloader' for [ADMIN-EMAIL] log
+// routing preservation. Mirror of CronScheduler.js + schedule-routes.js
+// (Quick task 260502-i7l, PATTERNS.md §S-6 extraction).
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {string} subject  — already includes the [SageConnect] prefix.
+ * @param {string} html     — full HTML body of the message.
+ */
+function sendAdminAlert(subject, html) {
+    return _sendAdminAlertImpl(subject, html, 'Providers_Downloader');
+}
+
+/**
+ * Post-write sanity check de XML de proveedores.
+ * Defense-in-depth contra disk error silencioso o builder corrupto.
+ * Returns { ok: true } o { ok: false, reason: string }.
+ */
+function validateXmlOutput(outputPath) {
+    let stats;
+    try { stats = fs.statSync(outputPath); }
+    catch (err) { return { ok: false, reason: `archivo no existe: ${err.message}` }; }
+    if (stats.size <= 200) {
+        return { ok: false, reason: `tamaño insuficiente: ${stats.size} bytes (esperado > 200)` };
+    }
+    let content;
+    try { content = fs.readFileSync(outputPath, 'utf8'); }
+    catch (err) { return { ok: false, reason: `no se puede leer: ${err.message}` }; }
+    if (!content.includes('<Proveedor')) {
+        return { ok: false, reason: `no contiene <Proveedor>` };
+    }
+    return { ok: true };
+}
+
+/**
+ * Emit [XML-ERROR] log entry with mandatory keys (step / tenant / path / reason / err).
+ */
+function emitXmlError(tenantId, outputPath, reason, errMsg) {
+    const logLine =
+        `[XML-ERROR] step=buildProvidersXML tenant=${tenantId} ` +
+        `path=${outputPath || 'n/a'} reason=${reason} err=${errMsg}`;
+    logGenerator('Providers_Downloader', 'error', logLine);
+    console.error(logLine);
+}
+
+/**
+ * Build HTML body for post-write validation failure admin email (also reused for
+ * writeFileSync rejection — write-error is a subset of invalid output).
+ */
+function buildPostWriteFailHtml(tenantId, outputPath, reason) {
+    return (
+        `<h2>Post-write validation failed para XML de proveedores</h2>` +
+        `<p>El archivo XML se escribió pero falló la validación post-write.</p>` +
+        `<table border="1" cellpadding="6" cellspacing="0">` +
+        `<tr><th align="left">step</th><td>buildProvidersXML</td></tr>` +
+        `<tr><th align="left">tenant</th><td><code>${tenantId}</code></td></tr>` +
+        `<tr><th align="left">path</th><td><code>${outputPath}</code></td></tr>` +
+        `<tr><th align="left">reason</th><td>invalid</td></tr>` +
+        `<tr><th align="left">detail</th><td>${reason}</td></tr>` +
+        `</table>` +
+        `<p><small>Company: ${config.app.company || 'Unknown'} | Time: ${new Date().toISOString()}</small></p>`
+    );
+}
 
 /**
  * Formatea un timestamp a formato "dd-mm-yyyyTHH:MM:SS:MMMZ"
@@ -55,8 +121,30 @@ async function buildProvidersXML(index) {
     // Log de inicio del proceso
     logGenerator(logFileName, 'info', `[START] Iniciando la generación del archivo XML para el índice ${index}.`);
 
-    // 1. Obtener proveedores
-    let providers = await getProviders(index);
+    const tenantId = config.portal.tenants[index] ? config.portal.tenants[index].id : `index-${index}`;
+
+    // 1. Obtener proveedores — distinguir 3 paths (empty-legítimo / error portal / providers válidos)
+    let providers;
+    try {
+        providers = await getProviders(index);
+    } catch (err) {
+        const errMsg = err.message || String(err);
+        emitXmlError(tenantId, 'n/a', 'error', errMsg);
+        const subject = '[SageConnect] XML proveedores: error en generación';
+        const html = (
+            `<h2>Error obteniendo proveedores del portal</h2>` +
+            `<p>El paso <code>buildProvidersXML</code> falló al consultar el portal de proveedores.</p>` +
+            `<table border="1" cellpadding="6" cellspacing="0">` +
+            `<tr><th align="left">step</th><td>buildProvidersXML</td></tr>` +
+            `<tr><th align="left">tenant</th><td><code>${tenantId}</code></td></tr>` +
+            `<tr><th align="left">reason</th><td>error</td></tr>` +
+            `<tr><th align="left">err</th><td>${errMsg}</td></tr>` +
+            `</table>` +
+            `<p><small>Company: ${config.app.company || 'Unknown'} | Time: ${new Date().toISOString()}</small></p>`
+        );
+        sendAdminAlert(subject, html).catch(() => { /* sendAdminAlert ya swallow internamente */ });
+        throw err;
+    }
     if (!providers || providers.length === 0) {
         logGenerator(logFileName, 'warn', `[WARN] No hay proveedores para procesar en el índice ${index}.`);
         console.log('[WARN] No hay proveedores para procesar.');
@@ -239,8 +327,21 @@ async function buildProvidersXML(index) {
         logGenerator(logFileName, 'info', `[OK] Archivo XML generado exitosamente en: ${outputPath}`);
         console.log('[OK] Archivo XML generado en:', outputPath);
     } catch (err) {
-        logGenerator(logFileName, 'error', `[ERROR] Error al escribir el archivo XML en ${outputPath}: ${err.message}`);
-        console.error('[ERROR] Error al escribir el archivo XML:', err);
+        emitXmlError(tenantId, outputPath, 'invalid', `writeFileSync error: ${err.message}`);
+        const subject = '[SageConnect] XML proveedores: post-write validation failed';
+        const html = buildPostWriteFailHtml(tenantId, outputPath, `writeFileSync error: ${err.message}`);
+        sendAdminAlert(subject, html).catch(() => { /* sendAdminAlert ya swallow internamente */ });
+        throw err;
+    }
+
+    // Post-write validation (defense-in-depth): existe + size > 200 + contiene <Proveedor
+    const validation = validateXmlOutput(outputPath);
+    if (!validation.ok) {
+        emitXmlError(tenantId, outputPath, 'invalid', validation.reason);
+        const subject = '[SageConnect] XML proveedores: post-write validation failed';
+        const html = buildPostWriteFailHtml(tenantId, outputPath, validation.reason);
+        sendAdminAlert(subject, html).catch(() => { /* sendAdminAlert ya swallow internamente */ });
+        throw new Error(`XML proveedores post-write validation failed: ${validation.reason}`);
     }
 }
 
