@@ -35,7 +35,7 @@ Durante su operación normal en los servidores del cliente (**Licenciatario**), 
 | Datos de pagos y órdenes de compra | En servidor del cliente únicamente | **NO** |
 | Credenciales del Portal de Proveedores (api_key, secret) | En `.env` del servidor del cliente | **NO** |
 
-**Toda la información procesada por SageConnect permanece exclusivamente en los servidores controlados por el Licenciatario.** El Licenciante (Fernando Rodríguez Memije / Tersoft) no tiene acceso técnico, contractual ni operativo a dicha información en ningún momento del ciclo de vida del Software.
+**Toda la información procesada por SageConnect permanece exclusivamente en los servidores controlados por el Licenciatario.** El Licenciante (Fernando Rodríguez Memije) no tiene acceso técnico, contractual ni operativo a dicha información en ningún momento del ciclo de vida del Software.
 
 ---
 
@@ -107,7 +107,7 @@ Los logs del servidor de validación son procesados exclusivamente por el Licenc
 
 ---
 
-## 7. Datos Procesados por el Cliente (Operador) — Fuera del Alcance de Tersoft
+## 7. Datos Procesados por el Cliente (Operador) — Fuera del Alcance del Licenciante
 
 SageConnect, en su operación normal en el servidor del Licenciatario, procesa información que el Licenciatario configura directamente en su archivo `.env`, incluyendo de manera enunciativa:
 
@@ -156,7 +156,7 @@ La instalación, acceso o uso de SageConnect por parte del Licenciatario constit
 
 | Pregunta | Respuesta |
 |----------|-----------|
-| ¿SageConnect manda mis datos a Tersoft? | **No.** Solo manda tu API key (identificador de empresa). |
+| ¿SageConnect manda mis datos al Licenciante? | **No.** Solo manda tu API key (identificador de empresa). |
 | ¿Manda CFDIs, pagos, datos de proveedores? | **No.** Esos datos jamás salen de tu servidor. |
 | ¿Manda mi nombre, correo, RFC personal? | **No.** Nunca. |
 | ¿Qué pasa si me hacen una auditoría INAI? | Este Aviso documenta que no recolectamos datos personales, así que estás protegido. |
