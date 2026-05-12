@@ -2,226 +2,195 @@
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/FReptar0/sageconnect)
 
-**SAGECONNECT** is an automation software that streamlines the process of interconnecting the **SAGE 300** ERP with the **portaldeproveedores.mx** API. The software simplifies administrative processes such as _supplier registration, invoice management, payment processing, and payment supplements in both systems_. By maintaining data atomicity in both systems, SAGECONNECT ensures that all changes made in one system are accurately reflected in the other, thereby reducing errors and increasing efficiency. With SAGECONNECT, businesses can seamlessly manage their financial operations while reducing manual effort and minimizing the risk of errors.
+**SAGECONNECT** is an always-on integration service between the **SAGE 300** ERP and the **portaldeproveedores.mx** API (Focaltec). It automates supplier registration, CFDI download, payment reconciliation, and purchase-order lifecycle management, and ships an operational web dashboard for monitoring and manual recovery. The current release (v2.3) runs as a Windows Service via [Servy](https://github.com/servy-dev/servy) with an internal `node-cron` scheduler (every 15 min by default), license-gated startup, and defense-in-depth timeouts (axios → step → child → lock).
+
+> For a single-page architecture view: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+> To get a new developer productive on day one: [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+> To work on this codebase with Claude Code: [`CLAUDE.md`](CLAUDE.md) and [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md).
 
 ---
 
-## Required programs  
+## Architecture at a glance
 
-- Node.js (Stable version)
+```
+              ┌────────────────────────────────────────────────────────┐
+              │  Servy (Windows Service "SageConnect")                 │
+              │  ┌──────────────────────────────────────────────────┐  │
+              │  │  Node.js 22.15  (single process, always-on)      │  │
+              │  │                                                  │  │
+              │  │   ┌──────────────┐    ┌──────────────────────┐   │  │
+              │  │   │ Express :3030│    │ node-cron */15 * * * │   │  │
+              │  │   │ /schedule    │    │ → forResponse()      │   │  │
+              │  │   │ /payments    │    │   buildProviders     │   │  │
+              │  │   │ /pos         │    │   downloadCFDI       │   │  │
+              │  │   │ /logs        │    │   checkPayments      │   │  │
+              │  │   │ /api/*       │    │   uploadPayments     │   │  │
+              │  │   └──────┬───────┘    │   createPOs          │   │  │
+              │  │          │            │   processChanges     │   │  │
+              │  │          │            │   closePOs           │   │  │
+              │  │          │            └──────┬───────────────┘   │  │
+              │  │          ▼                   ▼                   │  │
+              │  │   ┌──────────────────────────────────────────┐   │  │
+              │  │   │  src/utils — singletons                  │   │  │
+              │  │   │   • SQLServerConnection (mssql pool)     │   │  │
+              │  │   │   • PortalClient (axios timeout=30s)     │   │  │
+              │  │   │   • LogGenerator (winston cache)         │   │  │
+              │  │   └──────┬─────────────────────┬─────────────┘   │  │
+              │  │          │                     │                 │  │
+              │  └──────────┼─────────────────────┼─────────────────┘  │
+              └─────────────┼─────────────────────┼────────────────────┘
+                            ▼                     ▼
+                ┌──────────────────────┐   ┌─────────────────────────┐
+                │  SQL Server          │   │  portaldeproveedores.mx │
+                │  Sage 300 DB + FESA  │   │  Focaltec REST API      │
+                └──────────────────────┘   └─────────────────────────┘
+                                                      ▲
+                                                      │ HMAC license check
+                                                      │
+                                            ┌──────────────────────┐
+                                            │ SageConnect License  │
+                                            │ Server (Vercel)      │
+                                            └──────────────────────┘
+```
 
-   > The system was created on Node v18.12.1
+Defense-in-depth timeouts (enforced at startup by `src/config.js` range guards):
 
-- npm (Stable version)
+```
+axios (30s)  <  step (5m)  <  child (10m)  <  lock (14m)
+```
 
-   > The system was created using npm v8.19.2  
-   >
-   > This package manager for JavaScript is automatically installed when you installed Node.js
-
-- Git
-
-   > The system was created using git v2.41.0.windows.3
+Full architecture: [`.planning/codebase/ARCHITECTURE.md`](.planning/codebase/ARCHITECTURE.md). Always-on patterns and the bugs they fix: same file, section "Always-On Patterns (added 2026-04-27)".
 
 ---
 
-## Installation and Download
+## Required programs
 
-The following is a series of instructions for installing the necessary programs and downloading the packages for this implementation.
+- **Node.js 22.15.0** (LTS). Production server runs `node --version` → `v22.15.0`. Older versions may work for `npm test` but are not supported in production.
+- **npm** (ships with Node).
+- **Git**.
+- **SQL Server** instance reachable from the dev/prod machine, with credentials for the Sage 300 database(s).
+- **Servy** (Windows only) for production install. Not needed for local development.
 
 ---
 
-### Programs Installation
-
-#### Git
-
-To download Git you must do it from the following [Download Git for Windows](https://git-scm.com/download/win)
-
-##### Git Installation steps
-
-   1. Select your preferred installation option
-   2. Click next until the installation start
-
-#### Node.js
-
-To download Node.js you must do it from the following [Node.js download page](https://nodejs.org/en/download)
-
-##### Node.js Installation steps
-
-   1. Select your corresponding version | Windows Installer 32-bit or 64-bit
-   2. Execute the intaller
-   3. Read and accept the terms of the license agreement.
-   4. Click next until you found the **Custom Setup** and click all the icons to perfom a correct installation
-   5. Accept the automatically installation for native modules in the **Tools for Native Modules** screen
-   6. Click on the install button to install the application.
-
-### Repository and package download
-
-#### Repository
-
-After you have downloaded and installed the previous applications you will need to run the following command in a terminal so that you can clone this repository:
+## Installation
 
 ```bash
 git clone https://github.com/FReptar0/sageconnect
-```
-
-> :bangbang: Make sure you are cloning the program to the desired path.
-
-#### Packages
-
-Once you have cloned the repository, you will need to run the following command in a terminal to install the necessary packages for the program to run correctly:
-
-```bash
+cd sageconnect
 npm install
 ```
 
-> :bangbang: Make sure that you are running the command in the program folder
+For production deployment on Windows Server (Servy + service install), follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — do not run the steps below in production.
 
 ---
 
 ## Configuration Setup
 
-After installing the dependencies, you need to configure the environment file. All configuration is in a **single `.env` file** (unified since v1.1).
+All configuration lives in a **single `.env` file** at the repo root (unified since v1.1). It is read once at startup through `src/config.js`, which fail-fasts on any missing required variable.
 
-### 1. Copy Example File
+### 1. Copy the example
 
 ```bash
 cp .env.example .env
 ```
 
-### 2. Edit Configuration
+### 2. Edit `.env`
 
-Open `.env` and replace the example values with your actual credentials and settings. The file is organized by sections:
+The file is organized by section. The mandatory groups are **DATABASE**, **PORTAL**, **PATHS**, **APP**, and **LICENSE**. **MAILING**, **SECURITY** (`SAGECONNECT_API_KEY`), and **SCHEDULE** (timeout overrides) are optional.
 
-- **DATABASE** — SQL Server connection credentials
-- **PORTAL (Focaltec)** — Portal de Proveedores API credentials
-- **MAILING** — Email configuration (optional)
-- **PATHS** — File system paths for logs and downloads
-- **APP** — Application settings, company info, address defaults
+### 3. Validate
 
-> :warning: **Security Notice**: Never commit the actual `.env` file to version control. Only `.env.example` should be tracked in Git.
->
-> :bangbang: **Important**: The application validates all required environment variables at startup. If any required variable is missing or empty, the process will print a list of missing variables and exit before running any business logic.
->
-> :bangbang: **Migrating from v1.0 (5 separate .env files)?** Run the migration script: `node scripts/migrate-env.js`. It reads your old files, shows a preview, and creates the unified `.env` on confirmation. See [Migrating from v1.0](#migrating-from-v10) for details.
+```bash
+node -e "require('./src/config')"
+```
 
----
+If any required variable is missing the process exits 1 with `[CONFIG ERROR]: Missing required environment variables` and a list. There is also a Claude Code slash command `/env-check` that wraps this validation.
 
-## Configuration
+> :warning: Never commit `.env`. Only `.env.example` belongs in git.
 
-### Environment Variables
-
-All configuration lives in a single `.env` file organized by sections. See `.env.example` for the full template with inline documentation.
-
-#### Database
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| DB_USER | SQL Server username | your_db_user |
-| DB_PASSWORD | SQL Server password | your_db_password |
-| SERVER | SQL Server hostname | your_sql_server_host |
-| DATABASE | Default database name | YOUR_DATABASE_NAME |
-
-> :bangbang: `DB_USER` and `DB_PASSWORD` were renamed from `USER` and `PASSWORD` in v1.1 to avoid collision with OS environment variables.
-
-#### Portal (Focaltec)
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| URL | Portal de Proveedores API URL | https://api.portaldeproveedores.mx |
-| TENANT_ID | Company identifiers (comma-separated for multi-tenant) | tenant1,tenant2 |
-| API_KEY | API keys (comma-separated, same index as TENANT_ID) | key1,key2 |
-| API_SECRET | API secrets (comma-separated, same index as TENANT_ID) | secret1,secret2 |
-| DATABASES | Database names per tenant (comma-separated) | DB1,DB2 |
-| EXTERNAL_IDS | External IDs/RFCs per tenant (comma-separated) | RFC1,RFC2 |
-
-> :bangbang: Multi-tenant values must correspond by position. If the first TENANT_ID is for Company A, then the first API_KEY, API_SECRET, DATABASES, and EXTERNAL_IDS must also be for Company A.
-
-#### Mailing (Optional)
-
-Email configuration is optional. If `MAIL_TRANSPORT` is not set, the mailing section is skipped entirely.
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| MAIL_TRANSPORT | Transport type: `smtp` or `gmail` | smtp |
-
-**For SMTP:**
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| eFrom | Sender email address | notificaciones@tuempresa.com |
-| ePass | SMTP password (leave empty if not needed) | tu_password |
-| eServer | SMTP server address | mail.tuempresa.com |
-| ePuerto | SMTP port | 587 |
-| eSSL | TRUE for SSL/TLS, FALSE otherwise | TRUE |
-| MAILING_NOTICES | Comma-separated recipient emails | admin@tuempresa.com |
-| MAILING_CC | Comma-separated CC emails | backup@tuempresa.com |
-
-**For Gmail OAuth:**
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| CLIENT_ID | Google API client ID | your-client-id.apps.googleusercontent.com |
-| SECRET_CLIENT | Google API client secret | GOCSPX-your_client_secret |
-| REFRESH_TOKEN | Google API refresh token | 1//your_refresh_token |
-| REDIRECT_URI | OAuth redirect URI | https://developers.google.com/oauthplayground |
-
-<details>
-<summary>How to get Gmail OAuth credentials (CLIENT_ID, SECRET_CLIENT, REFRESH_TOKEN)</summary>
-
-1. Go to [Google Cloud Console APIs](https://console.cloud.google.com/apis/)
-2. Create a new project
-3. Enable the **Gmail API**
-4. Go to **Consent screen** → select **External** → create
-5. Fill in app name, assistance email, developer email
-6. **Save and Continue** until summary → **Return to Panel**
-7. **Publish the application** → **Confirm**
-8. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
-9. Select **Web app**, add redirect URI: `https://developers.google.com/oauthplayground`
-10. Copy **Client ID** and **Client Secret**
-11. Go to [Google OAuth Playground](https://developers.google.com/oauthplayground/)
-12. Click **Settings** → **Use your own OAuth credentials** → paste Client ID and Secret
-13. In **Select & authorize APIs**, type `https://mail.google.com` → **Authorize APIs** → **Allow**
-14. Click **Exchange authorization code for tokens** → copy the **Refresh token**
-
-</details>
-
-#### Paths
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| DOWNLOADS_PATH | Directory for downloaded CFDI files | ./downloads |
-| PROVIDERS_PATH | Directory for provider data | ./downloads/providers |
-| LOG_PATH | Base directory for log files (creates `sageconnect/` subdirectory) | ./logs |
-
-> :bangbang: `DOWNLOADS_PATH` was renamed from `PATH` in v1.1 to avoid collision with the OS PATH environment variable.
-
-#### App
-
-| Variable | Description | Example |
-| :---: | :---: | :---: |
-| IMPORT_CFDIS_ROUTE | Path to Sage CFDI import executable | C:\Program Files (x86)\Importa CFDIs AP - Focaltec\ImportaFacturasFocaltec.exe |
-| ARG | Sage 300 database name for the executable | YOUR_DATABASE_NAME |
-| NOMBRE | Company name for CFDI fiscal information | Tu Empresa SA de CV |
-| RFC | Company RFC (tax ID) | ABC123456DEF |
-| REGIMEN | SAT tax regime code | 601 |
-| TIMEZONE | IANA timezone identifier | America/Mexico_City |
-| DEFAULT_ADDRESS_CITY | Default city for purchase orders | TU_CIUDAD |
-| DEFAULT_ADDRESS_COUNTRY | Default country | MEXICO |
-| DEFAULT_ADDRESS_IDENTIFIER | Default location identifier | ID_EXAMPLE |
-| DEFAULT_ADDRESS_MUNICIPALITY | Default municipality | TU_MUNICIPIO |
-| DEFAULT_ADDRESS_STATE | Default state | TU_ESTADO |
-| DEFAULT_ADDRESS_STREET | Default street | CALLE EJEMPLO |
-| DEFAULT_ADDRESS_ZIP | Default ZIP code | 12345 |
-| ADDRESS_IDENTIFIERS_SKIP | Location IDs to exclude (comma-separated) | LOCATION1,LOCATION2 |
-| AUTO_TERMINATE | Auto-exit after tasks complete (for scheduled tasks) | false |
-
-> :bangbang: **AUTO_TERMINATE**: Set to `true` for Windows Server scheduled tasks (every 15 minutes). The app exits cleanly after processing. For normal operation with PM2, keep `false`.
+> :information_source: **Migrating from v1.0 (5 separate `.env*` files)?** Run `node scripts/migrate-env.js` once on the server. It consolidates the legacy files into the unified `.env`, applies renames (`USER` → `DB_USER`, `PATH` → `DOWNLOADS_PATH`), backs up originals to `.env.legacy/`, and exits. After that, the script is no longer needed.
 
 ---
 
-## Preserving Local Environment Files
+## Environment Variables
 
-The `.env` file is tracked in the repo. To prevent your local values from being overwritten on `git pull` or `git merge`, mark it as **skip-worktree**:
+The tables below cover the most-edited variables. See [`.env.example`](.env.example) for the full template with inline comments.
+
+### Database
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| `DB_USER` | SQL Server username | `your_db_user` |
+| `DB_PASSWORD` | SQL Server password | `your_db_password` |
+| `SERVER` | SQL Server hostname | `your_sql_server_host` |
+| `DATABASE` | Default database name | `YOUR_DATABASE_NAME` |
+
+> `DB_USER` / `DB_PASSWORD` were renamed from `USER` / `PASSWORD` in v1.1 to avoid collision with OS env vars. The Sage 300 database name is set via `DATABASE`; per-tenant overrides live in `DATABASES` (Portal section).
+
+### Portal (Focaltec)
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| `URL` | Portal API base URL | `https://api.portaldeproveedores.mx` |
+| `TENANT_ID` | Tenant IDs (comma-separated for multi-tenant) | `tenant1,tenant2` |
+| `API_KEY` | API keys (same index as `TENANT_ID`) | `key1,key2` |
+| `API_SECRET` | API secrets (same index) | `secret1,secret2` |
+| `DATABASES` | Sage DB per tenant (same index) | `DB1,DB2` |
+| `EXTERNAL_IDS` | RFCs per tenant (same index) | `RFC1,RFC2` |
+| `PORTAL_HTTP_TIMEOUT_MS` (optional) | axios timeout for the portal client. Default `30000`. Min `1000`. | `30000` |
+
+> All multi-tenant arrays must align by position. The first `API_KEY` belongs to the first `TENANT_ID`, etc.
+
+### Mailing (optional)
+
+Email is fully optional. If `MAIL_TRANSPORT` is empty, the mailing section is skipped at config build. `MAIL_TRANSPORT=smtp` uses `eFrom` / `ePass` / `eServer` / `ePuerto` / `eSSL` / `MAILING_NOTICES` / `MAILING_CC`. `MAIL_TRANSPORT=gmail` uses `CLIENT_ID` / `SECRET_CLIENT` / `REFRESH_TOKEN` / `REDIRECT_URI`. See `.env.example` for the full set and the Gmail OAuth flow.
+
+### Paths
+
+| Variable | Description | Example |
+| :---: | :---: | :---: |
+| `DOWNLOADS_PATH` | Where CFDI files land | `./downloads` |
+| `PROVIDERS_PATH` | Provider XML staging | `./downloads/providers` |
+| `LOG_PATH` | Base for date-stamped logs | `./logs` |
+
+### App
+
+| Variable | Description |
+| :---: | :---: |
+| `IMPORT_CFDIS_ROUTE` | Path to `ImportaFacturasFocaltec.exe` (Sage import binary). |
+| `ARG` | Sage 300 DB name passed to the import binary. |
+| `NOMBRE`, `RFC`, `REGIMEN` | Company identity for invoice headers. |
+| `TIMEZONE` | IANA TZ identifier (e.g. `America/Mexico_City`). Used by `node-cron` and `TimezoneHelper`. |
+| `DEFAULT_ADDRESS_*` | Fallback fields used when Sage ICLOC has no address row. |
+| `ADDRESS_IDENTIFIERS_SKIP` | Location IDs to exclude (comma-separated). |
+
+### Security & Schedule
+
+| Variable | Description |
+| :---: | :---: |
+| `SAGECONNECT_API_KEY` (optional but recommended) | Dual-purpose: enables dashboard `requireApiKey` middleware **and** identifies this client to the license server. The dashboard receives it via server-side `<meta name="x-app-key">` injection — operators never paste it. Leaving it unset disables API key protection (`[CONFIG WARN]` at startup). |
+| `CRON_SCHEDULE` (optional) | Cron expression for the background cycle. Default `*/15 * * * *`. |
+| `OPERATION_DELAY_MS` (optional) | Inter-step delay inside `forResponse`. Default `5000`. |
+| `LOCK_TIMEOUT_MS` (optional) | OperationManager lock auto-release. Default `840000` (14 min). Min `60000`. |
+| `CHILD_PROCESS_TIMEOUT_MS` (optional) | SIGTERM-then-`taskkill` cascade for the CFDI import binary. Default `600000` (10 min). Min `60000`. |
+| `STEP_TIMEOUT_MS` (optional) | Per-step `Promise.race` budget inside `forResponse`. Default `300000` (5 min). Min `30000`. |
+
+### License
+
+| Variable | Description |
+| :---: | :---: |
+| `LICENSE_API_URL` | SageConnect License Server endpoint. |
+| `HMAC_SECRET` | Shared secret for response signature verification. |
+| `LICENSE_ADMIN_EMAIL` | Admin recipient for license alerts (revocation, child-process timeouts). |
+
+The service runs `validate({startup: true})` at boot and exits 1 if the license is unreachable or invalid. See [`SECURITY.md`](SECURITY.md) § License Validation for the full model.
+
+---
+
+## Preserving local environment files
+
+The `.env` file is not tracked by git (see `.gitignore`). If you need to keep an existing local copy across `git pull`/`git merge`, the standard trick is:
 
 ```bash
 git update-index --skip-worktree .env
@@ -229,103 +198,92 @@ git update-index --skip-worktree .env
 
 ---
 
-## :alarm_clock: Scheduled Task Setup (Windows Server)
+## Running locally
 
-If you need to run SageConnect as a scheduled task on Windows Server (every 15 minutes), use the provided `RunSageconnect.bat` script instead of `npm run start`:
-
-Configure your Windows Task Scheduler to run:
-```cmd
-C:\path\to\sageconnect\RunSageconnect.bat
-```
-
-This script automatically:
-- Sets `AUTO_TERMINATE=true` environment variable
-- Changes to the correct directory (update the path in the script as needed)
-- Runs the application with proper termination
-- Logs execution times for monitoring
-- Exits cleanly to prevent port conflicts
-
-> :bangbang: **Important**: 
-> - Update the path `E:\sageconnect` in `RunSageconnect.bat` to match your installation directory
-> - Do not use `npm run start` directly for scheduled tasks as the process will never terminate and cause port conflicts with subsequent executions
+| Command | What it does |
+|---------|--------------|
+| `npm test` | Run the Jest suite (~200 tests). A handful of pre-existing failures are tolerated — see [`.planning/codebase/TESTING.md`](.planning/codebase/TESTING.md). |
+| `npm start` | Boot the full service (Express + cron + license validation) on port 3030. |
+| `npm run dev` | Same, under `nodemon`. |
+| `npm run background-only` | Run only the cron / `forResponse` orchestration, no Express. |
 
 ---
 
-## :gear: How to deploy it
+## Web Dashboard
 
-After all the previous actions have been performed you will need to install some npm dependencies globally with the following commands:
+Once `npm start` is running, visit `http://localhost:3030/`. The root redirects to `/schedule.html`.
 
-```bash
-npm install -g pm2
-npm install pm2-windows-startup -g
-npx pm2-startup install
-```
+| Page | Purpose |
+|------|---------|
+| `/schedule.html` | Home. Cron schedule, last/next run, "Operación en curso" card with 5s polling + 1s heartbeat ticker, manual "Ejecutar Ahora" and "Forzar liberación" (when stuck). |
+| `/payments.html` | Payment reconciliation audit, drill-down on the 5 classification categories. |
+| `/pos.html` | Purchase-order diagnostics, "Cambiar Estado OC" (Abierta/Cerrada/Cancelada/Generada). |
+| `/logs.html` | Per-date, per-process log viewer (winston files surfaced via the dashboard API). |
 
-Then, you must execute the following commands in order to keep the program process always running
-
-```bash
-npx pm2 start src/index.js --watch --ignore-watch="node_modules" --name sageconnect
-npx pm2 save
-```
-
-If you need more information on the use of PM2 you can visit the following [PM2 Quick Start Guide](https://pm2.keymetrics.io/docs/usage/quick-start/)
+Each page receives the dashboard API key via a server-injected `<meta name="x-app-key">` tag (see `src/server.js` `serveHtmlWithKey()`). Operators do not configure anything in the browser.
 
 ---
 
-## :package: Production Deployment Workflow
+## API Endpoints
 
-The production code is **obfuscated** and pushed to a separate repository. The production repo has no shared git history with this source repo.
+The HTTP layer mounts six route files under one router (`src/routes/routes.js`):
 
-### Deployment Steps
+| Mount | License-gated? | API key required? | What it covers |
+|-------|----------------|-------------------|----------------|
+| `/` (dashboard pages) | No | No | Static HTML + server-injected meta key. |
+| `/api/system` | No | No | Health, tenants list, license status, system probes. |
+| `/api/schedule` | Yes | No | Cron schedule, manual trigger, history, force-release. |
+| `/api/operations` | Yes | No | Live operation status (the dashboard polls this every 5s). |
+| `/api/payments` | Yes | Yes (`x-api-key`) | Payment reconciliation read/write endpoints. |
+| `/api/pos` | Yes | Yes (`x-api-key`) | Purchase-order read/write endpoints. |
 
-1. **On your development machine:**
-   ```bash
-   git checkout master
-   git pull origin master
-   node scripts/obfuscate.js
-   # Push obfuscated code to the production repository
-   ```
-
-2. **On the Windows production server:**
-   ```cmd
-   REM Stop the app
-   pm2 stop sageconnect
-
-   REM Reset to latest (no shared history — always reset)
-   git fetch origin
-   git reset --hard origin/master
-
-   REM Install dependencies
-   npm install
-
-   REM If migrating from v1.0 (5 separate .env files), run:
-   node scripts/migrate-env.js
-
-   REM Verify config loads correctly
-   node -e "const c = require('./src/config'); console.log('OK:', c.database.server, c.portal.url)"
-
-   REM Start the app
-   pm2 start sageconnect
-   ```
-
-> :bangbang: **Important**: The production repo contains obfuscated code with no shared git history. Each deployment uses `git reset --hard origin/master` to get the latest version. The `.env` file is not affected by the reset.
+The current shape is 17 REST endpoints (7 payment + 9 PO + force-release) plus 6 system endpoints. For the full spec see [`src/routes/routes.js`](src/routes/routes.js) and the individual `*-routes.js` files; the upstream Focaltec spec extract lives at [`.planning/codebase/API-SPEC.md`](.planning/codebase/API-SPEC.md).
 
 ---
 
-## :arrows_counterclockwise: Migrating from v1.0
+## License (the service license, not the source code license)
 
-If the server currently has the old 5 separate `.env` files, run the migration script **before starting the app** after updating to v1.1+:
+The running service requires a valid license from the **SageConnect License Server**. Without one, `npm start` exits at boot:
 
-```cmd
-node scripts/migrate-env.js
+```
+[LICENSE] Startup blocked -- license inactive
 ```
 
-The script will:
-1. Scan for old `.env` files (`.env`, `.env.path`, `.env.credentials.database`, `.env.credentials.focaltec`, `.env.credentials.mailing`)
-2. Read all variables from each file
-3. Apply renames: `USER` → `DB_USER`, `PASSWORD` → `DB_PASSWORD`, `PATH` → `DOWNLOADS_PATH`
-4. Add new variable: `MAIL_TRANSPORT=smtp`
-5. Show a full preview of the unified `.env` for review
-6. On confirmation: write the unified `.env`, back up originals to `.env.legacy/`, remove old separate files
+Required `.env` keys: `LICENSE_API_URL`, `HMAC_SECRET`, `LICENSE_ADMIN_EMAIL`. The validator uses HMAC-SHA256 over the response, enforces 5-minute timestamp freshness (anti-replay), maintains a three-state cache (VALID / INVALID / ERROR, 24 h TTL), and detects DNS bypass via `dns.resolve4()`. License revocations and child-process timeouts dispatch alerts to `LICENSE_ADMIN_EMAIL`.
 
-> :bangbang: **Rollback**: If something goes wrong after migration, the original files are in `.env.legacy/`. Copy them back to the root directory and revert the code to the previous version.
+Source-code license / EULA — see [`LICENSE.md`](LICENSE.md), [`EULA-en.md`](EULA-en.md) (English, controlling), [`EULA-es.md`](EULA-es.md) (Spanish courtesy).
+
+---
+
+## Deployment
+
+Production runs on Windows Server with Servy as the service manager. The full procedure — installing Servy, running `scripts/install-service.ps1` as Administrator, verifying the health endpoint, rolling back, troubleshooting — lives in [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). For the operator-facing day-to-day (logs, restart, when to call the dev), see [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+
+Obfuscation is automated: pushing to `master` triggers `.github/workflows/obfuscate-deploy.yml`, which runs `node scripts/obfuscate.js` and force-pushes the obfuscated output to the separate distribution repo `FReptar0/sageconnect-dist`. Do not run `npm run obfuscate` manually for a real deploy — the GitHub Action is the source of truth.
+
+---
+
+## Onboarding
+
+If this is your first day on the project, start at [`docs/ONBOARDING.md`](docs/ONBOARDING.md). It walks you through clone → `.env` → `npm install` → `npm test` → first dashboard render, with the standard "if X fails, look here" troubleshooting table.
+
+---
+
+## Working with Claude Code
+
+This repo is set up for development with [Claude Code](https://docs.claude.com/en/docs/claude-code/):
+
+- [`CLAUDE.md`](CLAUDE.md) — auto-loaded memory: always-on constraint, conventions, pitfalls, critical files, defense-in-depth invariant.
+- [`.claude/settings.json`](.claude/settings.json) — committed hooks (`SessionStart`, `Stop`) and a conservative permissions allowlist. Personal overrides go in `.claude/settings.local.json` (gitignored).
+- [`.claude/commands/`](.claude/commands/) — slash commands: `/test`, `/env-check`, `/diagnose`, `/deploy-checklist`.
+- [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md) — how to use Claude Code productively in this codebase (hooks, commands, subagents, best practices observed).
+
+---
+
+## Contributing & security
+
+- Contributing model, branch naming, PR checklist: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Security policy, supported versions, vulnerability reporting: [`SECURITY.md`](SECURITY.md).
+- Code of conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
+For private security disclosures, email <hi@fernandomemije.dev> — do not open a public issue.

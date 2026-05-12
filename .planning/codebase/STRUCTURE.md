@@ -1,233 +1,221 @@
 # Codebase Structure
 
-**Analysis Date:** 2026-03-12
+**Analysis Date:** 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3)
 
 ## Directory Layout
 
 ```
 sageconnect/
-├── src/                          # Application source code
-│   ├── index.js                 # Main entry point (orchestrates web + background)
-│   ├── server.js                # Express web server setup
-│   ├── background.js            # Background process orchestrator
-│   ├── controller/              # High-level business process controllers
-│   ├── services/                # Support services (logging, resolution, shutdown)
-│   ├── utils/                   # Utilities (DB, API, transformation, logging)
-│   ├── models/                  # Data validation schemas
-│   ├── routes/                  # Express route handlers
-│   └── scripts/                 # One-off utility scripts for diagnostics/repairs
-├── public/                       # Static HTML/dashboard files
-│   ├── index.html               # Main dashboard UI
-│   ├── 404.html                 # Error page
-│   └── img/                     # Dashboard images
-├── logs/                        # Runtime log files (generated)
-│   └── sageconnect/
-│       └── YYYY-MM-DD/          # Daily log directories
-├── reports/                     # Generated reports (if any)
-├── .planning/                   # GSD planning documents
-│   └── codebase/                # Architecture/structure documentation
-├── .github/                     # GitHub Actions workflows
-│   └── workflows/
-├── .env                         # Configuration (example: .env.example)
-├── .env.credentials.focaltec    # Portal credentials (excluded from git)
-├── .env.credentials.database    # Database credentials (excluded from git)
-├── .env.credentials.mailing     # Email credentials (excluded from git)
-├── .env.path                    # Log path configuration
-├── package.json                 # Dependencies and scripts
-├── jest.config.js               # Jest testing configuration
-├── babel.config.js              # Babel transpilation config
-└── README.md                    # Project documentation
+├── src/                          # Application source
+│   ├── index.js                  # Entry: license validate → server → cron
+│   ├── server.js                 # Express setup (helmet, CORS, rate-limit, meta key injection)
+│   ├── background.js             # forResponse orchestration (7 steps per tenant)
+│   ├── config.js                 # Single env-var loader with fail-fast + range guards
+│   ├── controller/               # High-level business workflows (10 files)
+│   ├── services/                 # Cross-cutting services (8 files)
+│   ├── utils/                    # Shared utilities (14 files)
+│   ├── middleware/               # Express middleware (5 files)
+│   ├── models/                   # Joi schemas
+│   ├── routes/                   # 6 route files + schemas/ subdir
+│   └── scripts/                  # One-shot diagnostic / repair scripts (18 files)
+├── public/                       # Static dashboard
+│   ├── schedule.html             # Home — cron status, live operation card
+│   ├── payments.html             # Payment reconciliation audit
+│   ├── pos.html                  # PO management + "Cambiar Estado OC"
+│   ├── logs.html                 # Per-date, per-process log viewer
+│   ├── 404.html                  # Error page
+│   ├── js/                       # shared.js + page-specific scripts
+│   └── img/                      # Dashboard assets
+├── tests/                        # Jest suite (~200 tests)
+│   ├── api/                      # HTTP endpoint tests + html-key-injection
+│   ├── controller/               # Controller-layer tests
+│   ├── services/                 # Service-layer tests
+│   ├── utils/                    # Utility-layer tests
+│   ├── integration/              # Cross-module flows
+│   └── helpers/                  # Shared mocks/fixtures
+├── docs/                         # Operator and developer-facing docs
+│   ├── DEPLOYMENT.md             # Servy install / rollback procedure
+│   ├── OPERATIONS.md             # Operator runbook
+│   ├── ARCHITECTURE.md           # Single-page architecture view
+│   ├── ONBOARDING.md             # Day-1 dev flow
+│   └── CLAUDE_CODE.md            # Working with Claude Code in this repo
+├── scripts/                      # Build / install tooling (PowerShell + Node)
+│   ├── install-service.ps1       # Servy service registration (Administrator)
+│   ├── Rotate-SageConnectLogs.ps1 # Log rotation under always-on
+│   ├── obfuscate.js              # CI-driven obfuscation (do not run manually)
+│   ├── migrate-env.js            # One-time v1.0 → v1.1 .env consolidation
+│   ├── simulate-stuck-lock.js    # Test harness for lock auto-release
+│   └── verify-*.js               # CI verification scripts
+├── reports/                      # Generated reports (gitignored)
+├── .planning/                    # GSD planning artifacts (kept in repo)
+│   ├── PROJECT.md, STATE.md, MILESTONES.md, ROADMAP.md, RETROSPECTIVE.md
+│   ├── codebase/                 # This file + ARCHITECTURE / CONCERNS / STACK / etc.
+│   ├── milestones/               # Archived milestone roadmaps + requirements
+│   ├── forensics/                # Post-incident reports
+│   ├── research/                 # Research artifacts feeding decisions
+│   ├── quick/                    # Quick-task scratch
+│   └── todos/                    # Captured ideas
+├── .claude/                      # Claude Code per-repo configuration
+│   ├── settings.json             # Committed: hooks + permissions baseline
+│   ├── hooks/                    # SessionStart + Stop shell hooks
+│   └── commands/                 # Slash commands (/test, /env-check, /diagnose, /deploy-checklist)
+├── .github/workflows/
+│   └── obfuscate-deploy.yml      # Push master → obfuscate → force-push to dist repo
+├── .env                          # Single unified config (gitignored)
+├── .env.example                  # Canonical template — every required var documented inline
+├── .env.legacy/                  # Backups created by migrate-env.js (if v1.0 was migrated)
+├── package.json                  # Dependencies + scripts
+├── jest.config.js
+├── babel.config.js
+├── CLAUDE.md                     # Auto-loaded memory for Claude Code
+├── README.md
+├── CONTRIBUTING.md
+├── SECURITY.md
+├── CODE_OF_CONDUCT.md
+├── EULA-en.md / EULA-es.md / LICENSE.md / AVISO_PRIVACIDAD.md
+└── PAYMENT-RECONCILIATION.md
 ```
+
+> The pre-v1.1 `.env.credentials.database`, `.env.credentials.focaltec`, `.env.credentials.mailing`, and `.env.path` files are no longer used. `scripts/migrate-env.js` still ships for operators who need to consolidate a legacy install.
 
 ## Directory Purposes
 
-**src/controller/:**
-- Purpose: Orchestrate high-level business workflows for CFDI processing and purchase order management
-- Contains: 10 controller files handling download, verification, upload, and lifecycle operations
-- Key files:
-  - `CFDI_Downloader.js`: Retrieves electronic invoices from FocalTec API
-  - `SagePaymentController.js`: Validates payments against Sage 300 database
-  - `PortalPaymentController.js`: Uploads verified payments to Portal
-  - `PortalOC_Creator.js`: Creates purchase orders in Portal from Sage database
-  - `PortalOC_LifecycleManager.js`: Processes order status and content changes
-  - `PortalOC_Closer.js`: Closes completed orders
-  - `PortalOC_Canceller.js`: Cancels orders
-  - `PortalOC_StatusUpdater.js`: Updates individual order statuses
-  - `PortalOC_ContentUpdater.js`: Modifies order line items and addresses
-  - `Providers_Downloader.js`: Fetches and builds provider XML from Portal
+### `src/controller/` — business workflows (10 files)
 
-**src/services/:**
-- Purpose: Provide specialized business logic support and infrastructure concerns
-- Contains: 6 services for logging, shutdown control, and ID/UUID resolution
-- Key files:
-  - `LogDashboardService.js`: Aggregates logs across dates/types for dashboard view
-  - `AutoShutdownService.js`: Implements graceful shutdown for web-only mode with timeout
-  - `ProviderIdResolver.js`: Maps vendor IDs to provider IDs and writes APVENO table
-  - `UuidResolver.js`: Resolves invoice UUIDs from Portal and writes APIBHO table
-  - `PortalOC_PayloadBuilder.js`: Constructs validated API request bodies
-  - `PortalOC_StatusService.js`: Queries Portal order status and formats responses
+Each controller owns one cross-system workflow and is called per-tenant by `background.js`.
 
-**src/utils/:**
-- Purpose: Provide reusable utilities for database access, API calls, data transformation, and logging
-- Contains: 11 utility files for cross-cutting concerns
-- Key files:
-  - `SQLServerConnection.js`: MSSQL connection pool and query execution
-  - `GetTypesCFDI.js`: Retrieves CFDI documents from FocalTec API with XML parsing
-  - `GetProviders.js`: Queries Portal providers API with filtering
-  - `EmailSender.js`: Sends notifications via SMTP
-  - `LogGenerator.js`: Creates Winston log files in dated directories
-  - `TimezoneHelper.js`: Date formatting and timezone handling
-  - `TransformTime.js`: Time unit conversion utilities
-  - `OC_GroupOrdersByNumber.js`: Groups purchase orders by order number
-  - `parseExternPurchaseOrders.js`: Parses external PO data structures
+- `CFDI_Downloader.js` — fetch electronic invoices from the Focaltec portal.
+- `SagePaymentController.js` — validate payments against the Sage 300 database.
+- `PortalPaymentController.js` — upload verified payments to the portal.
+- `PortalOC_Creator.js` — create purchase orders in the portal from Sage data.
+- `PortalOC_LifecycleManager.js` — orchestrate status + content updates for existing POs.
+- `PortalOC_Closer.js` — mark completed POs closed in the portal.
+- `PortalOC_Canceller.js` — cancel POs in the portal.
+- `PortalOC_StatusUpdater.js` — single-PO status mutation (drives the UI form).
+- `PortalOC_ContentUpdater.js` — line-item and address mutations on existing POs.
+- `Providers_Downloader.js` — download providers + build XML for Sage import.
 
-**src/models/:**
-- Purpose: Define data validation schemas for API request/response payloads
-- Contains: 1 file with Joi validation schemas
-- Key file:
-  - `PurchaseOrder.js`: Schemas for addresses, line items, taxes, metadata validation
+### `src/services/` — cross-cutting services (8 files)
 
-**src/routes/:**
-- Purpose: Define Express HTTP routes and API endpoints
-- Contains: Single router file with all endpoints
-- Key file:
-  - `routes.js`: Routes for email sending, dashboard data, logs, execution status, shutdown control
+- `CronScheduler.js` — `node-cron` wrapper; registers the recurring background cycle and the `lock:timeout` listener.
+- `LicenseValidator.js` — HMAC-SHA256 validation against the license server, 3-state cache (VALID/INVALID/ERROR), DNS bypass detection, admin email alerts.
+- `OperationManager.js` — concurrency lock with `stepProgress` array slot, auto-release timer (`LOCK_TIMEOUT_MS`), and `lock:timeout` EventEmitter.
+- `LogDashboardService.js` — aggregate log files into the dashboard view.
+- `ProviderIdResolver.js` — map vendor IDs to portal provider IDs and persist to `APVENO`.
+- `UuidResolver.js` — resolve invoice UUIDs and persist to `APIBHO`.
+- `PortalOC_PayloadBuilder.js` — assemble + Joi-validate purchase-order payloads.
+- `PortalOC_StatusService.js` — query and format portal order status responses.
 
-**src/scripts/:**
-- Purpose: Standalone scripts for manual operations (diagnostics, repairs, uploads)
-- Contains: 13 utility scripts
-- Key files:
-  - `payment-reconciliation.js`: Reconcile payments between systems
-  - `po-diagnostic.js`: Diagnose purchase order issues
-  - `po-upload.js`: Manually upload POs to Portal
-  - `payment-uuid-repair.js`: Fix missing UUIDs in invoices
-  - `get-payment-cfdis.js`: Retrieve specific CFDI payments
-  - Other: address diagnostic, query utilities, order lifecycle tests
+*Removed in v2.0:* `AutoShutdownService.js` (always-on regime makes auto-shutdown a misfeature).
 
-**public/:**
-- Purpose: Serve static web assets for dashboard UI
-- Contains: HTML pages and images
-- Key files:
-  - `index.html`: Main dashboard with log viewer, execution status, shutdown control
-  - `404.html`: Error page
+### `src/utils/` — shared helpers (14 files)
 
-**logs/:**
-- Purpose: Store runtime log files organized by date
-- Contains: Daily subdirectories with process-specific log files
-- Structure: `logs/sageconnect/YYYY-MM-DD/[ProcessName].log`
-- Generated: At runtime; not committed to git
+- `SQLServerConnection.js` — singleton mssql pool + always-prepend `USE [DB]`. Default DB resolves at call time from `config.database.database`.
+- `PortalClient.js` — singleton `axios.create({timeout: PORTAL_HTTP_TIMEOUT_MS})`. Used by 18 axios call sites in 9 files.
+- `LogGenerator.js` — winston transport cache keyed by `(date, fileName)` to bound FD usage.
+- `AdminEmailSender.js` — `sendAdminAlert(subject, html, callerLogFile)` + `findLastOpenStep`. Extracted at the third use site (quick task 260502-i7l).
+- `EmailSender.js` — SMTP / Gmail OAuth transport selector.
+- `duration.js` — `withStepTimeout(promise, ms, ctx)` Promise.race wrapper + `formatDurationMin`. Sentinel string `'Step timeout'` is load-bearing in log routing.
+- `ResultEnvelope.js` — `successResult` / `errorResult` builders for the unified API response shape.
+- `TimezoneHelper.js` — IANA TZ-aware date helpers, falls back to local time on invalid zone.
+- `TransformTime.js` — time unit conversion.
+- `GetTypesCFDI.js`, `GetProviders.js`, `CsvWriter.js`, `OC_GroupOrdersByNumber.js`, `parseExternPurchaseOrders.js` — domain-specific helpers.
+
+### `src/middleware/` — Express middleware (5 files)
+
+- `api-key.js` — `requireApiKey` enforcement on `/api/payments` and `/api/pos`.
+- `require-license.js` — `requireLicense` returns 503 when license state is INVALID/ERROR.
+- `validate.js` — Joi schema validator factory.
+- `async-handler.js` — promise-to-next adapter for async route handlers.
+- `send-result.js` — uniform `ResultEnvelope` responder.
+
+### `src/routes/` — 6 route files + schemas
+
+- `routes.js` — top-level router; mounts the 6 modules with the correct middleware chain.
+- `dashboard-routes.js` — static dashboard support endpoints (unlicensed).
+- `system-routes.js` — `/api/system/{health,tenants,license,...}` (unlicensed).
+- `schedule-routes.js` — `/api/schedule/*` (licensed, no API key).
+- `operations-routes.js` — `/api/operations/*` (licensed, no API key — polled by dashboard).
+- `payment-routes.js` — `/api/payments/*` (licensed + API key).
+- `po-routes.js` — `/api/pos/*` (licensed + API key).
+- `schemas/` — Joi request schemas for payment and PO endpoints.
+
+### `src/scripts/` — 18 one-shot scripts
+
+Diagnostic / repair tools run manually by the operator. Convention: each returns a `ResultEnvelope`, no auto-exit, read-only by default. Categories:
+
+- **Payment** — `payment-reconciliation.js`, `payment-status-check.js`, `payment-uuid-diagnostic.js`, `payment-uuid-repair.js`, `pending-payments-diagnostic.js`, `get-payment-cfdis.js`, `mark-payment-invoices-paid.js`, `upload-single-payment.js`, `portal-payments-generator.js`.
+- **Purchase Order** — `po-diagnostic.js`, `po-address-diagnostic.js`, `po-payment-form-diagnostic.js`, `po-query.js`, `po-update.js`, `po-upload.js`, `upload-authorized-pos.js`, `test-order-lifecycle.js`.
+- **Sage tables** — `diagnose-sage-tables.js` (8 `safeRun()` checks, template for read-only investigation under no-prod-SQL-access constraint).
+
+### `public/` — static dashboard
+
+Each HTML page is served via `serveHtmlWithKey()` (`src/server.js:122`), which injects `<meta name="x-app-key">` server-side. The dashboard JS (`public/js/shared.js`) reads via `resolveApiKey()` (meta first, localStorage fallback) and sends as `x-api-key` on every `apiCall()`.
+
+### `tests/` — Jest suite
+
+Mirrors `src/` plus an `api/`, `integration/`, and `helpers/` layout. Coverage is uneven — see [`.planning/codebase/CONCERNS.md`](CONCERNS.md) § Test Coverage Gaps. Pre-existing failing suites listed in [`.planning/codebase/TESTING.md`](TESTING.md) — do not "fix" them as a side effect of unrelated work.
 
 ## Key File Locations
 
-**Entry Points:**
-- `src/index.js`: Main application entry (decides web+background vs web-only mode)
-- `src/server.js`: Express server startup
-- `src/background.js`: Background process orchestrator
+**Entry points**
 
-**Configuration:**
-- `package.json`: Dependencies (express, axios, mssql, winston, nodemailer, joi)
-- `.env`: General configuration (addresses, timeouts, identifiers to skip)
-- `.env.credentials.focaltec`: Portal API credentials (tenants, keys, secrets, databases)
-- `.env.credentials.database`: SQL Server credentials (user, password, server, database)
-- `.env.credentials.mailing`: Email/SMTP credentials
-- `.env.path`: Log directory path
-- `jest.config.js`: Testing framework configuration
-- `babel.config.js`: JavaScript transpilation settings
+- `src/index.js` — license validate → start server → start cron.
+- `src/background.js` — `forResponse` orchestration (also runnable standalone via `npm run background-only`).
 
-**Core Logic:**
-- `src/controller/CFDI_Downloader.js`: CFDI retrieval logic
-- `src/controller/SagePaymentController.js`: Payment validation logic
-- `src/controller/PortalPaymentController.js`: Payment upload logic
-- `src/controller/PortalOC_Creator.js`: Purchase order creation logic
-- `src/background.js`: Main orchestration loop (forResponse function)
+**Config and singletons**
 
-**Testing:**
-- `jest.config.js`: Test configuration
-- `tests/` directory: Test files (location exists but specific files not detailed in exploration)
+- `src/config.js` — single env loader with `validate()` + 4 range guards.
+- `src/utils/SQLServerConnection.js` — mssql pool.
+- `src/utils/PortalClient.js` — axios singleton.
+- `src/utils/LogGenerator.js` — winston cache.
+
+**Critical orchestration**
+
+- `src/services/CronScheduler.js` — `initScheduler()`.
+- `src/services/OperationManager.js` — concurrency lock + `lock:timeout`.
+- `src/services/LicenseValidator.js` — HMAC validation cache.
+- `src/background.js` — per-tenant 7-step loop.
 
 ## Naming Conventions
 
-**Files:**
-- Controllers: `[Entity][Action].js` (e.g., `PortalOC_Creator.js`, `CFDI_Downloader.js`)
-- Services: `[Service]Service.js` (e.g., `LogDashboardService.js`, `AutoShutdownService.js`)
-- Utilities: `[Function][Type].js` or `[FunctionName].js` (e.g., `GetTypesCFDI.js`, `GetProviders.js`, `EmailSender.js`)
-- Models: `[Entity].js` (e.g., `PurchaseOrder.js`)
-- Scripts: `[action]-[object].js` (e.g., `payment-reconciliation.js`, `po-diagnostic.js`)
+Quick reference (full version in [`.planning/codebase/CONVENTIONS.md`](CONVENTIONS.md)):
 
-**Directories:**
-- Lowercase with no underscores (e.g., `controller`, `services`, `utils`, `models`, `routes`)
-- Exception: Log directories use date format (e.g., `2026-03-12`)
-
-**Functions:**
-- camelCase for main functions (e.g., `checkPayments`, `createPurchaseOrders`, `buildProvidersXML`)
-- camelCase for async functions (e.g., `getTypeP`, `runQuery`, `sendMail`)
-- Prefix utility functions with action verb (e.g., `get`, `build`, `download`, `resolve`)
-
-**Variables:**
-- camelCase for general variables (e.g., `emails`, `resultPayments`, `idCia`)
-- UPPER_CASE for constants/environment variables (e.g., `TENANT_ID`, `API_KEY`, `LOG_PATH`)
-- Use index suffix for array positions (e.g., `i` for tenant index, always passed as parameter)
-
-**Types/Models:**
-- PascalCase for class/schema names (e.g., `PurchaseOrder`, `BatchAddressRequest`)
-- Suffixes: `Schema` for Joi validators (e.g., `addressSchema`, `vatTaxSchema`)
+- **Controllers / services / models:** `PascalCase` filenames (`PortalOC_Creator.js`, `LicenseValidator.js`, `PurchaseOrder.js`).
+- **Utilities:** `camelCase` or `PascalCase` depending on whether the file exports a function or a class-like singleton (`duration.js` vs `SQLServerConnection.js`).
+- **Scripts:** `kebab-case` action-object (`payment-reconciliation.js`, `diagnose-sage-tables.js`).
+- **Routes:** `kebab-case` area suffix `-routes.js`.
+- **Tests:** `[Module].test.js` mirroring the source location.
 
 ## Where to Add New Code
 
-**New Feature (CFDI Processing):**
-- Primary logic: Create controller file in `src/controller/[Feature]Controller.js`
-- Support services: Add methods to `src/services/[Feature]Service.js` if cross-cutting
-- Database queries: Add utility in `src/utils/[DataAccess].js` or extend `GetTypesCFDI.js`
-- Validation: Add Joi schema to `src/models/[Entity].js`
-- Routes: Add endpoint to `src/routes/routes.js`
-- Orchestration: Call from `src/background.js` forResponse function in sequence
-- Logging: Use `logGenerator(fileName, 'info'/'error'/'warn', message)` throughout
-
-**New Component/Module (Support Logic):**
-- Shared utility: Create `src/utils/[Utility].js` with export of main function
-- Service for complex logic: Create `src/services/[Name]Service.js` with initialization and methods
-- Follow existing pattern: Require dependencies at top, accept index parameter, return Promise
-
-**Utilities:**
-- Shared helpers: `src/utils/[UtilityName].js` (e.g., date helpers, formatters)
-- Database queries: Use `SQLServerConnection.js` via `runQuery(query, database)`
-- API calls: Use axios pattern from `GetTypesCFDI.js` (headers with tenant credentials)
-- Logging: Always use `logGenerator(fileName, level, message)` not console.log
-
-**Tests:**
-- Test location: Mirror source structure in `tests/` directory
-- Naming: `[ComponentName].test.js` or `[ComponentName].spec.js`
-- Framework: Jest (configured in `jest.config.js`)
-- Run: `npm test` or `npm test -- --watch`
+| Adding... | Goes in | Notes |
+|---|---|---|
+| Cross-system workflow | `src/controller/[Feature]Controller.js` | Per-tenant entry function; returns Promise. |
+| Cross-cutting service | `src/services/[Name]Service.js` (or just `[Name].js`) | Singleton-shaped. Initialize at module load. |
+| Shared helper | `src/utils/[Helper].js` | Prefer pure functions. |
+| One-shot script | `src/scripts/[verb-noun].js` | Return `ResultEnvelope`; don't `process.exit()`. |
+| REST endpoint | Extend the appropriate `src/routes/*-routes.js` | Add schema to `src/routes/schemas/` if it accepts a body. |
+| Joi schema | `src/routes/schemas/` for routes, `src/models/` for cross-cutting | Used via the `validate(schema)` middleware. |
+| Test | `tests/<mirror-of-source>` | Jest; match the naming `[Module].test.js`. |
 
 ## Special Directories
 
-**logs/sageconnect/:**
-- Purpose: Store timestamped log files for audit trail and debugging
-- Generated: At runtime when logGenerator is called
-- Structure: `logs/sageconnect/YYYY-MM-DD/[ProcessName].log`
-- Committed: Not committed to git (in .gitignore)
-- Retention: User-managed (can be manually deleted)
+- `logs/` — runtime winston output, structured `logs/sageconnect/YYYY-MM-DD/[Process].log`. Gitignored.
+- `.planning/` — GSD workflow artifacts. **Tracked in the source repo** (excluded from dist).
+- `dist/` — obfuscated output from `scripts/obfuscate.js`. Gitignored.
+- `node_modules/`, `coverage/`, `*.log` — standard ignores.
 
-**.planning/codebase/:**
-- Purpose: Store architectural and structural documentation
-- Generated: By GSD analysis tools
-- Files: ARCHITECTURE.md, STRUCTURE.md, CONVENTIONS.md, TESTING.md, CONCERNS.md
-- Committed: Committed to git for reference
-- Use: Reference for new features and understanding system design
+## Removed Legacy
 
-**dist/:**
-- Purpose: Compiled/bundled application (if obfuscation script is run)
-- Generated: By `npm run obfuscate` script
-- Files: Obfuscated JavaScript source
-- Committed: Not committed to git (in .gitignore)
+What used to be here and isn't anymore:
 
-**public/:**
-- Purpose: Static web assets served by Express
-- Contains: HTML pages, CSS (if any), images for dashboard
-- Served: Via `app.use('/public', express.static(...))` in `src/server.js`
-- Index: Root route (`/`) serves `public/index.html`
+- `AutoShutdownService.js` — removed in v2.0 (always-on regime).
+- `AUTO_TERMINATE` env var — same.
+- `RunSageconnect.bat` — replaced by Servy service (`scripts/install-service.ps1`).
+- `--web-only` mode — removed in v2.0.
+- 5 split `.env*` files — consolidated to single `.env` in v1.1; `migrate-env.js` retained for one-time migration.
 
 ---
 
-*Structure analysis: 2026-03-12*
+*Structure analysis: 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3).*

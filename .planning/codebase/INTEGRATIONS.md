@@ -1,170 +1,182 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-12
+**Analysis Date:** 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3)
 
 ## APIs & External Services
 
-**Focaltec Portal de Proveedores API:**
-- Service: Supplier portal for managing purchase orders and invoices
-- SDK/Client: axios HTTP client
-- Auth: Custom headers `PDPTenantKey` and `PDPTenantSecret` (API key and secret)
-- Base URL: Configured via `process.env.URL` (defaults to `https://api-sandbox.portaldeproveedores.mx`)
-- Endpoints:
-  - `GET /api/1.0/extern/tenants/{tenantId}/cfdis` - Retrieve CFDI documents (invoices/payments)
-  - `GET /api/1.0/extern/tenants/{tenantId}/cfdis/{cfdiId}/files` - Download CFDI XML files
-  - `GET /api/1.0/extern/tenants/{tenantId}/payments/{paymentId}` - Fetch payment details
-  - `GET /api/1.0/extern/tenants/{tenantId}/providers/{providerId}` - Get provider information
-  - `POST /api/1.0/extern/tenants/{tenantId}/purchase-orders` - Create purchase orders
-  - `PUT /api/1.0/extern/tenants/{tenantId}/purchase-orders/{id}/status` - Update PO status
-  - `PUT /api/1.0/extern/tenants/{tenantId}/purchase-orders/{id}` - Update PO content
-  - `POST /api/1.0/extern/tenants/{tenantId}/payments` - Create/upload payment records
-  - `POST /api/1.0/batch/tenants/{tenantId}/payments` - Batch payment operations
+### Focaltec — Portal de Proveedores
 
-**CFDI Document Processing:**
-- Service: Mexican tax authority CFDI (Comprobante Fiscal Digital por Internet) documents
-- Document Types: PAYMENT_CFDI, INVOICE, CREDIT_NOTE
-- Processing: XML parsing and validation for payment/invoice reconciliation
+- **Service:** supplier portal for managing purchase orders, CFDIs, and payments.
+- **Client:** singleton `axios.create({timeout: PORTAL_HTTP_TIMEOUT_MS})` in `src/utils/PortalClient.js`. 18 call sites across 9 controller/utility files all share this instance.
+- **Auth:** custom headers `PDPTenantKey` (= `config.portal.tenants[i].key`) and `PDPTenantSecret` (= `.secret`). Set per-call by the calling controller, never logged.
+- **Base URL:** `config.portal.url` — `https://api.portaldeproveedores.mx` (production) or `https://api-sandbox.portaldeproveedores.mx` (sandbox).
+- **Documented endpoints** (extracted from the upstream swagger at [`API-SPEC.md`](API-SPEC.md)):
+  - `GET  /api/1.0/extern/tenants/{tenantId}/cfdis`
+  - `GET  /api/1.0/extern/tenants/{tenantId}/cfdis/{cfdiId}/files`
+  - `GET  /api/1.0/extern/tenants/{tenantId}/payments/{paymentId}`
+  - `GET  /api/1.0/extern/tenants/{tenantId}/providers/{providerId}`
+  - `POST /api/1.0/extern/tenants/{tenantId}/purchase-orders`
+  - `PUT  /api/1.0/extern/tenants/{tenantId}/purchase-orders/{id}/status`
+  - `PUT  /api/1.0/extern/tenants/{tenantId}/purchase-orders/{id}`
+  - `POST /api/1.0/extern/tenants/{tenantId}/payments`
+  - `POST /api/1.0/batch/tenants/{tenantId}/payments`
+
+### SageConnect License Server (Vercel)
+
+- **Service:** remote license issuance and revocation for SageConnect installations. Hosted on Vercel.
+- **Configured via:** `LICENSE_API_URL`, `HMAC_SECRET`, `LICENSE_ADMIN_EMAIL`.
+- **Client:** an internal axios instance inside `src/services/LicenseValidator.js`, separate from `PortalClient` (different timeout policy, HMAC signing requirements).
+- **Auth:** the client identifies itself with `SAGECONNECT_API_KEY` (dual-purpose: same key used by the dashboard `requireApiKey` middleware).
+- **Validation flow:** POST to `LICENSE_API_URL` → verify HMAC-SHA256 over the response → enforce 5-minute timestamp freshness (anti-replay) → cache result for 24 h in a three-state model (VALID / INVALID / ERROR). DNS bypass defense via `dns.resolve4()` (catches hosts-file redirection to loopback / private ranges).
+- **Failure modes:** startup fail-fast (`process.exit(1)` from `src/index.js`); cron cycle skip (the scheduler checks license state on every tick); Express 503 from `requireLicense` middleware on `/api/payments`, `/api/pos`, `/api/schedule`, `/api/operations`.
+- **Notifications:** `LICENSE_ADMIN_EMAIL` receives mail on startup failure and mid-cycle revocation.
+
+### CFDI document processing
+
+- **Service:** Mexican fiscal authority CFDI (Comprobante Fiscal Digital por Internet) documents handled through the Focaltec API.
+- **Types processed:** `PAYMENT_CFDI`, `INVOICE`, `CREDIT_NOTE`.
+- **Local processing:** XML parsing via `xml2js` for payment/invoice reconciliation, persistence into `APIBHO` (invoice UUID) and `APVENO` (provider ID) Sage tables.
 
 ## Data Storage
 
-**Databases:**
-- Provider: Microsoft SQL Server
-- Connection: via `mssql` npm package with connection pooling
-- Client: `mssql@11.0.1`
-- Configuration: `src/utils/SQLServerConnection.js`
-  - Connection pooling: 15s timeout for connection, 60s for queries
-  - SSL certificate validation disabled (trustServerCertificate: true)
-  - Database credentials from `.env.credentials.database`
-  - Default database: FESA (configurable per call)
+### SQL Server (Sage 300 + FESA)
 
-**Key Tables:**
-- `fesa.dbo.fesaOCFocaltec` - Tracking purchase orders synced to Focaltec portal
-- Contains fields: idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase
-- Used to link SAGE purchase orders with Focaltec portal order IDs
+- **Driver:** `mssql@11.0.1` via the singleton pool in `src/utils/SQLServerConnection.js`.
+- **Pool configuration:** 15 s connection timeout, 60 s query timeout, `trustServerCertificate: true` (self-signed cert is the prod norm), default pool size (mssql defaults — bounded pool override is open tech-debt).
+- **Multi-DB safety:** `runQuery(query, database = config.database.database)` always prepends `USE [database]`. Default resolves at call time from config; callers targeting a non-default DB must pass `database` explicitly (PR #19 closed 7 latent regressions caused by relying on the old hardcoded `'FESA'` default).
+- **Key tables:**
+  - `fesa.dbo.fesaOCFocaltec` — tracks POs synced to Focaltec. Columns: `idFocaltec`, `ocSage`, `status`, `lastUpdate`, `createdAt`, `responseAPI`, `idDatabase`.
+  - `<sageDB>.dbo.APVENO` — vendor "PROVIDERID" mapping (Sage VENDOR field set after portal lookup).
+  - `<sageDB>.dbo.APIBHO` — invoice "FOLIOCFD" mapping (UUID written after portal CFDI match).
+  - `<sageDB>.dbo.ICLOC`, `OE*` — purchase-order source data.
 
-**File Storage:**
-- Local filesystem only
-- Log directory: `logs/` (Windows path: `C:\Logs\sageconnect\`)
-- Report storage: `reports/` directory
-- CFDI file downloads to disk before processing
+### Local filesystem
 
-**Caching:**
-- None detected
+- **Logs:** `logs/sageconnect/YYYY-MM-DD/[ProcessName].log` (winston-managed). In production, `E:\sageconnect\logs\` for app logs and `C:\Logs\sageconnect\` for archived Servy stdout/stderr (via `scripts/Rotate-SageConnectLogs.ps1`).
+- **CFDI staging:** `DOWNLOADS_PATH` (typically `./downloads`).
+- **Provider XML staging:** `PROVIDERS_PATH` (typically `./downloads/providers`).
+- **Reports:** `reports/` (one-shot script outputs).
+
+### Caching
+
+- License state — 24 h TTL in-memory three-state cache (`LicenseValidator.js`).
+- winston transports — module-scope `Map` keyed by `(date, fileName)` (`LogGenerator.js`).
+- No Redis, no Memcached, no external cache.
 
 ## Authentication & Identity
 
-**Auth Provider:**
-- Custom API key/secret header-based authentication
-- Multiple tenant support: Credentials are comma-separated lists allowing multiple environments
-  - `TENANT_ID=tenant1,tenant2,tenant3`
-  - `API_KEY=key1,key2,key3`
-  - `API_SECRET=secret1,secret2,secret3`
-  - `DATABASES=DB1,DB2,DB3`
-  - `EXTERNAL_IDS=RFC1,RFC2,RFC3` (RFC for payment reconciliation)
+**Focaltec portal**
 
-**Implementation:**
-- Each API request includes tenant-specific credentials in headers
-- Provider IDs resolved using `external_id` (RFC number) from database
-- Service: `src/services/ProviderIdResolver.js` - Resolves provider identifiers
+- Per-tenant `API_KEY` / `API_SECRET` header pair, sent on every request.
+- Tenant resolution: `config.portal.tenants[i]` returns `{id, key, secret, database, externalId}`. The index `i` is threaded through every controller/service/utility.
+- `EXTERNAL_IDS` (per-tenant RFC) is used by `ProviderIdResolver` to look up portal providers and persist their ID back to `APVENO`.
+
+**SageConnect dashboard**
+
+- Single `SAGECONNECT_API_KEY` enforced by `requireApiKey` middleware on `/api/payments` and `/api/pos`.
+- Server-side `<meta name="x-app-key">` injection by `serveHtmlWithKey()` (`src/server.js:122`) — operators never paste the key. The same key identifies this installation to the license server.
+
+**License server**
+
+- Same `SAGECONNECT_API_KEY` as client identifier.
+- `HMAC_SECRET` shared with the server for response signing.
 
 ## Monitoring & Observability
 
-**Error Tracking:**
-- None (no Sentry, Rollbar, or similar service detected)
-- Errors logged locally
+**Error tracking**
 
-**Logs:**
-- Multi-strategy approach:
-  - Winston ^3.17.0 - Primary logging library
-  - Log4js ^6.9.1 - Alternative logging
-  - Custom LogGenerator: `src/utils/LogGenerator.js`
-  - Log files stored in `logs/` directory with date-based naming
-  - Log types: ForResponse, GetTypesCFDI, CFDI_Downloader, PortalOC_Creator, etc.
-  - Log Dashboard UI at `/api/dashboard` showing execution history and statistics
+- None external (no Sentry, no Datadog, no Rollbar).
+- The on-disk log directory is the audit trail.
 
-**Notifications:**
-- Desktop notifications via node-notifier (Windows notifications)
-- Email notifications via nodemailer on process completion/errors
+**Logs**
+
+- Application logs: winston via `logGenerator(LOG_FILE, level, message)` to `logs/sageconnect/YYYY-MM-DD/[Process].log`. File handle cached per `(date, fileName)` to bound FD usage under always-on.
+- `[TIMEOUT]` entries are routed cross-cutting (ChildProcess.log + CronScheduler.log + ForResponse.log + caller-specific log) with mandatory keys `step`, `tenant`, `url`, `durationMs`, `err`.
+- `[ADMIN-EMAIL]` entries record outbound admin alerts (`AdminEmailSender.sendAdminAlert`) per caller.
+- Servy stdout/stderr in production live in the install directory, rotated to `C:\Logs\sageconnect\servy\YYYY-MM-DD\` by `Rotate-SageConnectLogs.ps1` (PR #20).
+
+**Dashboard**
+
+- `/logs.html` exposes the per-date per-process log directory.
+- `/schedule.html` shows cron schedule, last/next run, and the live "Operación en curso" card (5 s polling + 1 s heartbeat ticker).
+- `/api/operations/status` is the JSON feed the card polls.
+- `/api/system/health` is the synthetic health probe used by Servy and the deploy checklist.
+
+**Notifications**
+
+- Email via `nodemailer` (`MAIL_TRANSPORT=smtp` or `gmail`). Sent to `MAILING_NOTICES` (and `MAILING_CC`) for operational events, and to `LICENSE_ADMIN_EMAIL` for license + child-process-timeout events.
+- Email dispatch is **only** triggered for child-process timeouts (Phase 19 D-15: avoids inbox flood from transient axios timeouts).
+- `node-notifier` desktop notifications are no-ops in production (Servy has no desktop session) but remain in code for local-dev use.
 
 ## CI/CD & Deployment
 
-**Hosting:**
-- Self-hosted (no cloud platform detected)
-- Windows server required (CFDI import executable is Windows-only)
-- Port: 3030 (default)
-
-**CI Pipeline:**
-- GitHub Actions workflow: `.github/workflows/obfuscate-deploy.yml`
-  - Triggers on: push to src/, public/, package.json, or manual trigger
-  - Node.js 18 setup
-  - Obfuscation build step
-  - Push to distribution repository (FReptar0/sageconnect-dist)
-  - Requires secret: `OBFUSCATED_REPO_TOKEN` (Personal Access Token)
+- **Hosting:** self-hosted Windows Server, port 3030.
+- **CI workflow:** `.github/workflows/obfuscate-deploy.yml`.
+  - Triggers on push to `master` or `feat/always-on-service`, plus manual `workflow_dispatch`.
+  - Node 18 runner (obfuscation only; runtime is Node 22.15.0).
+  - Steps: `npm ci` → `node scripts/obfuscate.js` → commit `dist/` → force-push to `FReptar0/sageconnect-dist`.
+  - **No tests, no linting, no security scanning** run in CI.
+- **Secret:** `OBFUSCATED_REPO_TOKEN` (Personal Access Token with repo permissions on the dist repo).
+- **Production install:** Servy via `scripts/install-service.ps1`. Full procedure in [`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md).
 
 ## Environment Configuration
 
-**Required env vars (.env):**
-- `WAIT_TIME` - Delay between operations (seconds)
-- `IMPORT_CFDIS_ROUTE` - Full path to CFDI import executable
-- `ARG` - Target database name for CFDI import
-- `NOMBRE` - Company name
-- `RFC` - Company RFC (tax ID)
-- `REGIMEN` - Tax regime code (e.g., 601)
-- `TIMEZONE` - Application timezone (e.g., America/Mexico_City)
-- `DEFAULT_ADDRESS_*` - Default addresses for purchase orders (CITY, COUNTRY, STATE, etc.)
-- `ADDRESS_IDENTIFIERS_SKIP` - Comma-separated location IDs to exclude
-- `AUTO_TERMINATE` - Auto-shutdown flag (true/false)
+All required variables live in a **single `.env`** at the repo root. The pre-v1.1 split (`.env.credentials.database`, `.env.credentials.focaltec`, `.env.credentials.mailing`, `.env.path`) is retired — `scripts/migrate-env.js` ships for one-time consolidation on legacy installs.
 
-**Required env vars (.env.credentials.focaltec):**
-- `URL` - Focaltec API base URL
-- `TENANT_ID` - Comma-separated tenant IDs
-- `API_KEY` - Comma-separated API keys
-- `API_SECRET` - Comma-separated API secrets
-- `DATABASES` - Comma-separated database names
-- `EXTERNAL_IDS` - Comma-separated RFC identifiers
+Canonical template with inline comments: [`.env.example`](../../.env.example). Quick reference of required keys grouped by section:
 
-**Required env vars (.env.credentials.database):**
-- `USER` - SQL Server username
-- `PASSWORD` - SQL Server password
-- `SERVER` - SQL Server hostname/IP
-- `DATABASE` - Default database name
+| Section | Required variables |
+|---|---|
+| Database | `DB_USER`, `DB_PASSWORD`, `SERVER`, `DATABASE` |
+| Portal | `URL`, `TENANT_ID`, `API_KEY`, `API_SECRET`, `DATABASES`, `EXTERNAL_IDS` |
+| Paths | `DOWNLOADS_PATH`, `PROVIDERS_PATH`, `LOG_PATH` |
+| App | `IMPORT_CFDIS_ROUTE`, `ARG`, `NOMBRE`, `RFC`, `REGIMEN`, `TIMEZONE`, all 7 `DEFAULT_ADDRESS_*`, `ADDRESS_IDENTIFIERS_SKIP` |
+| License | `LICENSE_API_URL`, `HMAC_SECRET`, `LICENSE_ADMIN_EMAIL` |
 
-**Required env vars (.env.credentials.mailing):**
-- `eServer` - SMTP server hostname
-- `ePuerto` - SMTP port (typically 587)
-- `eSSL` - Enable SSL (TRUE/FALSE)
-- `eFrom` - Sender email address
-- `ePass` - SMTP password
-- `MAILING_NOTICES` - Comma-separated notification recipient emails
-- `MAILING_CC` - Comma-separated CC recipient emails
+Optional sections:
 
-**Secrets location:**
-- Stored in `.env.*` files (git-ignored, not tracked in repository)
-- GitHub Actions secrets for distribution pipeline: `OBFUSCATED_REPO_TOKEN`
+| Section | Optional variables |
+|---|---|
+| Mailing | `MAIL_TRANSPORT` selector + transport-specific keys (SMTP: `eFrom`, `ePass`, `eServer`, `ePuerto`, `eSSL`, `MAILING_NOTICES`, `MAILING_CC`; Gmail: `CLIENT_ID`, `SECRET_CLIENT`, `REFRESH_TOKEN`, `REDIRECT_URI`) |
+| Security | `SAGECONNECT_API_KEY` (recommended — disables `requireApiKey` if absent) |
+| Schedule | `CRON_SCHEDULE`, `OPERATION_DELAY_MS`, `LOCK_TIMEOUT_MS`, `CHILD_PROCESS_TIMEOUT_MS`, `STEP_TIMEOUT_MS`, `PORTAL_HTTP_TIMEOUT_MS` |
+
+**Secrets storage**
+
+- Local `.env` is gitignored.
+- Production `.env` lives on the server at the install directory (`E:\sageconnect\.env` typical).
+- CI uses `OBFUSCATED_REPO_TOKEN` as a GitHub Actions secret. No other secrets are passed through CI.
 
 ## Webhooks & Callbacks
 
-**Incoming:**
-- No webhook endpoints detected
-
-**Outgoing:**
-- Email notifications on:
-  - Process start/completion
-  - Error conditions
-  - CFDI import failures
-- Log entries for process tracking
+- **Incoming:** none. The service does not expose webhook endpoints. The dashboard API is polled, not pushed.
+- **Outgoing:**
+  - Email alerts on cron-cycle completion, error conditions, license events, child-process timeouts.
+  - Force-push to the dist repo on every CI build (counts as an outbound callback in spirit).
 
 ## Data Flow
 
-**Primary Integration Flow:**
-1. **CFDI Download** → Fetch from Focaltec portal using API
-2. **CFDI Processing** → Parse XML, extract payment/invoice data
-3. **Database Storage** → Store in FESA SQL Server database
-4. **Purchase Order Creation** → Read from SAGE database, transform, POST to Focaltec
-5. **Status Updates** → Monitor and sync PO status changes via PUT requests
-6. **Payment Reconciliation** → Match SAGE payments with Focaltec records
-7. **Notifications** → Email alerts on completion/errors
+```
+Cron tick (*/15 * * * *)
+   ↓
+LicenseValidator.checkValid() ─► skip if INVALID/ERROR
+   ↓
+OperationManager.acquireLock('background-cycle', LOCK_TIMEOUT_MS)
+   ↓
+forResponse() — for each tenant i:
+   ├─ buildProvidersXML(i)        → Focaltec providers API → write XML for Sage
+   ├─ downloadCFDI(i)             → Focaltec CFDIs API → spawn ImportaFacturasFocaltec.exe
+   ├─ checkPayments(i)            → Sage SQL → identify pending payments
+   ├─ uploadPayments(i)           → POST payment batch to Focaltec
+   ├─ createPurchaseOrders(i)     → Sage SQL → POST new POs to Focaltec
+   ├─ processOrderChanges(i)      → poll Focaltec → mutate Sage
+   └─ closePurchaseOrders(i)      → mark Sage POs closed → POST closure to Focaltec
+   ↓
+OperationManager.releaseLock() (or lock:timeout auto-release after 14 min)
+   ↓
+Optional: sendAdminAlert (child-process timeout only) or sendMail (operational notice)
+```
 
 ---
 
-*Integration audit: 2026-03-12*
+*Integration audit: 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3).*

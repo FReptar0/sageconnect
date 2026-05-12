@@ -1,111 +1,137 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-12
+**Analysis Date:** 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3)
 
 ## Languages
 
-**Primary:**
-- JavaScript (Node.js) - Backend server, services, controllers, utilities
-- HTML/CSS - Frontend UI for dashboard
-- SQL - SQL Server queries for data retrieval
+- **JavaScript** (Node.js) — backend, services, controllers, utilities, dashboard JS.
+- **HTML / CSS** — dashboard pages.
+- **SQL** (T-SQL) — direct queries against Sage 300 + FESA SQL Server instances.
+- **PowerShell** — production install (`scripts/install-service.ps1`) and log rotation (`scripts/Rotate-SageConnectLogs.ps1`).
 
 ## Runtime
 
-**Environment:**
-- Node.js (v18 specified in GitHub Actions, no .nvmrc file)
-
-**Package Manager:**
-- npm
-- Lockfile: `package-lock.json` (present)
+- **Node.js** — production runs on 22.15.0 LTS (verified in `docs/DEPLOYMENT.md`). CI obfuscation runner uses Node 18 (`.github/workflows/obfuscate-deploy.yml`); the older runner is acceptable because obfuscation does not exercise runtime semantics. There is no `.nvmrc` file — developers should match production locally.
+- **npm** — `package-lock.json` is committed and authoritative.
+- **Windows Server** — production host. The CFDI import binary (`ImportaFacturasFocaltec.exe`) is Windows-only; the rest of the codebase is platform-agnostic and runs on macOS/Linux for development.
 
 ## Frameworks
 
-**Core:**
-- Express.js ^4.21.1 - HTTP web server and routing
+**Core HTTP**
 
-**Testing:**
-- Jest ^29.7.0 - Unit testing framework
-- Babel-Jest ^29.7.0 - Jest transformer for ES6+ syntax
+- `express@^4.21.1` — web server and routing.
+- `helmet@^8.1.0` — security headers (CSP disabled for inline dashboard scripts).
+- `cors@^2.8.6` — CORS middleware (allow-list of methods + `x-api-key`).
+- `express-rate-limit@^7.5.1` — global 2000/15-min, write-limiter 10/min.
 
-**Build/Dev:**
-- Babel ^7.26.0 - JavaScript transpiler
-  - @babel/core ^7.26.0
-  - @babel/preset-env ^7.26.0
-- JavaScript Obfuscator ^5.3.0 - Code obfuscation for distribution
-- Nodemon ^3.1.7 - Auto-reload development server
+**Scheduling**
 
-## Key Dependencies
+- `node-cron@^4.2.1` — internal cron, replaces Windows Task Scheduler. Used inside the always-on process with `noOverlap` and `OperationManager` locks.
 
-**Critical:**
-- mssql ^11.0.1 - Microsoft SQL Server connection and queries
-- axios ^1.7.7 - HTTP client for external API calls (Focaltec portal)
-- dotenv ^16.4.5 - Environment variable management
-- nodemailer ^6.9.16 - Email sending functionality
+**Validation**
 
-**Data Processing:**
-- xml2js ^0.6.2 - XML to JSON conversion for CFDI documents
-- joi ^17.13.3 - Data validation and schema validation
+- `joi@^17.13.3` — request body and configuration validation.
 
-**Logging & Notifications:**
-- winston ^3.17.0 - Logging library
-- log4js ^6.9.1 - Alternative logging framework
-- node-notifier ^10.0.1 - Desktop notifications for process completion
+**Data**
 
-**Utilities:**
-- fs ^0.0.1-security - File system operations (built-in Node.js)
+- `mssql@^11.0.1` — SQL Server client. Wrapped by the singleton pool in `src/utils/SQLServerConnection.js`.
+- `xml2js@^0.6.2` — CFDI XML parsing.
+
+**HTTP client**
+
+- `axios@^1.7.7` — wrapped by the singleton `PortalClient` (`src/utils/PortalClient.js`) with default 30 s timeout.
+
+**Logging & notification**
+
+- `winston@^3.17.0` — primary logger, file output via `src/utils/LogGenerator.js`.
+- `log4js@^6.9.1` — legacy, used in a handful of scripts. Consolidation onto winston is a documented tech-debt item.
+- `nodemailer@^6.9.16` — SMTP / Gmail OAuth email transport.
+- `node-notifier@^10.0.1` — desktop notifications (kept for local-dev use only; the production Servy service has no desktop session so notifications are no-ops).
+
+**Config**
+
+- `dotenv@^16.4.5` — invoked exactly once inside `src/config.js`. All other code reads from the structured `config` object.
+
+## Testing
+
+- `jest@^29.7.0` — test runner.
+- `babel-jest@^29.7.0` — Babel transformer for Jest.
+- `supertest@^7.2.2` — HTTP assertions against the Express app in `tests/api/`.
+
+## Build / Dev
+
+- `@babel/core@^7.26.0`, `@babel/preset-env@^7.26.0` — transpile for Jest only; runtime uses Node directly without transpilation.
+- `nodemon@^3.1.7` — `npm run dev` watcher.
+- `javascript-obfuscator@^5.3.0` — driven by `scripts/obfuscate.js` in CI to produce the dist payload.
+
+No ESLint, Prettier, EditorConfig, TypeScript, or coverage tooling is configured. Code review is the quality gate.
 
 ## Configuration
 
-**Environment:**
-- Three primary .env files (not tracked in git):
-  - `.env` - General application config (WAIT_TIME, timezone, addresses, AUTO_TERMINATE)
-  - `.env.credentials.database` - SQL Server connection (USER, PASSWORD, SERVER, DATABASE)
-  - `.env.credentials.focaltec` - Focaltec Portal API credentials (URL, TENANT_ID, API_KEY, API_SECRET, DATABASES, EXTERNAL_IDS)
-  - `.env.credentials.mailing` - Email configuration (SMTP server, auth, recipient lists)
+**Environment**
 
-**Key Configuration Variables:**
-- Timezone: `TIMEZONE` (America/Mexico_City)
-- Database: SQL Server with configurable target database
-- API: Multiple tenant support via comma-separated credentials
-- CFDI Import: External executable path (`IMPORT_CFDIS_ROUTE`)
-- Auto-shutdown: `AUTO_TERMINATE` flag for background processes
+- **Single `.env` file** at the repo root (consolidated in v1.1; the pre-v1.1 split is no longer supported). `src/config.js` is the only entry point — never call `dotenv.config()` from any other file.
+- Full template with inline section comments: [`.env.example`](../../.env.example).
+- Fail-fast validation: missing required vars exit with `[CONFIG ERROR]`. Out-of-range timeout vars exit with `[CONFIG ERROR] ... must be >= ...`.
 
-**Build:**
-- `babel.config.js` - Babel configuration (preset-env targeting current Node)
-- `jest.config.js` - Jest test runner config (babel-jest transformer)
-- `scripts/obfuscate.js` - Custom obfuscation script for distribution
+**Build / dev configs**
+
+- `babel.config.js` — `@babel/preset-env` targeting current Node.
+- `jest.config.js` — uses `babel-jest`; one custom `transform` entry, no `coverageThreshold`.
+- `scripts/obfuscate.js` — driven by CI.
 
 ## Platform Requirements
 
-**Development:**
-- Windows environment (uses Windows executable for CFDI import: `ImportaFacturasFocaltec.exe`)
-- SQL Server instance accessible via network
-- SMTP server for email functionality
+**Development**
 
-**Production:**
-- Windows server (CFDI import executable is Windows-specific)
-- Node.js v18 LTS recommended
-- SQL Server with appropriate database and permissions
-- Network access to:
-  - Focaltec Portal API (`https://api-sandbox.portaldeproveedores.mx` or production equivalent)
-  - SMTP server for notifications
+- Node 22.15.0 (recommended; 18+ works for `npm test`).
+- A reachable SQL Server with credentials for at least one Sage 300 DB.
+- (Optional) SMTP credentials, or `MAIL_TRANSPORT` left blank to skip the mailing section.
+- (Required for full boot) A working license endpoint reachable at `LICENSE_API_URL`. Without it, `npm start` fails at boot — `npm test` and `npm run dev` (for code-only tasks) still work.
+
+**Production**
+
+- Windows Server (the CFDI import binary is Windows-only).
+- Servy v7.0+ installed (`winget install servy`).
+- Node 22.15.0 LTS.
+- Network reachability:
+  - Sage SQL Server (port 1433 typical).
+  - `portaldeproveedores.mx` over HTTPS.
+  - The SageConnect License Server (Vercel-hosted) over HTTPS.
+  - SMTP server (if `MAIL_TRANSPORT=smtp`) or Gmail OAuth endpoints (if `MAIL_TRANSPORT=gmail`).
+- Service account with read/write on the install directory and the log directories.
 
 ## Deployment
 
-**Container:** Not containerized (bare Node.js)
+**Strategy**
 
-**Distribution:**
-- Code is obfuscated before deployment using GitHub Actions workflow
-- Obfuscated code pushed to separate distribution repository (`FReptar0/sageconnect-dist`)
-- GitHub Actions CI/CD enabled with secrets management
+The service runs as a Windows service named `SageConnect`, managed by [Servy](https://github.com/servy-dev/servy). PM2 was used in v1.x but was retired in v2.0 because of `wmic` bugs on Windows Server 2025. The Windows Task Scheduler + `RunSageconnect.bat` model from v1.0 is also gone (always-on regime).
 
-**Entry Points:**
-- `npm start` → `node src/index.js` - Full server + background processes
-- `npm run web-only` → `node src/index.js --web-only` - Web server only (no background tasks)
-- `npm run dev` → `nodemon src/index.js` - Development with auto-reload
-- `npm run background-only` → `node src/background.js` - Background processes only
-- `npm run obfuscate` → Obfuscate code to `dist/` folder
+**Pipeline**
+
+1. Developer pushes to `master` (or any branch listed in `.github/workflows/obfuscate-deploy.yml`).
+2. CI runs `npm ci` and `node scripts/obfuscate.js`.
+3. CI commits `dist/` and **force-pushes** to `FReptar0/sageconnect-dist` (a separate repo, no shared history with this source repo).
+4. On the production server, the operator runs `git fetch && git reset --hard origin/master` against the dist repo to consume the new build.
+5. `Restart-Service SageConnect` cycles the service; Servy enforces a 30 s graceful stop before terminating.
+
+Full procedure: [`docs/DEPLOYMENT.md`](../../docs/DEPLOYMENT.md). Operator-facing runbook: [`docs/OPERATIONS.md`](../../docs/OPERATIONS.md).
+
+**Not containerized.** There is no Dockerfile; the Windows-only child process pins the application to a Windows host.
+
+## Entry Points (npm scripts)
+
+```
+"test":              "jest"
+"start":             "node src/index.js"
+"dev":               "nodemon src/index.js"
+"background-only":   "node src/background.js"
+"obfuscate":         "node scripts/obfuscate.js"
+"obfuscate:push":    "node scripts/obfuscate.js --push"
+```
+
+`obfuscate` and `obfuscate:push` are CI-driven — running them manually is discouraged (the GitHub Action is the source of truth for the dist repo).
 
 ---
 
-*Stack analysis: 2026-03-12*
+*Stack analysis: 2026-03-12 (initial), refreshed 2026-05-12 (post-v2.3).*

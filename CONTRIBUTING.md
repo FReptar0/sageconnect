@@ -1,50 +1,51 @@
-# Contributing to This Project
+# Contributing to SageConnect
 
-Thank you for your interest in contributing! This document outlines the steps and guidelines to make the process as smooth and efficient as possible.
+Thank you for your interest in contributing. This guide reflects the **actual** workflow used in the repository today — please prefer it over any historical conventions you may have seen elsewhere.
 
 ---
 
 ## 1. Code of Conduct
 
-This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). Please read it before interacting. In summary:
-
-- **Be respectful.**  
-- **Be collaborative.**  
-- **Be patient and open‑minded.**
+This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). In summary: be respectful, be collaborative, be patient.
 
 ---
 
 ## 2. Getting Started
 
-1. **Fork** the repository on GitHub.  
-2. **Clone** your fork locally:
-
+1. **Fork** the repository on GitHub (or clone directly if you have write access).
+2. **Clone** your fork:
    ```bash
    git clone https://github.com/<your-username>/sageconnect.git
    cd sageconnect
    ```
+3. **Install prerequisites** — Node.js 22.15.0 (LTS), npm, Git. Production also needs Servy on Windows but that's not required for local dev.
+4. **Install dependencies** — `npm install`.
+5. **Configure** — copy `.env.example` to `.env` and fill in required keys. See [`README.md`](README.md) § Environment Variables and [`docs/ONBOARDING.md`](docs/ONBOARDING.md) for the full first-day flow.
+6. **Validate config** — `node -e "require('./src/config')"`. Exits 1 with `[CONFIG ERROR]` if anything required is missing.
+7. **Run tests** — `npm test`.
 
-3. **Install prerequisites** (Node.js, Python, etc.) as specified in `README.md`.
-4. **Create a branch** for your work (see Branching Model below).
+Before opening a PR, also read [`CLAUDE.md`](CLAUDE.md) — the always-on constraint and the pitfalls section save real time.
 
 ---
 
 ## 3. Branching Model
 
-We use a **GitFlow‑inspired** workflow:
+The repo does **not** use GitFlow. The actual model is closer to trunk-based with feature branches:
 
-- **`main`**: production‑ready code, protected; only maintainers may merge.
-- **`develop`**: integration branch for features and fixes; periodically merged into `main`.
-- **`feature/xyz`**: new features branched off `develop`.
-- **`fix/abc`**: bug‑fix branches off `develop`.
-- **`hotfix/123`**: urgent fixes branched off `main`, merged back into both `main` and `develop`.
+- **`master`** — the integration branch. CI obfuscates and force-pushes every push here to `FReptar0/sageconnect-dist`, which is what production deploys consume. Treat `master` as production-bound at all times.
+- **`feat/<short-description>`** — feature work. Branch off `master`, PR into `master`.
+- **`fix/<short-description>`** — bug fixes (non-urgent). Branch off `master`, PR into `master`.
+- **`hotfix/<short-description>`** — urgent production fixes. Same flow as `fix/` in practice; the prefix signals priority during review.
+- **`chore/<short-description>`** — refactors, dependency bumps, docs that don't change behavior.
 
-**Naming convention:**
+Several historical long-lived branches still exist (`feat/always-on-service`, `merge-web-analytics`) but new work should branch from `master`, not from them. There is no `develop` branch.
 
-```text
-feature/<short-description>
-fix/<short-description>
-hotfix/<short-description>
+Naming examples:
+```
+feat/oc-status-ui
+fix/payment-arg
+hotfix/sql-pool-context-leak
+chore/log-rotation-script
 ```
 
 ---
@@ -55,168 +56,150 @@ Before opening an issue, search existing issues to avoid duplicates.
 
 When reporting a bug, include:
 
-- **Title:** concise and descriptive.
-- **Description:** what you expected vs. what happened.
-- **Steps to reproduce:** numbered list.
-- **Environment:** OS, language/runtime versions, hardware if relevant.
-- **Logs / Screenshots:** any error messages, stack traces, or screenshots.
-- **Severity / Priority:** Blocker / Critical / Major / Minor / Trivial.
+- **Title** — concise and descriptive.
+- **Description** — expected vs. actual behavior.
+- **Steps to reproduce** — numbered list.
+- **Environment** — Node version, OS, whether you're hitting prod or local, relevant `.env` values *redacted*.
+- **Logs** — relevant excerpts from `logs/sageconnect/YYYY-MM-DD/`. Strip credentials before posting.
+- **Severity** — Blocker / Critical / Major / Minor / Trivial.
 
-Use labels where appropriate: `bug`, `enhancement`, `question`, etc.
+Use labels: `bug`, `enhancement`, `question`, `security` (security issues should follow [`SECURITY.md`](SECURITY.md) and be emailed, not posted publicly).
 
 ---
 
 ## 5. Proposing Features
 
-If you have an idea for a new feature:
-
-1. **Search** existing feature requests.
-2. **Open** a new issue with:
-
-   - A clear description of the problem.
-   - Proposed solution or API changes.
-   - Mockups or examples, if applicable.
-
-Maintainers will discuss feasibility and scope before work begins.
+1. **Search** existing issues / PRs.
+2. **Open** an issue describing:
+   - The problem you're solving (not just the proposed solution).
+   - Proposed approach or API surface.
+   - Any constraints — particularly **always-on** implications. New code that adds `setInterval`, `setTimeout`, EventEmitter listeners, module-scope caches, or child processes must explain how the resource is bounded across cycles. See [`CLAUDE.md`](CLAUDE.md) § Always-On Constraint.
+3. Wait for triage before opening a PR for non-trivial work, especially anything touching `OperationManager`, `CronScheduler`, `LicenseValidator`, or `background.js` orchestration.
 
 ---
 
 ## 6. Pull Request Workflow
 
-1. **Branch off** from `develop` (or `main` for hotfixes).
-2. **Work on your changes**, committing logically:
-
-   - **Atomic commits**: one logical change per commit.
-   - **Descriptive messages**: use imperative, present tense (e.g., “Add user login endpoint”).
-
-3. **Rebase** or **merge** the latest `develop` into your branch to resolve conflicts early:
-
+1. **Branch off `master`** (or a feature branch with explicit permission).
+2. **Make atomic commits**:
+   - One logical change per commit.
+   - Imperative, present-tense subjects (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `refactor:` prefixes are conventional but not enforced).
+   - Reference the issue or phase when applicable.
+3. **Rebase** onto the latest `master` before pushing the final commit set:
    ```bash
    git fetch origin
-   git checkout feature/xyz
-   git rebase origin/develop
+   git checkout feat/your-branch
+   git rebase origin/master
    ```
-
-4. **Run tests** and ensure everything passes:
-
+4. **Run tests locally**:
    ```bash
-   npm test         # or `pytest`, etc.
-   npm run lint
+   npm test
    ```
-
-5. **Push** your branch to your fork:
-
+   The Jest suite has ~200 tests with ~7 pre-existing failures (documented in [`.planning/codebase/TESTING.md`](.planning/codebase/TESTING.md)). New failures must not be introduced; pre-existing failures should remain pre-existing unless the PR explicitly fixes them.
+5. **Push** your branch:
    ```bash
-   git push origin feature/xyz
+   git push origin feat/your-branch
    ```
-
-6. **Open a Pull Request** against `develop`:
-
-   - Reference the issue number if applicable (`Closes #123`).
-   - Describe what your PR does and why.
-   - Mention any follow‑up tasks.
-
-7. **Respond to review feedback** by pushing new commits to the same branch.
-8. Once approved, a maintainer will **merge** your PR and close the issue.
+6. **Open a PR against `master`**:
+   - Reference the issue if any (`Closes #123`).
+   - Describe **what** changed and **why** (the diff already shows what).
+   - Call out anything always-on-relevant: new timers, new listeners, new singletons, new env vars, new child processes.
+   - Mention any pre-existing tests you had to relax or follow-ups deferred.
+7. **Respond to review** by pushing additional commits to the same branch (do not force-push during review unless asked — it disrupts the reviewer's diff position).
+8. **Merge** — a maintainer merges once approved. CI then obfuscates `master` and force-pushes the result to `FReptar0/sageconnect-dist`.
 
 ---
 
-## 7. Coding Style & Guidelines
+## 7. Coding Style
 
-- **Languages & Frameworks:** follow the style guides of the respective ecosystem (e.g., PEP 8 for Python, ESLint + Prettier for JavaScript).
-- **Indentation:** 2 spaces (JS/TS), 4 spaces (Python).
-- **Line length:** wrap at 80–100 characters.
-- **Documentation comments:** use JSDoc/TSDoc, docstrings, or equivalent.
-- **Type safety:** prefer typing (TypeScript, MyPy) where available.
-- **Avoid trailing whitespace** and enforce via linter.
+The repository does not enforce style through ESLint, Prettier, EditorConfig, or any other automated formatter. Code review is the quality gate. Match the existing surrounding code:
 
-We provide configurations:
-
-- `.eslintrc.js` + `.prettierrc` for JavaScript/TypeScript.
-- `pyproject.toml` / `setup.cfg` for Python.
-- `.editorconfig` for consistent editor settings.
+- **Indentation** — 4 spaces. No tabs. No trailing whitespace.
+- **Module system** — CommonJS only (`require` / `module.exports`). No ESM, no `import` / `export`.
+- **Async** — `async` / `await` everywhere; `try`/`catch` around any external I/O.
+- **Naming** — see [`.planning/codebase/CONVENTIONS.md`](.planning/codebase/CONVENTIONS.md). Quick version: `PascalCase` for controllers/services/models, `camelCase` for utilities and functions, `UPPER_SNAKE_CASE` for env-sourced constants, `snake_case` for portal-API payload keys.
+- **JSDoc** — write a short JSDoc block for any exported function (`@param`, `@returns`). Internal helpers can be undocumented if the name carries weight.
+- **Comments** — default to none. Add one when the *why* is non-obvious (a hidden constraint, a workaround for a specific bug, behavior that would surprise a reader). Do not narrate the *what* — code already does that.
+- **Logging** — `logGenerator(LOG_FILE, level, message)`. Never use bare `console.log` for anything that needs to survive a restart.
+- **Config** — `const config = require('./config')` once at the top of the module; access via `config.section.property`. Never call `dotenv.config()` directly.
 
 ---
 
 ## 8. Testing
 
-- Write **unit tests** covering new functionality and edge cases.
-- Include **integration tests** where appropriate.
-- Maintain **> 80% code coverage**.
-- Run tests locally before submitting:
+- Framework: **Jest 29** with `babel-jest` transformer.
+- Layout: tests live in `tests/`, roughly mirroring `src/`. Naming: `[Module].test.js`.
+- Mocking: small fakes per test; no shared global mock state. See `tests/helpers/` for the few shared utilities.
+- Coverage: there is **no enforced coverage threshold**. There is no `npm run lint`, `npm run typecheck`, or coverage report — those scripts do not exist. Focus on adding tests for new behavior; do not retrofit tests across the whole module for a small change.
+- Known pre-existing failures (documented in `.planning/codebase/TESTING.md`):
+  - `PaymentReconciliation.test.js`
+  - `TransformTime.test.js`
+  - `no-process-exit.test.js` (the range-guard count assertion)
+  - `enforcement-wiring.test.js`
+  These predate v2.3 and are tolerated baseline noise. If your change makes one of them suddenly pass, mention it in the PR.
 
-  ```bash
-  npm test
-  coverage report
-  ```
+Run only a subset while developing:
 
-- Add test scripts to `package.json` or `Makefile`.
+```bash
+npx jest tests/services/CronScheduler.test.js
+npx jest --testNamePattern "lock auto-release"
+```
+
+The Claude Code slash command `/test` wraps this convention.
 
 ---
 
 ## 9. Continuous Integration
 
-Commits and PRs are validated via CI (e.g., GitHub Actions):
+CI is intentionally minimal. The single workflow is `.github/workflows/obfuscate-deploy.yml`:
 
-- **Linting**
-- **Unit & Integration Tests**
-- **Security Scans** (e.g., Snyk, Dependabot checks)
-- **Build Verification**
+1. Triggered on push to `master` (or `feat/always-on-service`, kept for historical reasons), or manually via `workflow_dispatch`.
+2. Sets up Node 18 (for the obfuscator runner — runtime in production is 22.15.0).
+3. Runs `npm ci`.
+4. Runs `node scripts/obfuscate.js`, producing `dist/`.
+5. Commits `dist/` and **force-pushes** the result to `FReptar0/sageconnect-dist` with a synthetic commit message referencing the source SHA.
 
-Fix any failures reported by the CI before requesting a merge.
+CI does **not** run tests, linting, security scans, or dependency audits. Verifying the test suite is the contributor's responsibility before merge. The maintainer typically re-runs `npm test` locally before approving non-trivial PRs.
 
 ---
 
 ## 10. Documentation
 
-- **README.md**: high‑level overview, getting started.
-- **`/docs` directory**: detailed guides, architecture docs, API reference.
-- **Auto‑generated docs** (via JSDoc, Sphinx, etc.) should be updated when APIs change.
-- Include **code samples** and **command‑line examples**.
+Update these alongside code changes when they're affected:
+
+- [`README.md`](README.md) — public-facing overview, env vars, dashboard pages, API mounts.
+- [`CLAUDE.md`](CLAUDE.md) — the always-on memory loaded by Claude Code. Keep terse; link out for depth.
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — Servy install / rollback.
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operator runbook.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — single-page architecture.
+- [`docs/ONBOARDING.md`](docs/ONBOARDING.md) — first day flow.
+- [`docs/CLAUDE_CODE.md`](docs/CLAUDE_CODE.md) — Claude Code conventions for this repo.
+- [`.env.example`](.env.example) — every new env var must land here with a comment.
+
+`.planning/` documents are the GSD workflow artifacts and are maintained by the planning commands; do not edit them by hand unless you understand the GSD model.
 
 ---
 
-## 11. Localization & Internationalization
-
-- Core text must be in English.
-- For translations, use the `i18n/` folder and follow existing patterns.
-- Pull requests that add or improve translations are welcome.
-
----
-
-## 12. Security Vulnerabilities
+## 11. Security Vulnerabilities
 
 If you discover a security issue:
 
 1. **Do not** open a public issue.
-2. **Email** the maintainers at `<hi@fernandomemije.dev>` with details.
-3. We will coordinate a patch and disclosure timeline.
+2. Email <hi@fernandomemije.dev> with details — see [`SECURITY.md`](SECURITY.md) for the full disclosure policy.
 
 ---
 
-## 13. License & EULA
+## 12. License & EULA
 
-This project is licensed under the **EULA** with Fernando Rodríguez Memije (Effective July 22, 2025). By contributing, you agree that:
-
-- Your code is incorporated under the same EULA terms.
-- You grant the project a **non‑exclusive, perpetual** license to use and distribute your contributions.
-- The EULA remains in force until revoked per its terms.
-
-Refer to `EULA-en.md` for the full legal text (controlling English version) or `EULA-es.md` for the Spanish courtesy translation.
+This project is licensed under the EULA with Fernando Rodríguez Memije (effective July 22, 2025). By contributing you agree that your contribution is incorporated under the same terms. See [`EULA-en.md`](EULA-en.md) (controlling English version) or [`EULA-es.md`](EULA-es.md) (Spanish courtesy translation).
 
 ---
 
-## 14. Acknowledgments
+## 13. Questions
 
-We appreciate every contribution, big or small. Special thanks to all past and future contributors for making this project better! 🎉
-
----
-
-## 15. Questions & Contact
-
-- For general questions, open an issue with the `question` label.
-- For private matters, email **Fernando Rodríguez Memije** at [hi@fernandomemije.dev](mailto:hi@fernandomemije.dev).
+- General questions — open an issue with the `question` label.
+- Anything private — <hi@fernandomemije.dev>.
 
 ---
 
-**Thank you for helping us build something great!** 🚀
+**Thanks for taking the time to contribute carefully — this codebase runs other people's payment data, and every careful PR is appreciated.**
