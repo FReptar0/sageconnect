@@ -81,6 +81,15 @@ Thumbs.db
 .qodo/
 .eslintcache
 
+# Claude Code per-developer overrides (the committed .claude/settings.json is
+# the team baseline; .claude/settings.local.json is for personal permissions
+# and tweaks that should never reach the repo). The un-ignore is required
+# because the broader `*.json` rule above otherwise excludes settings.json.
+!.claude/settings.json
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+
 # Backup files
 *.bak
 *.backup
