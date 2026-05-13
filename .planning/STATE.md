@@ -6,8 +6,8 @@ status: planning
 last_updated: "2026-05-13T21:33:47.756Z"
 last_activity: 2026-05-13
 progress:
-  total_phases: 0
-  completed_phases: 0
+  total_phases: 21
+  completed_phases: 19
   total_plans: 0
   completed_plans: 0
   percent: 0
@@ -20,14 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.4 Retry policies — Phases 20 (cron retry) + 21 (partial payment) closing GH #21, #22, #23. Scope locked, defining requirements & roadmap.
+**Current focus:** v2.4 Retry policies — Phases 20 (cron retry + EOM notification) + 21 (partial payment policy) closing GH #21, #22, #23. Roadmap drafted; ready for `/gsd-spec-phase 20`.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-13 — Milestone v2.4 started
+Status: Roadmap drafted, awaiting `/gsd-spec-phase 20`
+Total phases: 21 (Phases 20-21 active this milestone)
+Next: Phase 20 — Cron retry policy + EOM notification
+Last activity: 2026-05-13 — ROADMAP.md drafted for v2.4 (Phases 20-21)
 
 ## Deferred Items
 
@@ -35,8 +37,8 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 | Category | Item | Status |
 |----------|------|--------|
-| todo | 2026-04-16-fix-uploadpayments-lookback-to-prevent-missed-payments | pending — pre-existing, unrelated to v2.3 scope |
-| todo | 2026-04-16-support-partial-payment-completion-for-incomplete-uploads | pending — pre-existing, unrelated to v2.3 scope |
+| todo | 2026-04-16-fix-uploadpayments-lookback-to-prevent-missed-payments | absorbed into v2.4 Phase 20 (RETRY-02) |
+| todo | 2026-04-16-support-partial-payment-completion-for-incomplete-uploads | absorbed into v2.4 Phase 21 (PARTIAL-01..03) |
 
 **Quick Tasks Completed (pre-v2.3-deploy fixes):**
 
@@ -58,6 +60,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 - No Sage DB access locally: SQL query changes can only be validated structurally
 - No repro local del bug-class always-on: requiere prod (ZCL-RDS-02) o simulación con mocks
 - Servy como Windows service no tiene sesión de escritorio: child-process GUI puede colgarse (mitigado por Plan 19-02 kill cascade en v2.3)
+- Phase 21 blocked on Focaltec sandbox transcript (PARTIAL-02) before `/gsd-plan-phase 21` — engineering verification step is part of the SPEC gate, not the plan gate
 
 ## Session Continuity
 

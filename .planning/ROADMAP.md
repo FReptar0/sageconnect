@@ -8,9 +8,12 @@
 - ✅ **v2.1 License Validation** — Phases 11-14 (shipped 2026-03-25)
 - ✅ **v2.2 OC Status UI** — Phases 15-16 (shipped 2026-04-09)
 - ✅ **v2.3 Scheduler Lock Recovery** — Phases 17-19 (shipped 2026-04-29)
-- 📋 **v2.4 (TBD)** — Planning next milestone via `/gsd-new-milestone`
+- 📋 **v2.4 Retry policies** — Phases 20-21 (in progress)
 
 ## Phases
+
+- [ ] **Phase 20: Cron retry policy + EOM notification** — Replace `MAX(Fecha)=today` filter with configurable scope (current_month default, env override to rolling N-day), add exponential backoff derived from existing fesa.* rows, and ship end-of-month operator email
+- [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
 <details>
 <summary>✅ v2.3 Scheduler Lock Recovery (Phases 17-19) — SHIPPED 2026-04-29</summary>
@@ -79,16 +82,33 @@ See `.planning/MILESTONES.md` for accomplishments.
 
 </details>
 
-### 📋 v2.4 (TBD)
+## Phase Details
 
-Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-ups from v2.3 closure:
+### Phase 20: Cron retry policy + EOM notification
+**Goal**: Operators stop losing PO/payment uploads when authorization isn't on cron tick day, and get a monthly view of what's still pending. Replace the `MAX(Autoriza_OC_detalle.Fecha) = CAST(GETDATE() AS DATE)` filter in both the PO uploader (`src/controller/PortalOC_Creator.js`) and the payment uploader (`src/controller/PortalPaymentController.js`) with a configurable scope (`current_month` default, env-overridable to rolling N-day window) plus exponential-backoff retry derived from existing rows in `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` (no schema change). Add the end-of-month operator email to `MAILING_NOTICES` (CC `MAILING_CC`) with HTML tables of pending POs + pagos, gated by an `EOM_NOTIFICATION_ENABLED` kill-switch and a per-month sentinel file.
+**Depends on**: Nothing (first phase of v2.4; master branch)
+**Worktree branch**: `feat/phase-20-cron-retry-policy`
+**Requirements**: RETRY-01, RETRY-02, RETRY-03, RETRY-04, RETRY-05, RETRY-06, RETRY-07, EOM-01, EOM-02, EOM-03, EOM-04, EOM-05, EOM-06 (13 REQs)
+**Closes**: GH #21, GH #22
+**Success Criteria** (what must be TRUE):
+  1. A PO authorized any day within the current calendar month (not just today) is selected by the cron WHERE clause on the next tick, and the same holds for payments — verifiable by querying `fesaOCFocaltec` / `fesaPagosFocaltec` and observing new rows for previously-orphaned authorizations on the first post-deploy cron tick.
+  2. Operator can run `node src/scripts/po-cron-diagnostic.js <poNumber>` against a PO that has prior ERROR rows and the verdict reports backoff state (attempt count, last attempt time, next-eligible time) instead of just the date filter; verdict for a PO inside its backoff window reads "deferred — next eligible at <timestamp>".
+  3. A PO or payment with a `status='POSTED'` row in `fesa.*` is never re-selected by the new WHERE clause, even when its authorization date falls inside the retry scope — verifiable by inspecting `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` after a cron tick: no duplicate POSTED row appears for the same `idFocaltec`.
+  4. Setting `RETRY_SCOPE=last_n_days` with `RETRY_LOOKBACK_DAYS=7` restricts the cron WHERE to the last 7 days; setting `RETRY_SCOPE=current_month` (default) restores month scope — both reflected in the next-tick log line `[CRON] retry-scope=... window=...`. Range guards in `src/config.js` reject `RETRY_BACKOFF_INITIAL_MIN`, `RETRY_BACKOFF_MULTIPLIER`, `RETRY_BACKOFF_MAX_MIN` outside sane bounds with a fail-fast `[CONFIG ERROR]`.
+  5. On the last calendar day of the month after `EOM_NOTIFICATION_HOUR` (default 18), the first cron tick sends one HTML email per category (POs / pagos) to `MAILING_NOTICES` with CC `MAILING_CC` (not to `LICENSE_ADMIN_EMAIL`); subsequent ticks that same month are no-ops because `logs/eom-{YYYY-MM}-{pos|payments}.sent` exists. Setting `EOM_NOTIFICATION_ENABLED=false` skips the entire EOM gate before any computation.
+**Plans**: TBD
 
-- AbortController retrofit completo (sustituir Promise.race phantom continuation con real abort en wrapped promise)
-- Otros 8 axios callsites enrichment con `[TIMEOUT]` log entries
-- `apiCall` toast suppression para force-release call site
-- Dashboard de operaciones con historial detallado por tenant
-- Alertas proactivas (Slack/email) cuando un cycle excede N min
-- `scripts/obfuscate.js` allowlist → blocklist refactor (PR #20 retrospective)
+### Phase 21: Partial payment completion policy
+**Goal**: Decide and implement what happens when a multi-CFDI payment fails partway through upload, so operators stop seeing inconsistent partial state in the portal vs. the control table. Introduce `PARTIAL_PAYMENT_POLICY` env with three valid values — `atomic` (mark entire payment ERROR + surface to operator), `resume` (retry only the unfinished CFDIs), `idempotent` (re-POST the whole payment relying on portal dedupe by `external_id`). The default is set in `.env.example` based on the engineering verification of portal dedupe semantics in the sandbox (PARTIAL-02), which is part of the phase and blocks `/gsd-plan-phase`.
+**Depends on**: Phase 20 — `RETRY_SCOPE` env semantics must be locked first (Phase 21 shares the same retry/backoff infrastructure for re-attempt scheduling), and Phase 21's SPEC requires the Focaltec sandbox transcript before the plan stage.
+**Worktree branch**: `feat/phase-21-partial-payment-completion`
+**Requirements**: PARTIAL-01, PARTIAL-02, PARTIAL-03 (3 REQs)
+**Closes**: GH #23
+**Success Criteria** (what must be TRUE):
+  1. Engineering attaches a portal sandbox transcript (request/response evidence) to the phase's SPEC.md proving how the portal handles a duplicate `external_id` POST — without this evidence the phase cannot leave `/gsd-spec-phase` for `/gsd-plan-phase` (HANDOFF.md §7 double-verification rule applied at phase boundary).
+  2. Setting `PARTIAL_PAYMENT_POLICY=atomic` causes a multi-CFDI payment upload that fails on CFDI N to roll the entire payment to `status='ERROR'` in `fesaPagosFocaltec` (no `POSTED` rows for the partially-uploaded CFDIs); setting `PARTIAL_PAYMENT_POLICY=resume` retries only the CFDIs that did not yet reach POSTED; setting `PARTIAL_PAYMENT_POLICY=idempotent` re-POSTs the whole payment and the portal-confirmed dedupe behavior prevents duplicates — each branch verifiable by inspecting `fesaPagosFocaltec` rows after a deliberately-failed upload (no schema change required, per the v2.4 constraint).
+  3. `.env.example` contains `PARTIAL_PAYMENT_POLICY=<chosen-default>` with an inline comment referencing the SPEC sandbox evidence link, and `src/config.js` rejects any value outside the three-element enum at startup with a fail-fast `[CONFIG ERROR]`.
+**Plans**: TBD
 
 ## Progress
 
@@ -113,3 +133,5 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 17. Observability             | v2.3      | 4/4            | Complete | 2026-04-27 |
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
+| 20. Cron retry + EOM email    | v2.4      | 0/0            | Pending  | —          |
+| 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
