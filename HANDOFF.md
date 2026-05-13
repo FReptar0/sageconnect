@@ -145,9 +145,32 @@ The script then rides the same obfuscation/deploy pipeline as the rest of the co
 5. Operator runs `node src/scripts/<name>.js <args>` and pastes the `console.table()` output back.
 6. Either confirm the hypothesis and open the follow-up phase, or iterate the diagnostic.
 
-There is no "skip step 3 and try it locally" — the script will fail at `runQuery()` because there is no DB to connect to. Plan the diagnostic loop around push-to-prod as the default test rig, and design each script so a partial failure leaves the system unchanged (read-only by default, every mutation behind an explicit `--apply` style flag and a separate phase).
+There is no "skip step 3 and try it locally" — the script will fail at `runQuery()` because there is no DB to connect to. Plan the diagnostic loop around push-to-prod as the default test rig, and design each script so a partial failure leaves the system unchanged.
 
-Template script with the `safeRun()` resilience pattern: `src/scripts/diagnose-sage-tables.js` (8 read-only checks against the Sage schema, each wrapped so one failure doesn't abort the rest). Reference cron-replication diagnostic: `src/scripts/po-cron-diagnostic.js` (added by quick task 260512-7ea — explains why the cron skips POs without touching state).
+**Mandatory rule for any script that can mutate state (INSERT / UPDATE / DELETE in Sage or FESA, POST / PUT / DELETE to Focaltec, file overwrites, queue submits, etc.): the script MUST support a no-op preview mode, and that mode MUST be the default.**
+
+Because the only place these scripts run is prod and the only feedback channel is the operator pasting `console.table` output, "I'll just try it and see" is not an option — a wrong mutation is a customer-visible incident with no rollback short of manual repair. Dry-run mode lets the operator see the exact rows / payloads that would be touched before consenting to the actual write.
+
+Two existing conventions are in the codebase. New scripts should follow Convention A unless there's a specific reason not to:
+
+| Convention | Default | Mutation requires | Canonical example | Notes |
+|---|---|---|---|---|
+| **A (preferred)** — opt-in to mutate | dry-run | `--apply` | `src/scripts/payment-uuid-repair.js` | Safer: forgetting the flag is a no-op. Use for new write scripts. |
+| **B (legacy)** — opt-out of mutation | real | `--dry-run` | `src/scripts/po-update.js` | Keep for existing scripts that already have callers; don't add new ones in this style. |
+
+What the dry-run path must produce:
+
+- The same `console.table` rows that would be touched, with a clear `[DRY-RUN]` prefix in every log line and table header.
+- The exact mutation payload (JSON body, SQL statement, etc.) printed before each candidate row, so the operator can spot-check it.
+- A summary like `Repair dry-run: 12 would-repair, 3 no-match, 0 errors` — same shape as the apply summary so diffing is trivial.
+- `ResultEnvelope` with `data.mode = 'dry-run'` (or equivalent in the script's domain) so callers can branch programmatically. See `payment-uuid-repair.js` for the canonical shape.
+- Zero side effects: no inserts into `fesaOCFocaltec` / `fesaPagosFocaltec`, no Focaltec HTTP calls beyond GETs, no file writes to `dist/` or `C:\Logs`. The same source-grep used to validate read-only diagnostics (`INSERT |UPDATE |DELETE FROM`) should hit 0 occurrences inside the `if (apply)` branch's complement.
+
+When the script does have to mutate (apply mode), the existing rules from above still hold: ship through the obfuscation/deploy pipeline, never bypass it manually; treat the operator's `--apply` invocation as the one and only authorized window for the mutation — log the apply summary verbosely so re-running is unambiguous.
+
+**Diagnostic scripts that only SELECT are exempt** from `--apply` mechanics — they're already a no-op by construction. Use the read-only invariant grep (`grep -nE 'INSERT |UPDATE |DELETE FROM'` returns 0 matches) as proof in the SUMMARY.md of the quick / phase that introduced them. Example: `src/scripts/po-cron-diagnostic.js` (added by quick task 260512-7ea — pure SELECTs, no flag needed).
+
+Template script with the `safeRun()` resilience pattern: `src/scripts/diagnose-sage-tables.js` (8 read-only checks against the Sage schema, each wrapped so one failure doesn't abort the rest).
 
 ---
 
