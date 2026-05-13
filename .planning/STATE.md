@@ -5,7 +5,7 @@ milestone_name: null
 status: idle
 stopped_at: "Milestone v2.3 Scheduler Lock Recovery COMPLETE — 3 phases, 10 plans, 14/14 REQs delivered, 89 commits, 17/17 STRIDE threats closed. Archive at .planning/milestones/v2.3-ROADMAP.md and v2.3-REQUIREMENTS.md. Git tag v2.3 created. Awaiting next milestone scope via /gsd-new-milestone."
 last_updated: "2026-04-29T20:30:00Z"
-last_activity: 2026-05-02 -- Quick task 260502-i7l completed pre-deploy: GetProviders re-throw + Providers_Downloader XML validation + extract sendAdminAlert helper (PATTERNS.md §S-6 3rd-use trigger fired; closes Pending item)
+last_activity: 2026-05-12 -- Quick task 260512-7ea completed: po-cron-diagnostic script + hook fix to recognize active quick tasks (diagnoses why cron skips POs reported by operator, e.g. PO0083449 — hypothesis is MAX(Autoriza_OC_detalle.Fecha)=today filter in PortalOC_Creator.js)
 progress:
   percent: 100
 ---
