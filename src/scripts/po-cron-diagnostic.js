@@ -60,7 +60,6 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         database,
         tenantIndex,
         existsInPOPORH1: null,
-        poStatus: null,
         isAuthorized: null,
         lastAuthDate: null,
         lastAuthDateIsToday: null,
@@ -81,8 +80,7 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
                 RTRIM(PONUMBER)  AS PONUMBER,
                 PORHSEQ,
                 [DATE]           AS PO_DATE,
-                ONHOLD,
-                PORHSTAT
+                ONHOLD
             FROM ${database}.dbo.POPORH1
             WHERE PONUMBER = '${poNumber}'
         `;
@@ -92,7 +90,6 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
     });
     if (r1 && !r1.__error) {
         verdict.existsInPOPORH1 = r1.length > 0;
-        verdict.poStatus = r1[0] ? r1[0].PORHSTAT : null;
         if (!verdict.existsInPOPORH1) {
             verdict.reason = 'PO no existe en POPORH1 (numero invalido o DB equivocada)';
             return verdict;
