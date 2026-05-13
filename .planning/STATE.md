@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: planning
-last_updated: "2026-05-13T21:33:47.756Z"
-last_activity: 2026-05-13
+status: Roadmap drafted, awaiting `/gsd-spec-phase 20`
+stopped_at: Phase 20 context gathered
+last_updated: "2026-05-13T23:35:04.822Z"
+last_activity: 2026-05-13 — ROADMAP.md drafted for v2.4 (Phases 20-21)
 progress:
-  total_phases: 21
-  completed_phases: 19
+  total_phases: 2
+  completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -64,7 +64,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-04-29T20:30:00Z
+Last session: 2026-05-13T23:35:04.818Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
-Stopped at: Milestone close complete. Awaiting next milestone scope.
+Stopped at: Phase 20 context gathered
 Resume next: `/gsd-new-milestone` — questioning → research → requirements → roadmap. Pending non-blocking follow-ups available (see Deferred Items above) for inclusion in v2.4 scope conversation.
