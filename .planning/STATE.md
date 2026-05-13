@@ -5,7 +5,7 @@ milestone_name: null
 status: idle
 stopped_at: "Milestone v2.3 Scheduler Lock Recovery COMPLETE — 3 phases, 10 plans, 14/14 REQs delivered, 89 commits, 17/17 STRIDE threats closed. Archive at .planning/milestones/v2.3-ROADMAP.md and v2.3-REQUIREMENTS.md. Git tag v2.3 created. Awaiting next milestone scope via /gsd-new-milestone."
 last_updated: "2026-04-29T20:30:00Z"
-last_activity: 2026-05-12 -- Quick task 260512-7ea completed: po-cron-diagnostic script + hook fix to recognize active quick tasks (diagnoses why cron skips POs reported by operator, e.g. PO0083449 — hypothesis is MAX(Autoriza_OC_detalle.Fecha)=today filter in PortalOC_Creator.js)
+last_activity: 2026-05-13 -- Quick task 260513-ket completed: drop PORHSTAT from po-cron-diagnostic POPORH1 lookup (closes GH issue #24 — PORHSTAT column does not exist in COPDAT schema; 3-line removal in src/scripts/po-cron-diagnostic.js, no tests, branch fix/po-cron-diagnostic-porhstat ready for PR)
 progress:
   percent: 100
 ---
@@ -37,6 +37,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 | Quick ID | Description | Date | Commits | Notes |
 |----------|-------------|------|---------|-------|
 | 260502-i7l | validate XML providers + error reports | 2026-05-02 | 7bb2f63, aaa733e, 43d4fde | path-b chosen — extracted sendAdminAlert + findLastOpenStep to src/utils/AdminEmailSender.js with callerLogFile param (closes PATTERNS.md §S-6 3rd-use trigger). Closed 2 blind spots in XML proveedores flow: (1) GetProviders re-throw on portal error, (2) buildProvidersXML try/catch + post-write validation. 9 new tests, 0 regressions. |
+| 260513-ket | drop PORHSTAT from po-cron-diagnostic POPORH1 lookup | 2026-05-13 | 14637bf | closes GH issue #24 — `PORHSTAT` no existe en COPDAT schema; prod run 2026-05-12 emitió `Invalid column name`; safeRun lo enmascaró pero `existsInPOPORH1` quedaba `null` en vez de `true`. Fix: 3 líneas removidas (verdict initializer, columna del SELECT, lectura) + ajuste de coma. Diff: `1 insertion, 4 deletions`. 0 tests tocados (no había cobertura del script). Branch: `fix/po-cron-diagnostic-porhstat`. |
 
 **Non-blocking follow-ups from v2.3 (recommendations, not REQs):**
 
