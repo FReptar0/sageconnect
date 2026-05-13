@@ -2,6 +2,26 @@
 
 This file is loaded automatically by Claude Code at the start of every session in this repo. Keep it short; link out for depth.
 
+## 0. Production-safety policy (READ FIRST)
+
+This codebase ships obfuscated builds to production. There is no staging environment that exercises the real Sage 300 ↔ Focaltec integration; there is no rollback that doesn't impact the customer; there is no easy path — only the path that doesn't compromise the customer's payment data. Treat every change as production-bound.
+
+**Engagement rules — do not deviate without the user's explicit consent:**
+
+1. **Ask before every non-trivial action.** Default mode is "pause and confirm" — not "act and report". A non-trivial action is any of:
+   - `Edit` or `Write` on `src/**`, `tests/**`, `.env*`, `package.json`, `scripts/**`, `.github/**`, `.claude/**`, `CLAUDE.md`, `HANDOFF.md`.
+   - Any `Bash` beyond the read-only allowlist in `.claude/settings.json` (anything that mutates the filesystem, the git state, the database, or the network).
+   - Any `git commit`, `git push`, `git reset --hard`, `git rebase`, `git stash`, branch creation or deletion.
+   - Spawning a sub-agent, opening a worktree, or invoking a Skill that writes files.
+   - Anything that touches the dist repo or the production server.
+2. **State what you're about to do, in one sentence, before the tool call.** If the user hasn't agreed, do not proceed.
+3. **Never assume completion.** When investigating payment / CFDI / PO state, verify **both** the Focaltec portal **and** the local control table (`fesa.dbo.fesaPagosFocaltec` or analogous) before declaring anything "resuelto". See [`HANDOFF.md`](HANDOFF.md) § 7 for the worked example.
+4. **Best practices over speed.** This codebase has documented pitfalls (§ 6 below) and an always-on regime (§ 3) that punish shortcuts within hours of deploy. If the cleanest path takes three steps, propose three steps; don't collapse to one.
+5. **GSD is mandatory for non-trivial work.** See § 12 below. A bug fix can be a quick task; anything larger goes through `/gsd-spec-phase` → `/gsd-discuss-phase` → `/gsd-plan-phase` → `/gsd-execute-phase`.
+6. **Read [`HANDOFF.md`](HANDOFF.md) before your first commit.** It carries non-derivable rules: no third-party names, license-server language discipline (HANDOFF.md § 2), production paths, `.planning/` tracking, commit hygiene. Re-read § 1 and § 4 before every commit.
+
+If the user asks for autonomy (`"adelante sin preguntarme"`, `--yolo`, plan mode approval), the autonomy applies only to the scope explicitly named in that exchange. It does not carry across turns and does not extend to operations outside the named scope.
+
 ## 1. What this is
 
 SageConnect is an always-on Windows Service that integrates **Sage 300 ERP** with **portaldeproveedores.mx** (Focaltec). It downloads CFDIs (Mexican electronic invoices), reconciles payments, manages purchase-order lifecycle, and exposes an operational web dashboard. Runs as the `SageConnect` Windows service via [Servy](https://github.com/servy-dev/servy) with an internal `node-cron` scheduler (every 15 min by default).
@@ -110,13 +130,14 @@ If you change any tier, verify the others still bound it strictly. Phase 19 RETR
 
 - **Active branch:** `master`. Feature work in `feat/<short-desc>`, hotfixes in `hotfix/<short-desc>`. PR into `master`.
 - **CI:** `.github/workflows/obfuscate-deploy.yml` triggers on push to `master` (or `feat/always-on-service`). Runs `npm ci` → `node scripts/obfuscate.js` → force-pushes `dist/` to `FReptar0/sageconnect-dist`. No tests, no linting in CI (run `npm test` locally before merging).
-- **Production deploy:** the obfuscated repo is what's installed at `E:\sageconnect` on the Windows server. Operator does `git fetch && git reset --hard origin/master` (no shared history with this source repo). Full procedure: `docs/DEPLOYMENT.md`.
+- **Production deploy:** the obfuscated repo is what's installed at `E:\sageconnect-dist\` on the Windows server (`ZCL-RDS-02` for the Capstone deployment). Operator does `git fetch && git reset --hard origin/master` against the **dist** repo — never `git pull`, because the dist is force-pushed by CI. Full procedure: `docs/DEPLOYMENT.md`. Operational identifiers (paths, server names, COPDAT immutable DB): `HANDOFF.md` § 5.
 - **Never run** `node scripts/obfuscate.js` manually for a real deploy — the GitHub Action is the source of truth.
 
 ## 11. Pointers (for depth)
 
 | Topic | File |
 |-------|------|
+| **Non-derivable rules (read once before first commit)** | **`HANDOFF.md`** |
 | Vision, scope, key decisions (147 entries) | `.planning/PROJECT.md` |
 | Current cycle / what's open | `.planning/STATE.md` |
 | Milestone history | `.planning/MILESTONES.md` |
@@ -130,6 +151,31 @@ If you change any tier, verify the others still bound it strictly. Phase 19 RETR
 | Day-1 onboarding for new devs | `docs/ONBOARDING.md` |
 | How to work with Claude Code in this repo | `docs/CLAUDE_CODE.md` |
 | Single-page architecture view | `docs/ARCHITECTURE.md` |
+
+## 12. GSD is mandatory for non-trivial work
+
+This codebase uses **GSD** (Get Shit Done) — a planning skill suite that turns every non-trivial change into a tracked phase under `.planning/phases/<NN>-<slug>/`. The skill provides `/gsd-spec-phase`, `/gsd-discuss-phase`, `/gsd-plan-phase`, `/gsd-execute-phase`, `/gsd-verify-work`, and others (see `/gsd-help`). The existing `.planning/` tree is the institutional memory of every prior phase and milestone.
+
+**When to use GSD:**
+
+| Change size | Path |
+|---|---|
+| Typo, comment, doc tweak | Direct edit + commit. No GSD. |
+| Single-file bug fix with obvious diff | `/gsd-quick` or direct edit; commit message references the bug. No formal phase needed. |
+| Anything else — multi-file change, new feature, new env var, schema change, refactor, new dependency, security work, new endpoint | **Required:** `/gsd-spec-phase` → `/gsd-discuss-phase` → `/gsd-plan-phase` → `/gsd-execute-phase`. Phase artifacts land in `.planning/phases/<NN>-<slug>/`. |
+
+**Why mandatory:** the always-on regime, the SQL injection pattern density, the implicit-default trap in `runQuery`, and the obfuscation-to-prod pipeline mean small mistakes have outsized blast radius. The GSD spec/discuss/plan loop catches assumptions before they reach production. The 2026-04-27 forensic report (5 always-on bugs in 1h56m) is the canonical example of what skipping the plan costs.
+
+**What this looks like in practice:**
+
+1. The user describes the change.
+2. You invoke `/gsd-spec-phase` to produce `SPEC.md` (falsifiable requirements). Confirm with the user.
+3. `/gsd-discuss-phase` for any gray areas. Confirm.
+4. `/gsd-plan-phase` for `PLAN.md` (file list, task graph, verification steps). Confirm.
+5. `/gsd-execute-phase` to ship it with atomic commits.
+6. `/gsd-verify-work` to validate UAT criteria.
+
+Bypass only with explicit user instruction (`"esto es trivial, hazlo directo"`) and only for changes that fit the top two rows of the table above. The pre-Edit/Write hook (`.claude/hooks/pre-edit-gsd-guard.sh`) blocks edits to `src/**` when no active phase exists; bypass via `SAGECONNECT_HOOKS_BYPASS=1` (and only after the user agrees).
 
 ---
 *Maintained for any human or AI agent picking up this codebase. Keep terse; link out for depth.*

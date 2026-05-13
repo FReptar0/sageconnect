@@ -78,7 +78,37 @@ Use labels: `bug`, `enhancement`, `question`, `security` (security issues should
 
 ---
 
-## 6. Pull Request Workflow
+## 6. GSD workflow (mandatory for non-trivial work)
+
+This codebase uses **GSD** (Get Shit Done) — a planning skill suite that turns every non-trivial change into a tracked phase under `.planning/phases/<NN>-<slug>/`. The directory is the institutional memory of every decision made on this codebase (47+ phases across 6 milestones at the time of this writing).
+
+**When GSD is required**
+
+| Change size | Process |
+|---|---|
+| Typo, comment-only edit, doc tweak | Direct edit + commit. No GSD. |
+| Single-file fix with an obvious diff | `/gsd-quick` or direct edit. Reference the bug in the commit message. |
+| Anything else — multi-file change, new feature, new env var, schema change, refactor, new dependency, security work, new endpoint | **Required.** Open a phase. |
+
+**The phase loop**
+
+1. `/gsd-spec-phase` — produce `SPEC.md` (falsifiable requirements). The user must approve before moving on.
+2. `/gsd-discuss-phase` — handle gray areas. Recommended unless the spec is obvious.
+3. `/gsd-plan-phase` — produce `PLAN.md` (file list, task graph, verification steps). Goal-backward check ensures the plan reaches the spec.
+4. `/gsd-execute-phase` — ship it with atomic commits, one per logical change.
+5. `/gsd-verify-work` — validate UAT criteria conversationally.
+
+Other useful commands: `/gsd-help` (full list), `/gsd-progress` (where am I), `/gsd-resume-work` (after a context reset).
+
+**Hook enforcement**
+
+The hook `.claude/hooks/pre-edit-gsd-guard.sh` blocks `Edit` / `Write` / `MultiEdit` on `src/**` files when no active phase exists in `.planning/phases/`. The block message lists the commands above. Bypass with `SAGECONNECT_HOOKS_BYPASS=1` only for genuinely trivial work — and state the rationale to the user first.
+
+**Why mandatory:** the always-on regime, the SQL-injection pattern density, the implicit-default trap in `runQuery`, and the obfuscation-to-prod pipeline mean small mistakes have outsized blast radius. The GSD spec/discuss/plan loop catches assumptions before they reach production. See [`HANDOFF.md`](HANDOFF.md) and the 2026-04-27 forensic report (5 always-on bugs in 1 h 56 m) for the canonical cautionary tale.
+
+---
+
+## 7. Pull Request Workflow
 
 1. **Branch off `master`** (or a feature branch with explicit permission).
 2. **Make atomic commits**:
@@ -110,7 +140,7 @@ Use labels: `bug`, `enhancement`, `question`, `security` (security issues should
 
 ---
 
-## 7. Coding Style
+## 8. Coding Style
 
 The repository does not enforce style through ESLint, Prettier, EditorConfig, or any other automated formatter. Code review is the quality gate. Match the existing surrounding code:
 
@@ -125,7 +155,7 @@ The repository does not enforce style through ESLint, Prettier, EditorConfig, or
 
 ---
 
-## 8. Testing
+## 9. Testing
 
 - Framework: **Jest 29** with `babel-jest` transformer.
 - Layout: tests live in `tests/`, roughly mirroring `src/`. Naming: `[Module].test.js`.
@@ -149,7 +179,7 @@ The Claude Code slash command `/test` wraps this convention.
 
 ---
 
-## 9. Continuous Integration
+## 10. Continuous Integration
 
 CI is intentionally minimal. The single workflow is `.github/workflows/obfuscate-deploy.yml`:
 
@@ -163,7 +193,7 @@ CI does **not** run tests, linting, security scans, or dependency audits. Verify
 
 ---
 
-## 10. Documentation
+## 11. Documentation
 
 Update these alongside code changes when they're affected:
 
@@ -180,7 +210,7 @@ Update these alongside code changes when they're affected:
 
 ---
 
-## 11. Security Vulnerabilities
+## 12. Security Vulnerabilities
 
 If you discover a security issue:
 
@@ -189,13 +219,13 @@ If you discover a security issue:
 
 ---
 
-## 12. License & EULA
+## 13. License & EULA
 
 This project is licensed under the EULA with Fernando Rodríguez Memije (effective July 22, 2025). By contributing you agree that your contribution is incorporated under the same terms. See [`EULA-en.md`](EULA-en.md) (controlling English version) or [`EULA-es.md`](EULA-es.md) (Spanish courtesy translation).
 
 ---
 
-## 13. Questions
+## 14. Questions
 
 - General questions — open an issue with the `question` label.
 - Anything private — <hi@fernandomemije.dev>.

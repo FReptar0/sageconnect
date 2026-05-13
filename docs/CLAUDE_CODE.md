@@ -24,23 +24,51 @@ Add a per-directory `CLAUDE.md` only if a subsystem has its own conventions dens
 
 ## Hooks (in `.claude/hooks/`)
 
-### `session-start.sh`
+Seven hooks ship with the repo. The first two are passive (informational); the other five are **active prevention** — they exit 2 (block) under specific conditions and surface a stderr message to the user. All five blockers honour `SAGECONNECT_HOOKS_BYPASS=1` for emergencies.
 
-Fired by the `SessionStart` event registered in `.claude/settings.json`. Two responsibilities:
+### `session-start.sh` — passive
 
-1. Print `{"async": true, "asyncTimeout": 300000}` to stdout so the runtime does not block the session on a slow `npm install`.
-2. If `node_modules/` is missing, run `npm install --no-audit --no-fund --silent`. Suppressed output prevents corrupting the JSON parse. Local machines almost always have `node_modules`, so this is effectively a no-op for them; it's there for Claude Code on the web and other ephemeral environments that start from a fresh checkout.
+Fired by `SessionStart`. Prints `{"async": true, "asyncTimeout": 300000}` to stdout so the runtime does not block the session, then runs `npm install --no-audit --no-fund --silent` if `node_modules/` is missing (covers Claude Code on the web and other ephemeral environments). No-op on local machines that already have deps.
 
-If you want to disable it (e.g., your shell can't run bash), remove the entry from `.claude/settings.json` or override it in `.claude/settings.local.json`.
+### `stop-git-check.sh` — passive (exit-2 reminder)
 
-### `stop-git-check.sh`
+Fired by `Stop`. Reads `stop_hook_active` from stdin and bails if true (avoids infinite loops). Otherwise: exit 0 silently if the tree is clean and HEAD is in sync with upstream; exit 2 with a stderr reminder if there are uncommitted changes or commits ahead of upstream. The reminder is non-blocking in spirit — the user can re-prompt to override — but surfaces commit/push hygiene every time.
 
-Fired by the `Stop` event when Claude finishes a turn. Reads the event JSON from stdin, bails immediately if `stop_hook_active` is true (avoiding infinite loops), then:
+### `pre-commit-redaction.sh` — active (PreToolUse Bash)
 
-- Returns exit 0 silently if the working tree is clean and HEAD is in sync with upstream.
-- Returns exit 2 with a short stderr reminder if there are uncommitted changes or commits ahead of upstream. The exit-2 path surfaces the reminder to the user.
+Intercepts any Bash command containing `git commit`. Reads the staged diff (`git diff --cached`) and grep-checks for forbidden terms documented in `HANDOFF.md` § 1–2:
 
-This implements the maintainer's preference for keeping commit / push hygiene tight. If your workflow prefers to defer commits, edit `.claude/settings.json` (or `settings.local.json`) to drop the Stop entry — it's a reminder, not an invariant.
+- Prior integrator / channel partner names (case-insensitive match on "tersoft").
+- Kill-switch language (`kill switch`, `bloqueo remoto`, `remote kill`).
+- Real license server URLs (`sageconnect-license.vercel.app`).
+- Real admin emails on the prior integrator's domain.
+
+If any term hits, exits 2 with the offending lines and a resolution path. Pattern list lives at the top of the script — extend by appending a `LABEL|REGEX` line.
+
+### `pre-bash-destructive.sh` — active (PreToolUse Bash)
+
+Intercepts shared-state-affecting Bash commands. Blocks: `git push --force`, `git reset --hard`, `git rebase`, `git stash` (per HANDOFF.md § 4 cautionary tale), `git rm -r`, `rm -rf`, `rm .env*`, `taskkill /F`, `Stop-Process -Force`, `npm publish`. Each pattern carries its own rationale string in the block message.
+
+### `pre-edit-gsd-guard.sh` — active (PreToolUse Edit/Write/MultiEdit)
+
+Blocks edits to anything under `src/**` when no active GSD phase exists (`.planning/phases/<NN>-<slug>/` containing `SPEC.md` / `PLAN.md` / `DISCUSSION.md` and not marked `*COMPLETE*` / `*ARCHIVED*` / `*CANCELLED*`). Tests, docs, planning, config, and root-level files are exempt. Bypass `SAGECONNECT_HOOKS_BYPASS=1` for genuinely trivial edits (typo, comment, dead-code removal) after stating intent to the user.
+
+### `pre-edit-critical.sh` — active (PreToolUse Edit/Write/MultiEdit)
+
+Fires on Edit/Write to any of the 13 load-bearing files documented in `CLAUDE.md` § 8 — `config.js`, `server.js`, `background.js`, `index.js`, `OperationManager.js`, `CronScheduler.js`, `LicenseValidator.js`, `SQLServerConnection.js`, `PortalClient.js`, `LogGenerator.js`, `duration.js`, `AdminEmailSender.js`, `routes/routes.js`. The block message surfaces the defense-in-depth invariant and a 5-point pre-edit checklist (justified, cleanup paths, caller audit, invariant preserved, user approval). Bypass after the checklist is satisfied and the user has signed off.
+
+### `pre-write-always-on.sh` — active (PreToolUse Edit/Write/MultiEdit)
+
+Scans the new content of any Edit/Write under `src/**/*.js` for primitives that retain state across cron ticks: `setInterval(`, `setTimeout(`, `new EventEmitter`, `.addListener(`, `child_process.spawn/fork/exec`, `axios.create`, `winston.createLogger`. If found AND no "cleanup-intent" token appears in the same change (`clearInterval`, `clearTimeout`, `removeListener`, `.off(`, `destroy`, `close()`, `release()`, `abort()`, `unref()`, `disconnect()`, the literal word `cleanup`), exits 2 with the offending lines. Add a comment documenting the cleanup path to silence the hook (cheap and good documentation).
+
+### Disabling or relaxing the hooks
+
+Two routes:
+
+- **Temporary**: `SAGECONNECT_HOOKS_BYPASS=1 <your command>`. Single-command scope — exported into the env of one tool invocation only, after stating the rationale to the user.
+- **Permanent for a developer**: override the matcher in `.claude/settings.local.json` (gitignored). The committed `.claude/settings.json` is the team baseline; nobody else sees your local override.
+
+Do **not** remove a hook from the committed `.claude/settings.json` unless the team agrees in PR review.
 
 ## Slash commands (in `.claude/commands/`)
 
