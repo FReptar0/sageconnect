@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
 # PreToolUse hook for Edit / Write — enforces the GSD workflow.
 #
-# Blocks edits to src/** when no active GSD phase exists in .planning/phases/.
-# An "active" phase is a directory `.planning/phases/<NN>-<slug>/` whose name
-# does not include `-COMPLETE` and which contains at least one of
-# SPEC.md / PLAN.md / DISCUSSION.md (i.e. not just a placeholder).
+# Blocks edits to src/** unless one of these is true:
+#   1. An active GSD phase exists in .planning/phases/. An "active" phase is a
+#      directory `.planning/phases/<NN>-<slug>/` whose name does not include
+#      COMPLETE/ARCHIVED/CANCELLED and which contains at least one of
+#      SPEC.md / PLAN.md / DISCUSSION.md.
+#   2. An active GSD quick task exists in .planning/quick/. An "active" quick
+#      task is a directory `.planning/quick/<id>-<slug>/` that contains a
+#      `*PLAN.md` and does NOT yet contain a `*SUMMARY.md` (i.e. started but
+#      not finished). Quick tasks are CLAUDE.md § 12's recommended path for
+#      single-file changes.
 #
-# Exempted paths (always allowed without a phase):
+# Exempted paths (always allowed without a phase or quick):
 #   - tests/**, docs/**, .planning/**, .claude/**, .github/**
 #   - root-level *.md, *.json (except package.json)
 #
@@ -42,6 +48,7 @@ fi
 
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 PHASES_DIR="$PROJECT_DIR/.planning/phases"
+QUICK_DIR="$PROJECT_DIR/.planning/quick"
 
 # Detect an active phase: any subdirectory whose name does NOT contain
 # COMPLETE/ARCHIVED/CANCELLED and that has at least one of the GSD artifacts.
@@ -60,6 +67,28 @@ if [ -d "$PHASES_DIR" ]; then
 fi
 
 if [ -n "$ACTIVE_PHASE" ]; then
+    exit 0
+fi
+
+# Detect an active quick task: any subdirectory in .planning/quick/ that
+# contains a *PLAN.md and does NOT yet contain a *SUMMARY.md. Once a quick
+# task is finished, the executor writes <id>-SUMMARY.md and the dir is no
+# longer "active" — re-edits to src/** then require a new quick or phase.
+ACTIVE_QUICK=""
+if [ -d "$QUICK_DIR" ]; then
+    while IFS= read -r dir; do
+        base="$(basename "$dir")"
+        case "$base" in
+            *COMPLETE*|*ARCHIVED*|*CANCELLED*|*cancelled*|*archived*|*complete*) continue ;;
+        esac
+        if ls "$dir"/*PLAN.md >/dev/null 2>&1 && ! ls "$dir"/*SUMMARY.md >/dev/null 2>&1; then
+            ACTIVE_QUICK="$base"
+            break
+        fi
+    done < <(find "$QUICK_DIR" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+fi
+
+if [ -n "$ACTIVE_QUICK" ]; then
     exit 0
 fi
 
