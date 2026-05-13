@@ -4,6 +4,14 @@ This is the day-to-day runbook for the operator running SageConnect in productio
 
 The service runs as a Windows service named `SageConnect` under [Servy](https://github.com/servy-dev/servy), with internal `node-cron` scheduling. There is one production host per customer.
 
+> **Current production deployment (Capstone Copper):**
+> - App server: `ZCL-RDS-02` (Windows Server, Servy + Node 22.15.0).
+> - Install directory: **`E:\sageconnect-dist\`** (the obfuscated dist repo — the source-side `E:\sageconnect\` path that older docs reference does not exist in prod).
+> - SQL Server: `ZCL-SQL-01` (separate host) — Sage 300 DB = `COPDAT`, control DB = `FESA`, login `sage` (mapped `dbo` in COPDAT).
+> - Long-term log archive: `C:\Logs\sageconnect\servy\YYYY-MM-DD\`.
+>
+> `COPDAT` is the Sage 300 database name and is immutable — `Invalid object name` errors against `APBTA`, `POPORH1`, `APVENO`, `BKACCT`, `APTCR` etc. are never caused by the wrong DB name; investigate schema, permissions, `USE [DB]` context, or table prefix instead.
+
 ## Daily checks (2 minutes)
 
 1. **Service is running.**
@@ -16,6 +24,7 @@ The service runs as a Windows service named `SageConnect` under [Servy](https://
    ```powershell
    Invoke-WebRequest http://localhost:3030/api/system/health | Select-Object -ExpandProperty Content
    ```
+   Run from `ZCL-RDS-02` itself.
    Expected JSON: `{"status":"ok","uptime":<seconds>,...}`. Any other shape (or no response) means the Node process isn't healthy even if Servy reports `Running`.
 
 3. **Dashboard is accessible.**
@@ -45,7 +54,7 @@ If the card is stuck on the same step for more than ~15 minutes:
 **Application logs** live at:
 
 ```
-E:\sageconnect\logs\sageconnect\YYYY-MM-DD\
+E:\sageconnect-dist\logs\sageconnect\YYYY-MM-DD\
 ```
 
 with one file per process / route / controller. The 5 most useful for triage:
@@ -59,19 +68,21 @@ with one file per process / route / controller. The 5 most useful for triage:
 **Servy logs** (the wrapper around the Node process) live at:
 
 ```
-E:\sageconnect\logs\servy-stdout.log
-E:\sageconnect\logs\servy-stderr.log
+E:\sageconnect-dist\logs\servy-stdout.log
+E:\sageconnect-dist\logs\servy-stderr.log
 ```
 
-Both are rotated by `scripts/Rotate-SageConnectLogs.ps1` into `C:\Logs\sageconnect\servy\YYYY-MM-DD\`. Active files use `Clear-Content` (preserves Servy's file handle) — never delete them while the service is running.
+Active files use the bare names above. When stdout reaches ~10 MB, Servy auto-rotates to `servy-stdout.YYYYMMDD_HHMMSS.log` (timestamp inserted **between** the basename and `.log`, not at the end). `Rotate-SageConnectLogs.ps1` moves rotated files into `C:\Logs\sageconnect\servy\YYYY-MM-DD\` and clears the active ones with `Clear-Content` (preserves Servy's open file handle). Never `Remove-Item` an active file while the service is running — that breaks Servy's logging until restart.
+
+Regex to identify rotated (not-active) files: `\.\d{8}_\d{6}\.log$`.
 
 Quick tail commands:
 
 ```powershell
-Get-Content E:\sageconnect\logs\servy-stdout.log -Tail 50
-Get-Content E:\sageconnect\logs\servy-stdout.log -Wait -Tail 20
+Get-Content E:\sageconnect-dist\logs\servy-stdout.log -Tail 50
+Get-Content E:\sageconnect-dist\logs\servy-stdout.log -Wait -Tail 20
 
-Get-ChildItem E:\sageconnect\logs\sageconnect\<YYYY-MM-DD>\*.log | `
+Get-ChildItem E:\sageconnect-dist\logs\sageconnect\<YYYY-MM-DD>\*.log | `
     Sort-Object LastWriteTime -Descending | `
     Select-Object -First 5
 ```
@@ -122,7 +133,7 @@ If the dashboard shows a sticky red "Licencia inactiva" banner across all pages,
 
 1. Check Servy stderr:
    ```powershell
-   Get-Content E:\sageconnect\logs\servy-stderr.log -Tail 50
+   Get-Content E:\sageconnect-dist\logs\servy-stderr.log -Tail 50
    ```
 2. If you see `[CONFIG ERROR] Missing required environment variables`, fix `.env` and `Start-Service SageConnect`.
 3. If you see `[LICENSE] Startup blocked`, the validator failed — see § License banner above.
@@ -143,8 +154,10 @@ See step 4 above.
 Verify `scripts/Rotate-SageConnectLogs.ps1` is registered as a scheduled task and running. If not, set it up per [`DEPLOYMENT.md`](DEPLOYMENT.md). Manually rotating once is safe:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File E:\sageconnect\scripts\Rotate-SageConnectLogs.ps1
+powershell -ExecutionPolicy Bypass -File C:\Scripts\Rotate-SageConnectLogs.ps1
 ```
+
+(`Rotate-SageConnectLogs.ps1` is staged at `C:\Scripts\` on the prod server — separate from the dist repo so it survives the `git reset --hard` cycle.)
 
 Do **not** delete `servy-stdout.log` or `servy-stderr.log` while the service is running — Servy holds the file handle and deletion can break its logging until restart. Use `Clear-Content` (the rotation script does this) or restart the service first.
 

@@ -52,7 +52,7 @@
 
 ### Local filesystem
 
-- **Logs:** `logs/sageconnect/YYYY-MM-DD/[ProcessName].log` (winston-managed). In production, `E:\sageconnect\logs\` for app logs and `C:\Logs\sageconnect\` for archived Servy stdout/stderr (via `scripts/Rotate-SageConnectLogs.ps1`).
+- **Logs:** `logs/sageconnect/YYYY-MM-DD/[ProcessName].log` (winston-managed). In production at Capstone (server `ZCL-RDS-02`), `E:\sageconnect-dist\logs\` for app logs and Servy stdout/stderr, rotated to `C:\Logs\sageconnect\servy\YYYY-MM-DD\` by `Rotate-SageConnectLogs.ps1` (staged at `C:\Scripts\` outside the dist repo so it survives `git reset --hard`).
 - **CFDI staging:** `DOWNLOADS_PATH` (typically `./downloads`).
 - **Provider XML staging:** `PROVIDERS_PATH` (typically `./downloads/providers`).
 - **Reports:** `reports/` (one-shot script outputs).
@@ -144,7 +144,7 @@ Optional sections:
 **Secrets storage**
 
 - Local `.env` is gitignored.
-- Production `.env` lives on the server at the install directory (`E:\sageconnect\.env` typical).
+- Production `.env` lives on the server at the install directory (`E:\sageconnect-dist\.env` at Capstone on `ZCL-RDS-02`).
 - CI uses `OBFUSCATED_REPO_TOKEN` as a GitHub Actions secret. No other secrets are passed through CI.
 
 ## Webhooks & Callbacks
