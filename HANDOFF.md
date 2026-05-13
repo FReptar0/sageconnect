@@ -119,9 +119,11 @@ These are the operational identifiers in active production. Most are immutable a
 
 ---
 
-## 6. No direct SQL access in production
+## 6. No direct SQL access in production — and no local DB to test against
 
-The maintainer has filesystem + service-control access to `ZCL-RDS-02` via Servy, but **no DBA tool** (no SSMS, no `sqlcmd`, no DBeaver) on prod. Every SQL investigation has to ship as a Node.js script.
+The maintainer has filesystem + service-control access to `ZCL-RDS-02` via Servy, but **no DBA tool** (no SSMS, no `sqlcmd`, no DBeaver) on prod. There is **also no local instance** of `COPDAT`, `FESA`, or `Autorizaciones_electronicas` anywhere — the customer's DBs live on `ZCL-RDS-02` and nowhere else, and there is no staging that mirrors them. The practical consequence is that **any code which calls `runQuery()` can only be exercised on prod**: there is no `npm test`-equivalent loop for SQL-touching code, and there is no "run it locally first to make sure it works" step.
+
+Every SQL investigation has to ship as a Node.js script, and the validation loop is the deploy loop.
 
 **Rule:** for any SQL diagnostic or repair work, write a script under `src/scripts/<topic>-{diagnostic,repair,query}.js` following the established pattern:
 
@@ -134,7 +136,18 @@ The maintainer has filesystem + service-control access to `ZCL-RDS-02` via Servy
 
 The script then rides the same obfuscation/deploy pipeline as the rest of the code; the operator runs it on prod as `node src/scripts/<name>.js` (the path is the same in source and dist because the obfuscator preserves the layout for `src/scripts/`).
 
-Template script with the `safeRun()` resilience pattern: `src/scripts/diagnose-sage-tables.js` (8 read-only checks against the Sage schema, each wrapped so one failure doesn't abort the rest).
+**Validation loop for SQL-touching code (no shortcuts):**
+
+1. Locally: `node -c <script>` (syntax) and a source-grep for the read-only invariant (`grep -nE 'INSERT |UPDATE |DELETE FROM' <script>` returns 0 matches for diagnostics).
+2. Commit on a feature branch or `master` per § 3.
+3. `git push origin master` → GitHub Action obfuscates → force-pushes to `sageconnect-dist`.
+4. Operator on `ZCL-RDS-02`: `cd E:\sageconnect-dist && git fetch && git reset --hard origin/master` (never `git pull` — dist is force-pushed; per `feedback_prod_deploy_uses_reset` memory).
+5. Operator runs `node src/scripts/<name>.js <args>` and pastes the `console.table()` output back.
+6. Either confirm the hypothesis and open the follow-up phase, or iterate the diagnostic.
+
+There is no "skip step 3 and try it locally" — the script will fail at `runQuery()` because there is no DB to connect to. Plan the diagnostic loop around push-to-prod as the default test rig, and design each script so a partial failure leaves the system unchanged (read-only by default, every mutation behind an explicit `--apply` style flag and a separate phase).
+
+Template script with the `safeRun()` resilience pattern: `src/scripts/diagnose-sage-tables.js` (8 read-only checks against the Sage schema, each wrapped so one failure doesn't abort the rest). Reference cron-replication diagnostic: `src/scripts/po-cron-diagnostic.js` (added by quick task 260512-7ea — explains why the cron skips POs without touching state).
 
 ---
 
