@@ -69,9 +69,40 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 - ✓ Per-step Promise.race via withStepTimeout helper en src/utils/duration.js, STEP_TIMEOUT_MS env (default 5 min) cubriendo 7 forResponse step blocks — v2.3 (ROOT-03)
 - ✓ Unified `[TIMEOUT]` log routing cross-cutting (ChildProcess + CronScheduler + ForResponse + caller-specific); email dispatch SOLO para child-process timeouts — v2.3 (ROOT-04)
 
-### Active
+### Active (v2.4 Retry policies — milestone in scoping)
 
-(None — v2.3 shipped 2026-04-29. v2.4 milestone TBD via `/gsd-new-milestone`.)
+- [ ] **RETRY-01:** Cron picks up PO whose latest authorization is within the current month (replaces the today-only filter).
+- [ ] **RETRY-02:** Cron picks up payment whose latest authorization is within the current month (replaces fixed lookback window).
+- [ ] **RETRY-03:** Operator can switch retry scope from "current month" to rolling N-day window via env (`RETRY_SCOPE` + `RETRY_LOOKBACK_DAYS`).
+- [ ] **RETRY-04:** Failed upload retries follow exponential backoff (15min → 30min → 1h → 2h → ... capped at 24h), derived from existing fesa.* ERROR rows — no schema change.
+- [ ] **RETRY-05:** Last calendar day of the month after `EOM_NOTIFICATION_HOUR`, the service emails MAILING_NOTICES (CC: MAILING_CC) with one consolidated table of pending POs + pagos.
+- [ ] **RETRY-06:** End-of-month email is sent at most once per category per month via flat-file sentinel (`logs/eom-{YYYY-MM}-{pos|payments}.sent`).
+- [ ] **RETRY-07:** Operator can disable EOM notification via `EOM_NOTIFICATION_ENABLED` env (default `true`).
+- [ ] **RETRY-08:** Cron's new WHERE never re-uploads a PO/pago that already has a `POSTED` row in fesa.* (avoid duplicates).
+- [ ] **PARTIAL-01:** Partial CFDI upload within a payment follows policy chosen via `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent).
+- [ ] **PARTIAL-02:** Engineering confirms Focaltec dedupe semantics on `external_id` via sandbox before locking the default PARTIAL_PAYMENT_POLICY.
+- [ ] **PARTIAL-03:** Default PARTIAL_PAYMENT_POLICY value is documented in `.env.example` based on the Focaltec confirmation outcome.
+
+## Current Milestone: v2.4 Retry policies
+
+**Goal:** Eliminar el bug clase del filtro `MAX(Fecha)=hoy` (cron salta POs/pagos huérfanos), introducir retry con backoff exponencial derivado de filas existentes en `fesa.*` (sin schema change), notificación de fin de mes a operadores, y política configurable para subida parcial de pagos.
+
+**Target features:**
+
+- Cron retry policy con scope mes-corriente (default) + override a ventana móvil por env
+- Backoff exponencial duplicado con cap de 24h, estado derivado del control table existente
+- Email de fin de mes a `MAILING_NOTICES` con CC a `MAILING_CC` (HTML con tablas POs + pagos pendientes, links a dashboard)
+- Política de subida parcial de pagos (atomic | resume | idempotent) configurable por env, default a definir tras confirmación Focaltec sandbox
+
+**Issues cerrados:**
+
+- [#21 Cron skips POs whose latest authorization date is not today](https://github.com/FReptar0/sageconnect/issues/21) — bug, question
+- [#22 Define payment retry / lookback policy (uploadPayments)](https://github.com/FReptar0/sageconnect/issues/22) — question
+- [#23 Define partial payment completion policy](https://github.com/FReptar0/sageconnect/issues/23) — question
+
+**Phase layout:** 20 (cron retry, closes #21 + #22) y 21 (partial payment, closes #23). Worktrees concurrentes; Phase 21 bloquea en `RETRY_SCOPE` locked + respuesta Focaltec sandbox.
+
+**Constraint clave:** sin cambios al schema de `fesa.dbo.fesaOCFocaltec` ni `fesa.dbo.fesaPagosFocaltec`. El patrón "una fila por intento" (visible en `PortalOC_Creator.js:248-329`) ya provee todo el estado necesario para derivar el backoff.
 
 ## Recently Shipped: v2.3 Scheduler Lock Recovery (2026-04-29)
 
@@ -162,4 +193,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-29 after v2.3 milestone — Scheduler Lock Recovery shipped (3 phases, 10 plans, 14 REQs delivered, 89 commits, 17/17 STRIDE threats closed)*
+*Last updated: 2026-05-13 — v2.4 milestone "Retry policies" scoping started (Phases 20-21 planned, closes GH #21, #22, #23). v2.3 shipped 2026-04-29.*

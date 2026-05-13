@@ -1,13 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-status: idle
-stopped_at: "Milestone v2.3 Scheduler Lock Recovery COMPLETE — 3 phases, 10 plans, 14/14 REQs delivered, 89 commits, 17/17 STRIDE threats closed. Archive at .planning/milestones/v2.3-ROADMAP.md and v2.3-REQUIREMENTS.md. Git tag v2.3 created. Awaiting next milestone scope via /gsd-new-milestone."
-last_updated: "2026-04-29T20:30:00Z"
-last_activity: 2026-05-13 -- Quick task 260513-ket completed: drop PORHSTAT from po-cron-diagnostic POPORH1 lookup (closes GH issue #24 — PORHSTAT column does not exist in COPDAT schema; 3-line removal in src/scripts/po-cron-diagnostic.js, no tests, branch fix/po-cron-diagnostic-porhstat ready for PR)
+milestone: v2.4
+milestone_name: Retry policies
+status: planning
+last_updated: "2026-05-13T21:33:47.756Z"
+last_activity: 2026-05-13
 progress:
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -17,11 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Planning next milestone — v2.3 Scheduler Lock Recovery shipped 2026-04-29.
+**Current focus:** v2.4 Retry policies — Phases 20 (cron retry) + 21 (partial payment) closing GH #21, #22, #23. Scope locked, defining requirements & roadmap.
 
 ## Current Position
 
-Status: Milestone v2.3 COMPLETE — awaiting v2.4 scope via `/gsd-new-milestone`.
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-13 — Milestone v2.4 started
 
 ## Deferred Items
 
