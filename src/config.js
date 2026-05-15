@@ -85,6 +85,17 @@ function parseTenants() {
     }));
 }
 
+/**
+ * Parse an optional numeric env var, applying the default ONLY when the var is
+ * absent/empty. An explicitly-set value (including '0' or 'abc') is parsed and
+ * passed through verbatim so the range guard can reject it -- the `parseX(...) || default`
+ * idiom silently swallows '0' (falsy) and would bypass the [1, N] guards.
+ */
+function parseEnvNumber(raw, parser, def) {
+    if (raw === undefined || raw === null || String(raw).trim() === '') return def;
+    return parser(raw);
+}
+
 /** Build mailing config -- fully optional. Only populated if MAIL_TRANSPORT is set. */
 function buildMailing() {
     const transport = (process.env.MAIL_TRANSPORT || '').trim();
@@ -180,6 +191,29 @@ const config = {
         // Cubre un step con hasta ~10 axios calls en serie con timeout 30s c/u (10 × 30s = 5 min).
         stepTimeoutMs: parseInt(process.env.STEP_TIMEOUT_MS, 10) || 5 * 60 * 1000,
     },
+
+    retry: {
+        // RETRY-03 (D-customer-confirmation): cron scope for which authorization dates the WHERE picks up.
+        // Default 'current_month' (customer-locked policy 2026-05-15). Valid: 'current_month' | 'last_n_days'.
+        scope: process.env.RETRY_SCOPE || 'current_month',
+        // RETRY-03 (D-customer-confirmation): lookback window when scope=last_n_days. Default 30. Range [1, 365].
+        lookbackDays: parseEnvNumber(process.env.RETRY_LOOKBACK_DAYS, (v) => parseInt(v, 10), 30),
+        backoff: {
+            // RETRY-05 (D-customer-confirmation): initial backoff in minutes. Default 15. Range [1, 60].
+            initialMin: parseEnvNumber(process.env.RETRY_BACKOFF_INITIAL_MIN, (v) => parseInt(v, 10), 15),
+            // RETRY-05 (D-customer-confirmation): backoff multiplier per attempt. Default 2 (curva 15→30→60→…→1440). Range [1.0, 10.0]. parseFloat acepta decimales.
+            multiplier: parseEnvNumber(process.env.RETRY_BACKOFF_MULTIPLIER, parseFloat, 2),
+            // RETRY-05 (D-customer-confirmation): max backoff in minutes (caps the geometric growth). Default 1440 (24h). Range [60, 10080] (1h, 1w).
+            maxMin: parseEnvNumber(process.env.RETRY_BACKOFF_MAX_MIN, (v) => parseInt(v, 10), 1440),
+        },
+    },
+
+    eom: {
+        // EOM-01 (D-customer-confirmation): hour-of-day when EOM dispatch becomes eligible (last day only). Default 18 (6pm). Range [0, 23].
+        notificationHour: parseEnvNumber(process.env.EOM_NOTIFICATION_HOUR, (v) => parseInt(v, 10), 18),
+        // EOM-05 (D-customer-confirmation): kill-switch. Default 'true'. Set to 'false' to disable EOM dispatch entirely.
+        notificationEnabled: (process.env.EOM_NOTIFICATION_ENABLED || 'true').toLowerCase() === 'true',
+    },
 };
 
 // REC-01 (D-01): defensive bound — values < 60000 ms (1 min) almost certainly indicate misconfiguration.
@@ -204,6 +238,48 @@ if (config.schedule.childProcessTimeoutMs < 60000) {
 // Un step típico tiene 1-3 axios calls + DB roundtrips; <30s es trivial y produce falsos positivos.
 if (config.schedule.stepTimeoutMs < 30000) {
     console.error('[CONFIG ERROR] STEP_TIMEOUT_MS must be >= 30000 (30 sec). Got: ' + config.schedule.stepTimeoutMs);
+    process.exit(1);
+}
+
+// RETRY-03: scope must be one of the valid values.
+if (!['current_month', 'last_n_days'].includes(config.retry.scope)) {
+    console.error('[CONFIG ERROR] RETRY_SCOPE inválido. Got: ' + config.retry.scope + '. Valid: current_month | last_n_days');
+    process.exit(1);
+}
+
+// RETRY-03: lookbackDays in [1, 365].
+if (!Number.isInteger(config.retry.lookbackDays) || config.retry.lookbackDays < 1 || config.retry.lookbackDays > 365) {
+    console.error('[CONFIG ERROR] RETRY_LOOKBACK_DAYS must be integer in [1, 365]. Got: ' + config.retry.lookbackDays);
+    process.exit(1);
+}
+
+// RETRY-05: initialMin in [1, 60].
+if (!Number.isInteger(config.retry.backoff.initialMin) || config.retry.backoff.initialMin < 1 || config.retry.backoff.initialMin > 60) {
+    console.error('[CONFIG ERROR] RETRY_BACKOFF_INITIAL_MIN must be integer in [1, 60]. Got: ' + config.retry.backoff.initialMin);
+    process.exit(1);
+}
+
+// RETRY-05: multiplier in [1.0, 10.0].
+if (typeof config.retry.backoff.multiplier !== 'number' || !Number.isFinite(config.retry.backoff.multiplier) || config.retry.backoff.multiplier < 1.0 || config.retry.backoff.multiplier > 10.0) {
+    console.error('[CONFIG ERROR] RETRY_BACKOFF_MULTIPLIER must be number in [1.0, 10.0]. Got: ' + config.retry.backoff.multiplier);
+    process.exit(1);
+}
+
+// RETRY-05: maxMin in [60, 10080].
+if (!Number.isInteger(config.retry.backoff.maxMin) || config.retry.backoff.maxMin < 60 || config.retry.backoff.maxMin > 10080) {
+    console.error('[CONFIG ERROR] RETRY_BACKOFF_MAX_MIN must be integer in [60, 10080]. Got: ' + config.retry.backoff.maxMin);
+    process.exit(1);
+}
+
+// EOM-01: hour in [0, 23].
+if (!Number.isInteger(config.eom.notificationHour) || config.eom.notificationHour < 0 || config.eom.notificationHour > 23) {
+    console.error('[CONFIG ERROR] EOM_NOTIFICATION_HOUR must be integer in [0, 23]. Got: ' + config.eom.notificationHour);
+    process.exit(1);
+}
+
+// EOM-05: enabled is boolean (parsed via toLowerCase === 'true' above).
+if (typeof config.eom.notificationEnabled !== 'boolean') {
+    console.error('[CONFIG ERROR] EOM_NOTIFICATION_ENABLED must be "true" or "false". Got: ' + process.env.EOM_NOTIFICATION_ENABLED);
     process.exit(1);
 }
 
