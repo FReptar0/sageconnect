@@ -68,7 +68,7 @@ SELECT A.* FROM (
         AND B.BATCHSTAT  = 3
         AND P.ERRENTRY   = 0
         AND P.RMITTYPE   = 1
-        AND ${buildScopeWhere(config.retry, { dateField: 'P.AUDTDATE' })}
+        AND ${buildScopeWhere(config.retry, { dateField: 'CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))' })}
         AND P.DOCNBR NOT IN (
     SELECT NoPagoSage
         FROM fesa.dbo.fesaPagosFocaltec

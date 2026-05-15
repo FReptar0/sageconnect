@@ -62,6 +62,13 @@ describe('PortalPaymentController cron WHERE rewrite (Phase 20)', () => {
         // Assert WHERE rewrite shape
         expect(sqlPassed).toMatch(/OUTER APPLY/);
         expect(sqlPassed).toMatch(/DATEFROMPARTS|DATEADD\(month/);
+        // RETRY-02 regression guard (Phase 20 gap closure): AUDTDATE is a Sage YYYYMMDD
+        // integer — comparing it bare against DATEFROMPARTS(...) triggers an int->date
+        // implicit conversion that errors at runtime. The scope filter MUST wrap AUDTDATE
+        // in the same CONVERT(Date, CONVERT(VARCHAR(8), ...)) expression used elsewhere
+        // in this query so the comparison is date-vs-date.
+        expect(sqlPassed).toMatch(/CONVERT\(Date, CONVERT\(VARCHAR\(8\), P\.AUDTDATE\)\)\s*>=\s*DATEFROMPARTS/);
+        expect(sqlPassed).not.toMatch(/P\.AUDTDATE\s*>=\s*DATEFROMPARTS/);
         // Assert PRESERVED 60-min antiquity filter (REQ RETRY-02 boundary)
         expect(sqlPassed).toMatch(/>= 60/);
         // Assert PRESERVED NOT IN POSTED dedupe (CONTEXT D-03)
