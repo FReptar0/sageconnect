@@ -55,4 +55,46 @@ async function sendMail(data) {
     }
 }
 
-module.exports = { sendMail };
+/**
+ * Send an HTML report email to the operator mailbox (MAILING_NOTICES with MAILING_CC).
+ * Mirrors AdminEmailSender.sendAdminAlert shape (CONTEXT D-06): operator channel instead of admin channel.
+ *
+ * @param {object} args
+ * @param {string} args.subject - Already-formed subject line (e.g., "[SageConnect] Pendientes fin de mes — POs — 2026-05")
+ * @param {string} args.html    - Full HTML body (typically from buildEomEmailHtml in EomNotification.js)
+ * @param {string} args.callerLogFile - Log file name for [OPERATOR-EMAIL] entries (e.g., 'EomNotification', 'ForResponse').
+ *                                       Defaults to 'EmailSender' if missing.
+ * @returns {Promise<void>} — Always resolves; SMTP failures are swallowed (logged as warn).
+ */
+async function sendOperatorReport({ subject, html, callerLogFile }) {
+    const logFile = callerLogFile || 'EmailSender';
+    try {
+        const transportConfig = {
+            host: config.mailing.server,
+            port: config.mailing.port,
+            secure: config.mailing.ssl,
+        };
+        if (config.mailing.password) {
+            transportConfig.auth = {
+                user: config.mailing.from,
+                pass: config.mailing.password,
+            };
+        }
+
+        const transport = nodeMailer.createTransport(transportConfig);
+        const to = config.mailing.notices.join(',');
+        const cc = config.mailing.cc || [];
+        await transport.sendMail({
+            from: config.mailing.from,
+            to,
+            cc,
+            subject,
+            html,
+        });
+        logGenerator(logFile, 'info', '[OPERATOR-EMAIL] Sent to ' + to + ': ' + subject);
+    } catch (err) {
+        logGenerator(logFile, 'warn', '[OPERATOR-EMAIL] Failed: ' + err.message);
+    }
+}
+
+module.exports = { sendMail, sendOperatorReport };
