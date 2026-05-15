@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: verifying
-stopped_at: "Phase 20 Plan 01 (config foundation) complete — commits 1ce103f, a8c5e66. 2 tasks, 2 files. npm test baseline unchanged (6 failed suites / 7 failed tests / 418 passed). 1 auto-fix (Rule 1): parseEnvNumber helper added so explicit 0/NaN reaches the range guards instead of being swallowed by the parseInt(...) || default idiom."
-last_updated: "2026-05-15T21:36:05.676Z"
+stopped_at: "Phase 20 Plan 09 (retry-month operator scripts) complete — commits 5943f16, 941d476, ea11044. 3 tasks, 4 files (2 scripts + 2 tests). npm test baseline unchanged (6 failed suites / 7 failed tests / 466 passed, +5 new). No deviations. Phase 20 all 9 plans done — ready for verification."
+last_updated: "2026-05-15T22:00:00.000Z"
 last_activity: 2026-05-15
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 9
-  completed_plans: 8
-  percent: 89
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 20 — Cron retry policy + EOM notification
-Plan: 20-02 complete (2 of 9)
+Plan: 20-09 complete (9 of 9)
 Status: Phase complete — ready for verification
 Total phases: 21 (Phases 20-21 active this milestone)
-Next: Phase 20 Wave 1/2 remaining plans
+Next: Phase 20 verification, then Phase 21
 Last activity: 2026-05-15
 
 ## Deferred Items
