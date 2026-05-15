@@ -15,7 +15,7 @@ Requirements for milestone v2.4 — "Retry policies". Each maps to a roadmap pha
 - [x] **RETRY-04**: When a PO or payment upload fails, subsequent retries follow exponential backoff (15min → 30min → 1h → 2h → ...) capped at 24h. Backoff state is derived from existing rows in `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` — `COUNT(*) WHERE status='ERROR'` for attempt count, `MAX(lastUpdate) WHERE status='ERROR'` for last attempt time. No schema change.
 - [ ] **RETRY-05**: Backoff parameters are configurable via env vars `RETRY_BACKOFF_INITIAL_MIN` (default `15`), `RETRY_BACKOFF_MULTIPLIER` (default `2`), and `RETRY_BACKOFF_MAX_MIN` (default `1440`), with range guards at startup (`src/config.js`).
 - [x] **RETRY-06**: Cron's new WHERE never selects a PO or payment that already has a `status='POSTED'` row in fesa.* (avoids duplicate Focaltec submissions).
-- [ ] **RETRY-07**: The `po-cron-diagnostic.js` script's verdict logic is updated to reflect the new retry rule — the resumen explains backoff state (attempts so far, next-eligible time) not just the date filter.
+- [x] **RETRY-07**: The `po-cron-diagnostic.js` script's verdict logic is updated to reflect the new retry rule — the resumen explains backoff state (attempts so far, next-eligible time) not just the date filter.
 
 ### EOM Notification (end-of-month email)
 
@@ -72,7 +72,7 @@ Maps each requirement to its roadmap phase. Filled in during ROADMAP creation; c
 | RETRY-04 | Phase 20 | Complete |
 | RETRY-05 | Phase 20 | Pending |
 | RETRY-06 | Phase 20 | Complete |
-| RETRY-07 | Phase 20 | Pending |
+| RETRY-07 | Phase 20 | Complete |
 | EOM-01 | Phase 20 | Complete |
 | EOM-02 | Phase 20 | Complete |
 | EOM-03 | Phase 20 | Complete |
