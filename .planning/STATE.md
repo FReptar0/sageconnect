@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20 Plan 01 complete — config.retry + config.eom namespaces + 7 range guards landed.
-last_updated: "2026-05-15T22:00:00.000Z"
-last_activity: 2026-05-15 -- Phase 20 Plan 01 executed
+stopped_at: Phase 20 Plan 02 complete — src/utils/RetryPolicy.js (3 pure helpers) + 11 unit tests landed.
+last_updated: "2026-05-15T22:08:00.000Z"
+last_activity: 2026-05-15 -- Phase 20 Plan 02 executed
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 9
-  completed_plans: 1
-  percent: 11
+  completed_plans: 2
+  percent: 22
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 20 — Cron retry policy + EOM notification
-Plan: 20-01 complete (1 of 9)
+Plan: 20-02 complete (2 of 9)
 Status: Executing — Wave 1
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: Phase 20 Wave 1/2 remaining plans
-Last activity: 2026-05-15 -- Phase 20 Plan 01 executed (config foundation)
+Last activity: 2026-05-15 -- Phase 20 Plan 02 executed (RetryPolicy.js pure helpers)
 
 ## Deferred Items
 
