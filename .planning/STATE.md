@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: Roadmap drafted, awaiting `/gsd-spec-phase 20`
+status: executing
 stopped_at: Phase 20 context gathered
-last_updated: "2026-05-13T23:35:04.822Z"
-last_activity: 2026-05-13 — ROADMAP.md drafted for v2.4 (Phases 20-21)
+last_updated: "2026-05-15T20:25:48.916Z"
+last_activity: 2026-05-15 -- Phase 20 planning complete
 progress:
   total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 9
   completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -26,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 Phase: Not started
 Plan: —
-Status: Roadmap drafted, awaiting `/gsd-spec-phase 20`
+Status: Ready to execute
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: Phase 20 — Cron retry policy + EOM notification
-Last activity: 2026-05-13 — ROADMAP.md drafted for v2.4 (Phases 20-21)
+Last activity: 2026-05-15 -- Phase 20 planning complete
 
 ## Deferred Items
 
@@ -61,6 +62,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 - No repro local del bug-class always-on: requiere prod (ZCL-RDS-02) o simulación con mocks
 - Servy como Windows service no tiene sesión de escritorio: child-process GUI puede colgarse (mitigado por Plan 19-02 kill cascade en v2.3)
 - Phase 21 blocked on Focaltec sandbox transcript (PARTIAL-02) before `/gsd-plan-phase 21` — engineering verification step is part of the SPEC gate, not the plan gate
+- **Phase 20 plan-phase override (2026-05-15)**: decision-coverage gate (§13a) reported 10/16 D-NN IDs not literally cited in plans (D-01, D-02, D-04, D-06, D-07, D-08, D-13, D-14, D-15, D-16). User selected "Proceed anyway" because plan-checker (iteration 2) explicitly verified each decision is addressed in substance — the gap is a literal-citation mismatch, not a real coverage gap. `/gsd-verify-work 20` should re-confirm decision coverage post-execution; if any D-NN was actually dropped during execution it will surface there.
 
 ## Session Continuity
 
