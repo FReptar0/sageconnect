@@ -9,12 +9,12 @@ Requirements for milestone v2.4 — "Retry policies". Each maps to a roadmap pha
 
 ### Retry (cron WHERE rewrites + backoff)
 
-- [ ] **RETRY-01**: Cron lifts a PO whose latest authorization (`MAX(Autoriza_OC_detalle.Fecha)`) falls within the current calendar month, replacing the today-only filter in `src/controller/PortalOC_Creator.js`.
+- [x] **RETRY-01**: Cron lifts a PO whose latest authorization (`MAX(Autoriza_OC_detalle.Fecha)`) falls within the current calendar month, replacing the today-only filter in `src/controller/PortalOC_Creator.js`.
 - [ ] **RETRY-02**: Cron lifts a payment whose latest authorization falls within the current calendar month, replacing the fixed lookback window in the payment uploader (`src/controller/PortalPaymentController.js`).
 - [ ] **RETRY-03**: Operator can switch retry scope from "current calendar month" to a rolling N-day window via env vars `RETRY_SCOPE` (values: `current_month` | `last_n_days`) and `RETRY_LOOKBACK_DAYS` (used only when `RETRY_SCOPE=last_n_days`).
-- [ ] **RETRY-04**: When a PO or payment upload fails, subsequent retries follow exponential backoff (15min → 30min → 1h → 2h → ...) capped at 24h. Backoff state is derived from existing rows in `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` — `COUNT(*) WHERE status='ERROR'` for attempt count, `MAX(lastUpdate) WHERE status='ERROR'` for last attempt time. No schema change.
+- [x] **RETRY-04**: When a PO or payment upload fails, subsequent retries follow exponential backoff (15min → 30min → 1h → 2h → ...) capped at 24h. Backoff state is derived from existing rows in `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` — `COUNT(*) WHERE status='ERROR'` for attempt count, `MAX(lastUpdate) WHERE status='ERROR'` for last attempt time. No schema change.
 - [ ] **RETRY-05**: Backoff parameters are configurable via env vars `RETRY_BACKOFF_INITIAL_MIN` (default `15`), `RETRY_BACKOFF_MULTIPLIER` (default `2`), and `RETRY_BACKOFF_MAX_MIN` (default `1440`), with range guards at startup (`src/config.js`).
-- [ ] **RETRY-06**: Cron's new WHERE never selects a PO or payment that already has a `status='POSTED'` row in fesa.* (avoids duplicate Focaltec submissions).
+- [x] **RETRY-06**: Cron's new WHERE never selects a PO or payment that already has a `status='POSTED'` row in fesa.* (avoids duplicate Focaltec submissions).
 - [ ] **RETRY-07**: The `po-cron-diagnostic.js` script's verdict logic is updated to reflect the new retry rule — the resumen explains backoff state (attempts so far, next-eligible time) not just the date filter.
 
 ### EOM Notification (end-of-month email)
@@ -66,12 +66,12 @@ Maps each requirement to its roadmap phase. Filled in during ROADMAP creation; c
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RETRY-01 | Phase 20 | Pending |
+| RETRY-01 | Phase 20 | Complete |
 | RETRY-02 | Phase 20 | Pending |
 | RETRY-03 | Phase 20 | Pending |
-| RETRY-04 | Phase 20 | Pending |
+| RETRY-04 | Phase 20 | Complete |
 | RETRY-05 | Phase 20 | Pending |
-| RETRY-06 | Phase 20 | Pending |
+| RETRY-06 | Phase 20 | Complete |
 | RETRY-07 | Phase 20 | Pending |
 | EOM-01 | Phase 20 | Complete |
 | EOM-02 | Phase 20 | Complete |
