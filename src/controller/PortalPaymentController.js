@@ -134,6 +134,12 @@ SELECT A.* FROM (
         // Per CONTEXT D-13: rolled-up [BACKOFF] summary
         logGenerator(logFileName, 'info',
             `[BACKOFF] tenant=${database[index]} candidates=${_candidatesCount} deferred=${_deferred.length} processing=${payments.recordset.length}`);
+        // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
+        const _retryWindow = config.retry.scope === 'last_n_days'
+            ? `last ${config.retry.lookbackDays} days`
+            : 'current calendar month';
+        logGenerator(logFileName, 'info',
+            `[CRON] retry-scope=${config.retry.scope} window=${_retryWindow}`);
 
         // Log de información sobre minutos transcurridos para cada pago
         if (payments.recordset.length > 0) {

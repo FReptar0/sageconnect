@@ -227,6 +227,12 @@ order by A.PONUMBER, B.PORLREV;
   // Resumen [BACKOFF] por tick (operadores buscan la métrica agregada)
   logGenerator(logFileName, 'info',
     `[BACKOFF] tenant=${databases[index]} candidates=${candidatesCount} deferred=${deferred.length} processing=${recordset.length}`);
+  // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
+  const retryWindow = config.retry.scope === 'last_n_days'
+    ? `last ${config.retry.lookbackDays} days`
+    : 'current calendar month';
+  logGenerator(logFileName, 'info',
+    `[CRON] retry-scope=${config.retry.scope} window=${retryWindow}`);
 
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
