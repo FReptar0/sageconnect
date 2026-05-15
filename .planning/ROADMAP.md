@@ -133,5 +133,5 @@ See `.planning/MILESTONES.md` for accomplishments.
 | 17. Observability             | v2.3      | 4/4            | Complete | 2026-04-27 |
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
-| 20. Cron retry + EOM email    | v2.4      | 5/9 | In Progress|  |
+| 20. Cron retry + EOM email    | v2.4      | 7/9 | In Progress|  |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |

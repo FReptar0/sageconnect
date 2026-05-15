@@ -23,7 +23,7 @@ Requirements for milestone v2.4 — "Retry policies". Each maps to a roadmap pha
 - [x] **EOM-02**: The email is sent to addresses in `MAILING_NOTICES` env (operator mailbox) with `MAILING_CC` as CC. NOT to `LICENSE_ADMIN_EMAIL` (this is operator reporting, not service alerting).
 - [x] **EOM-03**: Email body is HTML with two tables (POs / pagos pendientes): item number, tenant, fecha de autorización, attempts count, último error de Focaltec. Footer includes links to `/pos.html` and `/payments.html`.
 - [x] **EOM-04**: Idempotency: the email is sent at most once per category (POs / pagos) per calendar month. Sentinel file `logs/eom-{YYYY-MM}-{pos|payments}.sent` is created on first send and checked before subsequent attempts.
-- [ ] **EOM-05**: Operator can disable EOM notification entirely via `EOM_NOTIFICATION_ENABLED` env (default `true`). Kill-switch is checked at the cron-tick gate before any computation.
+- [x] **EOM-05**: Operator can disable EOM notification entirely via `EOM_NOTIFICATION_ENABLED` env (default `true`). Kill-switch is checked at the cron-tick gate before any computation.
 - [x] **EOM-06**: `src/utils/EmailSender.js` is extended (not duplicated) with a new export (e.g. `sendOperatorReport({to, cc, subject, html})`) following PATTERNS.md §S-6 — this is the 3rd operator-mailbox use after `EmailSender.sendMail` and any future caller.
 
 ### Partial Payment Completion (multi-CFDI policy)
@@ -77,7 +77,7 @@ Maps each requirement to its roadmap phase. Filled in during ROADMAP creation; c
 | EOM-02 | Phase 20 | Complete |
 | EOM-03 | Phase 20 | Complete |
 | EOM-04 | Phase 20 | Complete |
-| EOM-05 | Phase 20 | Pending |
+| EOM-05 | Phase 20 | Complete |
 | EOM-06 | Phase 20 | Complete |
 | PARTIAL-01 | Phase 21 | Pending |
 | PARTIAL-02 | Phase 21 | Pending |
