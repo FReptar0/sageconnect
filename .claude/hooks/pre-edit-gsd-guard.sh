@@ -4,8 +4,9 @@
 # Blocks edits to src/** unless one of these is true:
 #   1. An active GSD phase exists in .planning/phases/. An "active" phase is a
 #      directory `.planning/phases/<NN>-<slug>/` whose name does not include
-#      COMPLETE/ARCHIVED/CANCELLED and which contains at least one of
-#      SPEC.md / PLAN.md / DISCUSSION.md.
+#      COMPLETE/ARCHIVED/CANCELLED and which contains at least one GSD artifact
+#      matching *SPEC.md / *PLAN.md / *DISCUSSION*.md — the glob covers both
+#      bare (SPEC.md) and phase-numbered (20-SPEC.md, 20-01-PLAN.md) naming.
 #   2. An active GSD quick task exists in .planning/quick/. An "active" quick
 #      task is a directory `.planning/quick/<id>-<slug>/` that contains a
 #      `*PLAN.md` and does NOT yet contain a `*SUMMARY.md` (i.e. started but
@@ -59,7 +60,7 @@ if [ -d "$PHASES_DIR" ]; then
         case "$base" in
             *COMPLETE*|*ARCHIVED*|*CANCELLED*|*cancelled*|*archived*|*complete*) continue ;;
         esac
-        if [ -f "$dir/SPEC.md" ] || [ -f "$dir/PLAN.md" ] || [ -f "$dir/DISCUSSION.md" ]; then
+        if ls "$dir"/*SPEC.md >/dev/null 2>&1 || ls "$dir"/*PLAN.md >/dev/null 2>&1 || ls "$dir"/*DISCUSSION*.md >/dev/null 2>&1; then
             ACTIVE_PHASE="$base"
             break
         fi
