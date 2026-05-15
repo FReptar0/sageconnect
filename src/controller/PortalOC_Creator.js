@@ -18,6 +18,7 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
+const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -173,15 +174,17 @@ left outer join ${databases[index]}.dbo.ICLOC F
   on B.[LOCATION] = F.[LOCATION]
 left outer join Autorizaciones_electronicas.dbo.Autoriza_OC X
   on A.PONUMBER = X.PONumber
+${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: databases[index], dbColumn: 'idDatabase' })}
 where
   X.Autorizada = 1
   and X.Empresa = '${databases[index]}'
-  and (
-    select max(Fecha)
-      from Autorizaciones_electronicas.dbo.Autoriza_OC_detalle
-     where Empresa = '${databases[index]}'
-       and PONumber = A.PONUMBER
-  ) = CAST(GETDATE() AS DATE)
+  AND ${buildScopeWhere(config.retry, { dateField: '(SELECT MAX(Fecha) FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle WHERE Empresa = \'' + databases[index] + '\' AND PONumber = A.PONUMBER)' })}
+  AND NOT EXISTS (
+    SELECT 1 FROM fesa.dbo.fesaOCFocaltec
+    WHERE ocSage = A.PONUMBER
+      AND idDatabase = '${databases[index]}'
+      AND status = 'POSTED'
+  )
   ${skipCondition}
 order by A.PONUMBER, B.PORLREV;
 `;
@@ -198,6 +201,33 @@ order by A.PONUMBER, B.PORLREV;
     return;
   }
 
+  // RETRY-04 (D-01, D-13): JS post-filter para backoff exponencial.
+  // El OUTER APPLY ef trajo errorCount + lastErrorAt por fila; se difieren las filas
+  // que aún están dentro de la ventana de backoff.
+  const candidatesCount = recordset.length;
+  const now = new Date();
+  const deferred = [];
+  recordset = recordset.filter((row) => {
+    if (!row.errorCount || row.errorCount <= 0) return true;
+    const waitMin = computeBackoffWaitMinutes(row.errorCount, config.retry.backoff);
+    const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
+    if (!lastError) return true;
+    const nextEligibleAt = new Date(lastError.getTime() + waitMin * 60000);
+    if (nextEligibleAt > now) {
+      deferred.push({ id: row.EXTERNAL_ID, attempts: row.errorCount, nextEligibleAt });
+      return false;
+    }
+    return true;
+  });
+  // Por fila diferida: entrada [BACKOFF-DEFER] (operadores buscan un PO específico)
+  deferred.forEach((d) => {
+    logGenerator(logFileName, 'info',
+      `[BACKOFF-DEFER] PO ${d.id} tenant=${databases[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+  });
+  // Resumen [BACKOFF] por tick (operadores buscan la métrica agregada)
+  logGenerator(logFileName, 'info',
+    `[BACKOFF] tenant=${databases[index]} candidates=${candidatesCount} deferred=${deferred.length} processing=${recordset.length}`);
+
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
@@ -210,21 +240,6 @@ order by A.PONUMBER, B.PORLREV;
     if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
     if (poToSend.requisition_number === 0) delete poToSend.requisition_number;
     //console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
-
-    // 4.1) Comprobar si ya existe en fesaOCFocaltec
-    const checkSql = `
-      SELECT idFocaltec
-      FROM fesa.dbo.fesaOCFocaltec
-      WHERE ocSage    = '${po.external_id}'
-        AND idDatabase= '${databases[index]}'
-        AND idFocaltec IS NOT NULL
-        AND status = 'POSTED'
-    `;
-    const { recordset: existing } = await runQuery(checkSql, 'FESA');
-    if (existing.length > 0) {
-      logGenerator(logFileName, 'warn', `[WARN] PO ${po.external_id} ya procesada (POSTED), se omite.`);
-      continue;
-    }
 
     // 4.2) Limpiar placeholders
     //delete po.company_external_id;
