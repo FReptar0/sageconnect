@@ -26,6 +26,7 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const config = require('../config');
+const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
 
 const LOG_FILE = 'PO_Cron_Diagnostic';
 
@@ -69,6 +70,10 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         fesaStatus: null,
         fesaResponseAPI: null,
         fesaIdFocaltec: null,
+        errorCount: null,
+        lastErrorAt: null,
+        backoffWaitMin: null,
+        nextEligibleAt: null,
         reason: null,
     };
 
@@ -155,6 +160,7 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
     const skipCondition = skipIdentifiers.length > 0
         ? `AND B.[LOCATION] NOT IN (${skipIdentifiers.map(id => `'${id}'`).join(',')})`
         : '';
+    const dateFieldExpr = `(SELECT MAX(Fecha) FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle WHERE Empresa = '${database}' AND PONumber = A.PONUMBER)`;
     const r4 = await safeRun('cron WHERE replica', async () => {
         const sql = `
             SELECT COUNT(*) AS RowsCronWouldSee
@@ -163,15 +169,17 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
               ON A.PORHSEQ = B.PORHSEQ
             LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X
               ON A.PONUMBER = X.PONumber
+            ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: database, dbColumn: 'idDatabase' })}
             WHERE A.PONUMBER = '${poNumber}'
               AND X.Autorizada = 1
               AND X.Empresa = '${database}'
-              AND (
-                SELECT MAX(Fecha)
-                  FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle
-                 WHERE Empresa = '${database}'
-                   AND PONumber = A.PONUMBER
-              ) = CAST(GETDATE() AS DATE)
+              AND ${buildScopeWhere(config.retry, { dateField: dateFieldExpr })}
+              AND NOT EXISTS (
+                SELECT 1 FROM fesa.dbo.fesaOCFocaltec
+                WHERE ocSage = A.PONUMBER
+                  AND idDatabase = '${database}'
+                  AND status = 'POSTED'
+              )
               ${skipCondition}
         `;
         const { recordset } = await runQuery(sql, database);
@@ -213,22 +221,68 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         }
     }
 
-    // 6. Verdict
+    // 6. Estado de backoff (errorCount + lastErrorAt + backoffWaitMin + nextEligibleAt)
+    console.log('\n6. ESTADO DE BACKOFF');
+    const r6 = await safeRun('backoff state', async () => {
+        const sql = `
+            SELECT
+                COUNT(*) AS errorCount,
+                MAX(lastUpdate) AS lastErrorAt
+            FROM fesa.dbo.fesaOCFocaltec
+            WHERE ocSage = '${poNumber}'
+              AND idDatabase = '${database}'
+              AND status = 'ERROR'
+        `;
+        const { recordset } = await runQuery(sql, 'FESA');
+        return recordset;
+    });
+    if (r6 && !r6.__error && r6.length > 0) {
+        const errorCount = r6[0].errorCount || 0;
+        const lastErrorAt = r6[0].lastErrorAt;
+        const backoffWaitMin = computeBackoffWaitMinutes(errorCount, config.retry.backoff);
+        const nextEligibleAt = lastErrorAt
+            ? new Date(new Date(lastErrorAt).getTime() + backoffWaitMin * 60000)
+            : null;
+        verdict.errorCount = errorCount;
+        verdict.lastErrorAt = lastErrorAt ? new Date(lastErrorAt).toISOString() : null;
+        verdict.backoffWaitMin = backoffWaitMin;
+        verdict.nextEligibleAt = nextEligibleAt ? nextEligibleAt.toISOString() : null;
+        console.table([{
+            errorCount,
+            lastErrorAt: verdict.lastErrorAt,
+            backoffWaitMin,
+            nextEligibleAt: verdict.nextEligibleAt,
+        }]);
+    }
+
+    // 7. Verdict — 5-priority order per SPEC RETRY-07 + HANDOFF.md §7 (BOTH portal POSTED + fesa.* control table)
     if (!verdict.reason) {
+        // Priority 1: POSTED — already processed by cron
         if (verdict.fesaStatus === 'POSTED') {
-            verdict.reason = 'Ya esta POSTED en fesaOCFocaltec — el cron la salta correctamente';
-        } else if (verdict.cronWouldMatch === false) {
-            if (verdict.lastAuthDateIsToday === false) {
-                verdict.reason = `Cron filtra por MAX(Fecha)=hoy. Ultima autorizacion fue ${verdict.lastAuthDate} != hoy → cron la ignora.`;
-            } else if (skipIdentifiers.length > 0) {
-                verdict.reason = 'Cron no la levanta — revisar si todas las lineas (POPORL.LOCATION) caen en addressIdentifiersSkip';
-            } else {
-                verdict.reason = 'Cron no la levanta — causa desconocida, revisar JOINs (POPORL puede no tener lineas)';
-            }
-        } else if (verdict.cronWouldMatch === true) {
-            verdict.reason = 'Cron SI la levantaria. Si no se sube, es timeout/lock en el step, no filtro.';
-        } else {
-            verdict.reason = 'Inconcluso (alguno de los checks falló)';
+            verdict.reason = 'Ya está POSTED en fesaOCFocaltec — ya está procesada por el cron.';
+        }
+        // Priority 2: ERROR + within backoff window — cron is intentionally waiting
+        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) > new Date()) {
+            verdict.reason = `ERROR previo (${verdict.errorCount} intentos). Esperando backoff hasta ${verdict.nextEligibleAt}.`;
+        }
+        // Priority 3: ERROR + outside backoff window — ready to retry
+        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) <= new Date()) {
+            verdict.reason = `ERROR previo (${verdict.errorCount} intentos), backoff vencido. Lista para reintentar en el próximo tick.`;
+        }
+        // Priority 4: zero rows in fesa — never tried
+        else if (verdict.fesaRowCount === 0) {
+            verdict.reason = 'Nunca intentada (cero filas en fesaOCFocaltec). Debe entrar en el próximo tick.';
+        }
+        // Priority 5: outside RETRY_SCOPE — cron filter excludes it
+        else if (verdict.cronWouldMatch === false) {
+            verdict.reason = `Fuera de RETRY_SCOPE=${config.retry.scope}. Ignorada por el filtro de scope del cron.`;
+        }
+        // Fallback
+        else if (verdict.cronWouldMatch === true) {
+            verdict.reason = 'Cron SÍ la levantaría. Si no se sube, es timeout/lock en el step, no filtro.';
+        }
+        else {
+            verdict.reason = 'Inconcluso (alguno de los checks falló).';
         }
     }
 
@@ -273,6 +327,8 @@ async function runDiagnostic(poNumbers, database, tenantIndex) {
         authIsToday: v.lastAuthDateIsToday,
         cronWouldMatch: v.cronWouldMatch,
         fesaStatus: v.fesaStatus,
+        errorCount: v.errorCount,
+        nextEligibleAt: v.nextEligibleAt,
         verdict: v.reason || v.fatal,
     })));
 
