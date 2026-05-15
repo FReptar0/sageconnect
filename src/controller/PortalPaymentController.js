@@ -1,11 +1,11 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
-const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const { resolveUuidByFolio } = require('../services/UuidResolver');
 const portalClient = require('../utils/PortalClient');
 const notifier = require('node-notifier');
 const config = require('../config');
+const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -16,9 +16,7 @@ const database = config.portal.tenants.map(t => t.database);
 async function uploadPayments(index) {
     const logFileName = 'PortalPaymentController';
     try {
-        const currentDate = getCurrentDateCompact();
-
-        console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]} - Fecha desde: ${currentDate}`);
+        console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]}`);
 
         const queryEncabezadosPago = `
 SELECT A.* FROM (
@@ -58,16 +56,19 @@ SELECT A.* FROM (
             RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 6), 2)
         ),
         SYSDATETIME()
-    ) AS DIFERENCIA_MINUTOS
+    ) AS DIFERENCIA_MINUTOS,
+    ef.errorCount  AS errorCount,
+    ef.lastErrorAt AS lastErrorAt
     FROM APBTA B
     JOIN BKACCT BK ON B.IDBANK    = BK.BANK
     JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
         AND B.CNTBTCH   = P.CNTBTCH
+    ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: database[index], dbColumn: 'idCia' })}
     WHERE B.PAYMTYPE   = 'PY'
         AND B.BATCHSTAT  = 3
         AND P.ERRENTRY   = 0
         AND P.RMITTYPE   = 1
-        AND P.AUDTDATE   >= ${currentDate}
+        AND ${buildScopeWhere(config.retry, { dateField: 'P.AUDTDATE' })}
         AND P.DOCNBR NOT IN (
     SELECT NoPagoSage
         FROM fesa.dbo.fesaPagosFocaltec
@@ -107,6 +108,32 @@ SELECT A.* FROM (
             });
 
         console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos (con al menos 60 minutos de antigüedad).`);
+
+        // RETRY-04 (D-01, D-13): JS post-filter for exponential backoff.
+        // OUTER APPLY ef gave us errorCount + lastErrorAt per payment row; defer rows still inside backoff window.
+        const _candidatesCount = payments.recordset.length;
+        const _now = new Date();
+        const _deferred = [];
+        payments.recordset = payments.recordset.filter((row) => {
+            if (!row.errorCount || row.errorCount <= 0) return true;
+            const waitMin = computeBackoffWaitMinutes(row.errorCount, config.retry.backoff);
+            const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
+            if (!lastError) return true;
+            const nextEligibleAt = new Date(lastError.getTime() + waitMin * 60000);
+            if (nextEligibleAt > _now) {
+                _deferred.push({ id: row.external_id, attempts: row.errorCount, nextEligibleAt });
+                return false;
+            }
+            return true;
+        });
+        // Per CONTEXT D-13: per-row [BACKOFF-DEFER] log entries
+        _deferred.forEach((d) => {
+            logGenerator(logFileName, 'info',
+                `[BACKOFF-DEFER] Pago ${d.id} tenant=${database[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+        });
+        // Per CONTEXT D-13: rolled-up [BACKOFF] summary
+        logGenerator(logFileName, 'info',
+            `[BACKOFF] tenant=${database[index]} candidates=${_candidatesCount} deferred=${_deferred.length} processing=${payments.recordset.length}`);
 
         // Log de información sobre minutos transcurridos para cada pago
         if (payments.recordset.length > 0) {
