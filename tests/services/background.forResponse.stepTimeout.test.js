@@ -46,6 +46,10 @@ jest.mock('../../src/config', () => ({
     database: { user: 'test', password: 'test', server: 'localhost', database: 'TEST' },
     paths: { logs: '/tmp/logs', downloads: '/tmp/dl', providers: '/tmp/p' },
     security: { apiKey: 'test-key' },
+    // Phase 20 (20-07): EOM gate at top of forResponse reads config.eom.
+    // Disabled here so the gate short-circuits — these tests exercise the
+    // step-timeout path, not the EOM dispatch.
+    eom: { notificationHour: 18, notificationEnabled: false },
 }));
 
 // Mock LogGenerator

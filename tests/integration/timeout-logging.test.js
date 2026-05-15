@@ -112,13 +112,18 @@ describe('Timeout logging integration (Phase 19, ROOT-04)', () => {
             expect(/\/Step timeout\//.test(src)).toBe(true);
         });
 
-        test('background.js wraps each of the 7 steps with withStepTimeout (D-12 only steps, NOT child)', () => {
+        test('background.js wraps each step with withStepTimeout (D-12 steps + EOM gate, NOT child)', () => {
             const fs = require('fs');
             const src = fs.readFileSync('src/background.js', 'utf8');
-            // 7 wraps in forResponse
+            // 7 tenant-loop step wraps + 1 EOM-gate wrap (Phase 20, 20-07 / CONTEXT D-11).
+            // Both honor the defense-in-depth step tier (CLAUDE.md §9). startChildProcess
+            // is NOT among these — it has its own 10-min child-process timer.
             const wrapMatches = src.match(/await withStepTimeout\(/g);
             expect(wrapMatches).not.toBeNull();
-            expect(wrapMatches.length).toBe(7);
+            expect(wrapMatches.length).toBe(8);
+            // The EOM dispatch step is wrapped per D-11.
+            expect(/withStepTimeout\(\s*dispatchEomIfDue\(/.test(src)).toBe(true);
+            expect(/__step = 'eomDispatch'/.test(src)).toBe(true);
         });
 
         test('step timeout NO triggers sendAdminAlert (D-15 negation — step wording does NOT match child detection)', () => {
