@@ -12,6 +12,13 @@ const { getCurrentDate } = require('./utils/TimezoneHelper');
 const { formatDurationMin, withStepTimeout } = require('./utils/duration');
 const config = require('./config');
 const notifier = require('node-notifier');
+const fs = require('fs');
+const path = require('path');
+const { runQuery } = require('./utils/SQLServerConnection');
+const { shouldDispatchEom, buildEomEmailHtml, writeSentinelAtomically } = require('./utils/EomNotification');
+const { sendOperatorReport } = require('./utils/EmailSender');
+const { sendAdminAlert } = require('./utils/AdminEmailSender');
+const { buildScopeWhere } = require('./utils/RetryPolicy');
 
 /**
  * SageConnect Background Processes
@@ -31,6 +38,32 @@ async function forResponse(options = {}) {
     const date = getCurrentDate();
     const delay = config.schedule?.operationDelayMs ?? 5000;
     logGenerator(logFileName, 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
+
+    // EOM-01..05 (D-08, D-09, D-10, D-11, D-14): cron-tick guard for end-of-month operator email.
+    // Runs BEFORE the tenant loop so a slow EOM query doesn't block the rest of the tick.
+    // Failure does NOT re-throw — EOM is best-effort, the cron tick must continue.
+    if (!config.eom.notificationEnabled) {
+        logGenerator('EomNotification', 'info', '[EOM-SKIP] reason=enabled-false');
+    } else {
+        const __step = 'eomDispatch';
+        try {
+            await withStepTimeout(
+                dispatchEomIfDue(date, config),
+                config.schedule.stepTimeoutMs,
+                `step=${__step}`
+            );
+        } catch (stepErr) {
+            const __stepError = stepErr.message || String(stepErr);
+            if (/Step timeout/.test(__stepError)) {
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=${__step} tenant=global url=n/a ` +
+                    `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+            }
+            // Per PATTERNS.md + SPEC Constraints "SMTP error budget":
+            // EOM failure must NOT block the cron tick — log and continue.
+            logGenerator('EomNotification', 'error', `[EOM-DISPATCH] Failed: ${__stepError}`);
+        }
+    }
 
     const tenantIds = config.portal.tenants.map(t => t.id);
     for (let i = 0; i < tenantIds.length; i++) {
@@ -326,6 +359,161 @@ async function forResponse(options = {}) {
 }
 
 /**
+ * EOM dispatch — sends two consolidated emails (POs + payments) to the operator
+ * mailbox if the cron-tick gate is open (last day of month, hour >= notificationHour,
+ * sentinel missing). Per CONTEXT D-08, D-09, D-10, D-11, D-14.
+ *
+ * Best-effort: SMTP failures fall back to AdminEmailSender; sentinel always written;
+ * does NOT re-throw — caller (forResponse) catches and continues.
+ *
+ * @param {Date} now - current time (injected for testability per D-16)
+ * @param {object} cfg - config object (injected for testability)
+ * @returns {Promise<void>}
+ */
+async function dispatchEomIfDue(now, cfg) {
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyyMm = `${yyyy}-${mm}`;
+    const tenantsList = cfg.portal.tenants;
+
+    for (const category of ['pos', 'payments']) {
+        const sentinelPath = path.join(cfg.paths.logs, `eom-${yyyyMm}-${category}.sent`);
+        if (!shouldDispatchEom(now, sentinelPath, cfg.eom)) {
+            logGenerator('EomNotification', 'info', `[EOM-SKIP] category=${category} reason=gate-false`);
+            continue;
+        }
+        logGenerator('EomNotification', 'info',
+            `[EOM-GATE] category=${category} day=last hour=${now.getHours()} sentinel=missing`);
+
+        // Aggregate rows across all tenants. Per CONTEXT D-09: HARDCODED current_month scope.
+        const allRows = [];
+        for (let i = 0; i < tenantsList.length; i++) {
+            const tenantDb = tenantsList[i].database;
+            try {
+                const sql = buildEomDataQuery(category, tenantDb);
+                const { recordset } = await runQuery(sql, tenantDb);
+                if (recordset && recordset.length > 0) {
+                    allRows.push(...recordset);
+                }
+            } catch (qErr) {
+                logGenerator('EomNotification', 'warn',
+                    `[EOM-DISPATCH] category=${category} tenant=${tenantDb} query-failed err=${qErr.message}`);
+                // Continue to next tenant; partial data better than no data
+            }
+        }
+
+        // Per CONTEXT D-10: empty categories STILL send the email (with "Sin pendientes" body)
+        const html = buildEomEmailHtml(allRows, category);
+        const subject = `[SageConnect] Pendientes fin de mes — ${category === 'pos' ? 'POs' : 'Pagos'} — ${yyyyMm}`;
+        let sentinelPayload;
+        try {
+            await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
+            sentinelPayload = { timestamp: new Date().toISOString(), success: true, rowCount: allRows.length };
+            logGenerator('EomNotification', 'info',
+                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=true`);
+        } catch (smtpErr) {
+            sentinelPayload = {
+                timestamp: new Date().toISOString(),
+                success: false,
+                error: smtpErr.message,
+                rowCount: allRows.length,
+            };
+            logGenerator('EomNotification', 'error',
+                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=false err=${smtpErr.message}`);
+            // SMTP failure fallback per REQ EOM-04
+            await sendAdminAlert(
+                `[SageConnect] EOM email FAILED for ${yyyyMm} - ${category}`,
+                `<p>EOM dispatch failed for category ${category} on ${yyyyMm}.</p><p>Error: ${smtpErr.message}</p><p>Row count was ${allRows.length}.</p>`,
+                'EomNotification'
+            );
+        }
+
+        // ALWAYS write sentinel (success or fail) per SPEC EOM-04 + CONTEXT D-07
+        try {
+            writeSentinelAtomically(sentinelPath, sentinelPayload);
+            logGenerator('EomNotification', 'info',
+                `[EOM-SENTINEL] path=${sentinelPath} payload=${JSON.stringify(sentinelPayload)}`);
+        } catch (fsErr) {
+            logGenerator('EomNotification', 'error',
+                `[EOM-SENTINEL] path=${sentinelPath} write-failed err=${fsErr.message}`);
+        }
+    }
+}
+
+/**
+ * Build the EOM data query for a category. Uses HARDCODED current_month scope per CONTEXT D-09.
+ * Per CLAUDE.md §6 #1: template-literal SQL with controlled tenant DB interpolation.
+ */
+function buildEomDataQuery(category, tenantDb) {
+    if (category === 'pos') {
+        const dateField = `(SELECT MAX(Fecha) FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle WHERE Empresa = '${tenantDb}' AND PONumber = A.PONUMBER)`;
+        return `
+            SELECT
+                '${tenantDb}' AS tenant,
+                RTRIM(A.PONUMBER) AS idOrPo,
+                ${dateField} AS fechaAuth,
+                COALESCE(ef.errorCount, 0) AS attempts,
+                ef.lastError AS lastError
+            FROM ${tenantDb}.dbo.POPORH1 A
+            LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X
+              ON A.PONUMBER = X.PONumber
+            OUTER APPLY (
+                SELECT
+                    COUNT(*) AS errorCount,
+                    (SELECT TOP 1 responseAPI FROM fesa.dbo.fesaOCFocaltec
+                     WHERE ocSage = A.PONUMBER AND idDatabase = '${tenantDb}' AND status = 'ERROR'
+                     ORDER BY lastUpdate DESC) AS lastError
+                FROM fesa.dbo.fesaOCFocaltec
+                WHERE ocSage = A.PONUMBER
+                  AND idDatabase = '${tenantDb}'
+                  AND status = 'ERROR'
+            ) AS ef
+            WHERE X.Autorizada = 1
+              AND X.Empresa = '${tenantDb}'
+              AND ${buildScopeWhere({ scope: 'current_month' }, { dateField })}
+              AND NOT EXISTS (
+                SELECT 1 FROM fesa.dbo.fesaOCFocaltec
+                WHERE ocSage = A.PONUMBER AND idDatabase = '${tenantDb}' AND status = 'POSTED'
+              )
+        `;
+    }
+    // category === 'payments'
+    const dateField = 'P.AUDTDATE';
+    return `
+        SELECT
+            '${tenantDb}' AS tenant,
+            RTRIM(P.DOCNBR) AS idOrPo,
+            P.AUDTDATE AS fechaAuth,
+            COALESCE(ef.errorCount, 0) AS attempts,
+            ef.lastError AS lastError
+        FROM APBTA B
+        JOIN BKACCT BK ON B.IDBANK = BK.BANK
+        JOIN APTCR P ON B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
+        OUTER APPLY (
+            SELECT
+                COUNT(*) AS errorCount,
+                (SELECT TOP 1 responseAPI FROM fesa.dbo.fesaPagosFocaltec
+                 WHERE NoPagoSage = P.DOCNBR AND idCia = '${tenantDb}'
+                 ORDER BY lastUpdate DESC) AS lastError
+            FROM fesa.dbo.fesaPagosFocaltec
+            WHERE NoPagoSage = P.DOCNBR
+              AND idCia = '${tenantDb}'
+              AND status NOT IN ('PAID', 'PARTIAL')
+        ) AS ef
+        WHERE B.PAYMTYPE = 'PY'
+          AND B.BATCHSTAT = 3
+          AND P.ERRENTRY = 0
+          AND P.RMITTYPE = 1
+          AND ${buildScopeWhere({ scope: 'current_month' }, { dateField })}
+          AND P.DOCNBR NOT IN (
+            SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec
+            WHERE idCia = P.AUDTORG AND NoPagoSage = P.DOCNBR
+              AND status IN ('PAID', 'PARTIAL')
+          )
+    `;
+}
+
+/**
  * Handles the child process for CFDI import
  * @returns {Promise} Promise that resolves when child process completes
  */
@@ -536,5 +724,7 @@ module.exports = {
     startBackgroundProcesses,
     forResponse,
     startChildProcess,
-    showStartupNotification
+    showStartupNotification,
+    dispatchEomIfDue,
+    buildEomDataQuery,
 };
