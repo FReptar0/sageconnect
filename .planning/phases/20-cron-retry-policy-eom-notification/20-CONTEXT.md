@@ -172,6 +172,17 @@ Downstream agents MUST read `20-SPEC.md` before planning or implementing. Requir
 - `BASE_URL` for the dashboard footer links is read from `config.app.baseUrl` (or new env `DASHBOARD_BASE_URL` if not present today — planner verifies in plan-phase). Default to `http://localhost:3030` for dev; ops sets the prod URL via env.
 - Empty-category email body still includes the standard footer links so operator can confirm the dashboards are live, even when there's nothing to inspect.
 
+### Customer confirmation (2026-05-15)
+
+Customer confirmed the retry-criteria defaults via email. The defaults locked in SPEC.md and discussed above match exactly:
+
+- **Retry duration** — "reintentar hasta fin de mes" → confirms `RETRY_SCOPE=current_month` default (RETRY-01..03). No hard cap on attempts; backoff caps at 24h and continues until the end of the calendar month, then orphans surface in the EOM email.
+- **Backoff cadence** — "15 min → 24 h" → confirms `RETRY_BACKOFF_INITIAL_MIN=15`, `RETRY_BACKOFF_MULTIPLIER=2`, `RETRY_BACKOFF_MAX_MIN=1440` defaults (RETRY-04..05). Computed curve: 15 → 30 → 60 → 120 → 240 → 480 → 960 → 1440 minutes (8 attempts to reach the 24 h cap).
+- **Notification policy** — "solo el correo EOM al cierre de mes" → confirms `EOM_NOTIFICATION_ENABLED=true`, `EOM_NOTIFICATION_HOUR=18`, last calendar day only (EOM-01..06). No mid-month alerts, no per-document threshold alerts.
+- **Non-retryable error classification (silent)** — Customer did not address whether 4xx (validation) errors should skip retry. Default behavior locked: every ERROR row is subject to the same backoff, regardless of HTTP status class. Operator surfaces these via the EOM email; the dashboards (out of scope per Phase 20 boundaries) would be the v2.5 path if classification becomes operationally painful.
+
+**Implication for downstream agents:** Do not change any of these 5 env defaults (`RETRY_SCOPE`, `RETRY_LOOKBACK_DAYS` baseline, `RETRY_BACKOFF_INITIAL_MIN`, `RETRY_BACKOFF_MULTIPLIER`, `RETRY_BACKOFF_MAX_MIN`) in `.env.example` without reopening the customer conversation. The values are not arbitrary defaults — they are the customer's policy.
+
 </specifics>
 
 <deferred>
