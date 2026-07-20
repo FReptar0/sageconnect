@@ -13,6 +13,7 @@
 ## Phases
 
 - [ ] **Phase 20: Cron retry policy + EOM notification** — Replace `MAX(Fecha)=today` filter with configurable scope (current_month default, env override to rolling N-day), add exponential backoff derived from existing fesa.* rows, and ship end-of-month operator email
+- [ ] **Phase 20.1: Retry policy correction** — Gap-closure of Phase 20 to match the 2026-05-20 client meeting + 2026-06-11 team refinements before deploy. Q1: default retry scope → rolling 30-day window (`last_n_days`/30). Q2: replace geometric backoff with fixed, document-type-differentiated retry intervals (payments 30 min, POs 240 min), both env-configurable. Q3 alerts + cross-system retry-detection query deferred to a later amendment (pending Santiago session).
 - [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
 <details>
@@ -97,6 +98,22 @@ See `.planning/MILESTONES.md` for accomplishments.
   4. Setting `RETRY_SCOPE=last_n_days` with `RETRY_LOOKBACK_DAYS=7` restricts the cron WHERE to the last 7 days; setting `RETRY_SCOPE=current_month` (default) restores month scope — both reflected in the next-tick log line `[CRON] retry-scope=... window=...`. Range guards in `src/config.js` reject `RETRY_BACKOFF_INITIAL_MIN`, `RETRY_BACKOFF_MULTIPLIER`, `RETRY_BACKOFF_MAX_MIN` outside sane bounds with a fail-fast `[CONFIG ERROR]`.
   5. On the last calendar day of the month after `EOM_NOTIFICATION_HOUR` (default 18), the first cron tick sends one HTML email per category (POs / pagos) to `MAILING_NOTICES` with CC `MAILING_CC` (not to `LICENSE_ADMIN_EMAIL`); subsequent ticks that same month are no-ops because `logs/eom-{YYYY-MM}-{pos|payments}.sent` exists. Setting `EOM_NOTIFICATION_ENABLED=false` skips the entire EOM gate before any computation.
 **Plans**: 9 plans across 3 waves. Progress: 1/9 complete (20-01 config foundation — config.retry + config.eom + 7 range guards).
+
+### Phase 20.1: Retry policy correction
+**Goal**: Correct Phase 20's retry policy so the (still-undeployed) behavior matches what was agreed with the client on 2026-05-20 and refined by the team on 2026-06-11 — before any deploy. **This SPEC scope = Q1 + Q2 only.** **Q1**: flip the default `RETRY_SCOPE` from `current_month` to `last_n_days` with `RETRY_LOOKBACK_DAYS=30` (rolling 30-day window, so POs authorized near month-end aren't orphaned at the calendar rollover). **Q2**: replace the geometric backoff (`computeBackoffWaitMinutes` in `src/utils/RetryPolicy.js`) with a **fixed, document-type-differentiated retry interval** — payments every `RETRY_INTERVAL_PAYMENT_MIN` (default 30, range [10,60]), POs every `RETRY_INTERVAL_PO_MIN` (default 240), both env-adjustable without redeploy — and remove `RETRY_BACKOFF_INITIAL_MIN/MULTIPLIER/MAX_MIN` + their range guards. No schema change; the cron SQL WHERE (scope + POSTED-dedupe) is unchanged — only the JS post-filter eligibility math changes in both controllers.
+**Amends / supersedes** (Phase 20 REQs written against the pre-meeting interpretation): RETRY-03 (default value flips to `last_n_days`/30), RETRY-04 (superseded — fixed interval, not backoff), RETRY-05 (superseded — interval env vars, not backoff env vars), RETRY-07 (diagnostic relabel backoff→retry-interval). Q1/Q4 build + POSTED-dedupe + OUTER APPLY stay as-is.
+**Depends on**: Phase 20 (built code; `master` ~45 commits ahead of `origin/master`, undeployed).
+**Deferred to a later amendment of this SPEC (NOT in this scope)**: Q3 differentiated alerts (immediate PO alert + biweekly payment report), the separate cross-system (Sage + portal) retry-detection query, manual sync button — pending the Santiago working session.
+**Worktree branch**: n/a (sequential on `master` checkout; `workflow.use_worktrees=false`).
+**Requirements**: RETRY-C1..C6 (defined in `20.1-SPEC.md`) — corrections that amend/supersede the Phase 20 REQs above.
+**Success Criteria** (what must be TRUE — detailed acceptance in `20.1-SPEC.md`):
+  1. With no env overrides, `config.retry.scope === 'last_n_days'` and `config.retry.lookbackDays === 30`, and `buildScopeWhere` emits the rolling-30-day fragment; `RETRY_SCOPE=current_month` still restores month scope (option retained — only the default changed).
+  2. `src/utils/RetryPolicy.js` exposes a fixed-interval helper (no `errorCount` input) that returns the payment interval for payments and the PO interval for POs; geometric `computeBackoffWaitMinutes` and the `RETRY_BACKOFF_*` env vars + guards no longer exist.
+  3. A payment with a prior ERROR row is retry-eligible once `(now − lastErrorAt) ≥ RETRY_INTERVAL_PAYMENT_MIN`; a PO once `≥ RETRY_INTERVAL_PO_MIN` — proven by the rewritten `RetryPolicy.test.js` + both `*.cron-where.test.js` suites (no geometric-curve assertions remain).
+  4. `src/config.js` range-guards reject `RETRY_INTERVAL_PAYMENT_MIN` outside [10,60] and `RETRY_INTERVAL_PO_MIN` outside [30,1440] with fail-fast `[CONFIG ERROR]`.
+  5. `node src/scripts/po-cron-diagnostic.js <poNumber>` section 6 reports `lastErrorAt`, `retryIntervalMin`, `nextEligibleAt` (no `backoffWaitMin`); `[BACKOFF*]` log labels renamed to `[RETRY*]`.
+  6. `npm test` baseline holds (~7 pre-existing failures) with no NEW failures from the correction.
+**Plans**: TBD (run /gsd-plan-phase 20.1 after discuss)
 
 ### Phase 21: Partial payment completion policy
 **Goal**: Decide and implement what happens when a multi-CFDI payment fails partway through upload, so operators stop seeing inconsistent partial state in the portal vs. the control table. Introduce `PARTIAL_PAYMENT_POLICY` env with three valid values — `atomic` (mark entire payment ERROR + surface to operator), `resume` (retry only the unfinished CFDIs), `idempotent` (re-POST the whole payment relying on portal dedupe by `external_id`). The default is set in `.env.example` based on the engineering verification of portal dedupe semantics in the sandbox (PARTIAL-02), which is part of the phase and blocks `/gsd-plan-phase`.
