@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.1 context gathered
-last_updated: "2026-07-20T20:41:22.652Z"
-last_activity: 2026-07-20 -- Phase 20.1 planning complete
+stopped_at: Phase 20.1 amended (RETRY-C7 CLOSED dedupe) — ready to execute
+last_updated: "2026-07-22"
+last_activity: 2026-07-22 -- Phase 20.1 amended with RETRY-C7 after Santiago session; ready to /gsd-execute-phase 20.1
 progress:
   total_phases: 3
   completed_phases: 1
@@ -30,7 +30,19 @@ Plan: 20-09 complete (9 of 9)
 Status: Ready to execute
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: Phase 20 verification, then Phase 21
-Last activity: 2026-07-20 -- Phase 20.1 planning complete
+Last activity: 2026-07-22 -- Phase 20.1 amended with RETRY-C7 (CLOSED dedupe) after Santiago session; ready to execute
+
+## Phase 20.1 — 2026-07-22 Santiago session + RETRY-C7 amendment
+
+**Session (2026-07-22, Santiago Peláez):** closed the deferred pieces of Phase 20.1. Transcript: `data/Revision punto sageconnect - 2026_07_22 09_59 CST - Notas de Gemini.md`. Outcomes:
+
+- **Confirmed, no code change:** Q1 rolling-30-day scope; Q2 OC interval 4 h (240 min) as env var; RYASA exclusion stays as-is; LUBRIOR (PO0084794, PO0083854) works correctly (client email was unnecessary); "Provider with external ID does not exist" was a data-entry error (provider code entered instead of external ID).
+- **New code change — RETRY-C7 (folded into 20.1):** the OC `NOT EXISTS` dedupe excluded only `POSTED`; a closed OC's `fesaOCFocaltec` row transitions `POSTED → CLOSED` (via `PortalOC_Closer.js`), so the rolling-30-day scope re-selects it → 409 → ERROR. Fix: `status = 'POSTED'` → `status IN ('CLOSED','POSTED')` in `PortalOC_Creator.js` (cron) + `retry-month-pos.js` (preview). Payments and the `background.js` EOM query are unaffected. SPEC + plans 20.1-02 / 20.1-03 amended 2026-07-22 (SPEC Amendment log has the full rationale).
+- **Still deferred (decisions captured, not built):** (1) Q3 consolidated per-batch failure email incl. control-table `responseAPI` as the error description; (2) cross-system detection query — pending a read-only review of Fernanda's branches (`feat/oc-updater-and-handler`, `merge/oc-handler`) where a 409/portal-existence validation may already exist.
+- **Separate work streams (not 20.1):** manual sync button (own branch), publish localhost via Bastion (Jorge/Alan IT), Fractal article-load query (send to Santiago).
+- **Deploy note:** Capstone month-close ≈ day 25/28 → 3/4 — no deploys/tests in that window.
+
+**Status:** Phase 20.1 SPEC + 3 plans amended for RETRY-C7. Ready for `/gsd-execute-phase 20.1` (launch the session with `SAGECONNECT_HOOKS_BYPASS=1` for the `src/config.js` edit). Nothing executed yet (0 SUMMARY.md in `20.1-retry-policy-correction`).
 
 ## Deferred Items
 
