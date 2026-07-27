@@ -18,7 +18,7 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
-const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -183,7 +183,7 @@ where
     SELECT 1 FROM fesa.dbo.fesaOCFocaltec
     WHERE ocSage = A.PONUMBER
       AND idDatabase = '${databases[index]}'
-      AND status = 'POSTED'
+      AND status IN ('CLOSED', 'POSTED')
   )
   ${skipCondition}
 order by A.PONUMBER, B.PORLREV;
@@ -201,32 +201,37 @@ order by A.PONUMBER, B.PORLREV;
     return;
   }
 
-  // RETRY-04 (D-01, D-13): JS post-filter para backoff exponencial.
+  // RETRY-C4 (D-01, D-04, D-05): JS post-filter de reintentos con intervalo fijo.
   // El OUTER APPLY ef trajo errorCount + lastErrorAt por fila; se difieren las filas
-  // que aún están dentro de la ventana de backoff.
+  // cuyo último ERROR aún no cumple el intervalo de la OC (config.retry.interval.po).
+  // La regla de elegibilidad vive completa en computeRetryEligibility — incluida la de
+  // "primer intento" (sin lastErrorAt => elegible ya): no se replica aquí para que no
+  // pueda divergir entre los dos controladores y el diagnóstico. errorCount ya no
+  // interviene en el cálculo (D-04); sobrevive solo como contexto de operador (attempts=).
   const candidatesCount = recordset.length;
   const now = new Date();
+  const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
   const deferred = [];
   recordset = recordset.filter((row) => {
-    if (!row.errorCount || row.errorCount <= 0) return true;
-    const waitMin = computeBackoffWaitMinutes(row.errorCount, config.retry.backoff);
-    const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
-    if (!lastError) return true;
-    const nextEligibleAt = new Date(lastError.getTime() + waitMin * 60000);
-    if (nextEligibleAt > now) {
-      deferred.push({ id: row.EXTERNAL_ID, attempts: row.errorCount, nextEligibleAt });
+    const { eligible, nextEligibleAt } = computeRetryEligibility({
+      lastErrorAt: row.lastErrorAt,
+      intervalMinutes: intervalMin,
+      now,
+    });
+    if (!eligible) {
+      deferred.push({ id: row.EXTERNAL_ID, attempts: row.errorCount || 0, nextEligibleAt });
       return false;
     }
     return true;
   });
-  // Por fila diferida: entrada [BACKOFF-DEFER] (operadores buscan un PO específico)
+  // Por fila diferida: entrada [RETRY-DEFER] (operadores buscan un PO específico)
   deferred.forEach((d) => {
     logGenerator(logFileName, 'info',
-      `[BACKOFF-DEFER] PO ${d.id} tenant=${databases[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+      `[RETRY-DEFER] PO ${d.id} tenant=${databases[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
   });
-  // Resumen [BACKOFF] por tick (operadores buscan la métrica agregada)
+  // Resumen [RETRY] por tick (operadores buscan la métrica agregada)
   logGenerator(logFileName, 'info',
-    `[BACKOFF] tenant=${databases[index]} candidates=${candidatesCount} deferred=${deferred.length} processing=${recordset.length}`);
+    `[RETRY] tenant=${databases[index]} candidates=${candidatesCount} deferred=${deferred.length} processing=${recordset.length}`);
   // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
   const retryWindow = config.retry.scope === 'last_n_days'
     ? `last ${config.retry.lookbackDays} days`
