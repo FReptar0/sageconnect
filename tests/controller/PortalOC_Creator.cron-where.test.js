@@ -68,6 +68,12 @@ const PO_INTERVAL_MIN = 240;
 describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        // clearAllMocks() clears call records but NOT queued mockResolvedValue(Once)
+        // implementations. A test whose stubs the controller does not fully consume would
+        // leak the remainder into the next test, which then silently asserts against the
+        // wrong recordset. mockReset() drains the queue so each case is self-contained.
+        mockRunQuery.mockReset();
+        mockPortalPost.mockReset();
     });
 
     test('POSTED/CLOSED rows filtered by WHERE — recordset empty, no portal POST', async () => {
