@@ -193,18 +193,20 @@ const config = {
     },
 
     retry: {
-        // RETRY-03 (D-customer-confirmation): cron scope for which authorization dates the WHERE picks up.
-        // Default 'current_month' (customer-locked policy 2026-05-15). Valid: 'current_month' | 'last_n_days'.
-        scope: process.env.RETRY_SCOPE || 'current_month',
-        // RETRY-03 (D-customer-confirmation): lookback window when scope=last_n_days. Default 30. Range [1, 365].
+        // RETRY-C1 (D-07): cron scope for which authorization dates the WHERE picks up.
+        // Default 'last_n_days' which, with lookbackDays=30, is the rolling 30-day window the team
+        // settled on 2026-06-11 (refining the 2026-05-20 client agreement; supersedes the earlier
+        // 'current_month' reading). Valid: 'current_month' | 'last_n_days' -- both still selectable.
+        scope: process.env.RETRY_SCOPE || 'last_n_days',
+        // RETRY-C1 (D-07): lookback window when scope=last_n_days. Default 30. Range [1, 365].
         lookbackDays: parseEnvNumber(process.env.RETRY_LOOKBACK_DAYS, (v) => parseInt(v, 10), 30),
-        backoff: {
-            // RETRY-05 (D-customer-confirmation): initial backoff in minutes. Default 15. Range [1, 60].
-            initialMin: parseEnvNumber(process.env.RETRY_BACKOFF_INITIAL_MIN, (v) => parseInt(v, 10), 15),
-            // RETRY-05 (D-customer-confirmation): backoff multiplier per attempt. Default 2 (curva 15→30→60→…→1440). Range [1.0, 10.0]. parseFloat acepta decimales.
-            multiplier: parseEnvNumber(process.env.RETRY_BACKOFF_MULTIPLIER, parseFloat, 2),
-            // RETRY-05 (D-customer-confirmation): max backoff in minutes (caps the geometric growth). Default 1440 (24h). Range [60, 10080] (1h, 1w).
-            maxMin: parseEnvNumber(process.env.RETRY_BACKOFF_MAX_MIN, (v) => parseInt(v, 10), 1440),
+        // RETRY-C2/C3 (D-02): FIXED retry interval per document type, in minutes -- no longer a
+        // geometric curve, so the wait never grows with the attempt count.
+        interval: {
+            // Payments: default 30 min (client, 2026-05-20). Range [10, 60].
+            payment: parseEnvNumber(process.env.RETRY_INTERVAL_PAYMENT_MIN, (v) => parseInt(v, 10), 30),
+            // POs: default 240 min = 4h (team, 2026-06-11). Range [30, 1440].
+            po: parseEnvNumber(process.env.RETRY_INTERVAL_PO_MIN, (v) => parseInt(v, 10), 240),
         },
     },
 
@@ -253,22 +255,30 @@ if (!Number.isInteger(config.retry.lookbackDays) || config.retry.lookbackDays < 
     process.exit(1);
 }
 
-// RETRY-05: initialMin in [1, 60].
-if (!Number.isInteger(config.retry.backoff.initialMin) || config.retry.backoff.initialMin < 1 || config.retry.backoff.initialMin > 60) {
-    console.error('[CONFIG ERROR] RETRY_BACKOFF_INITIAL_MIN must be integer in [1, 60]. Got: ' + config.retry.backoff.initialMin);
+// RETRY-C3: payment retry interval in [10, 60]. Below 10 min a failing payment would be retried
+// on almost every 15-min tick; above 60 min contradicts the 2026-05-20 client agreement.
+if (!Number.isInteger(config.retry.interval.payment) || config.retry.interval.payment < 10 || config.retry.interval.payment > 60) {
+    console.error('[CONFIG ERROR] RETRY_INTERVAL_PAYMENT_MIN must be integer in [10, 60]. Got: ' + config.retry.interval.payment);
     process.exit(1);
 }
 
-// RETRY-05: multiplier in [1.0, 10.0].
-if (typeof config.retry.backoff.multiplier !== 'number' || !Number.isFinite(config.retry.backoff.multiplier) || config.retry.backoff.multiplier < 1.0 || config.retry.backoff.multiplier > 10.0) {
-    console.error('[CONFIG ERROR] RETRY_BACKOFF_MULTIPLIER must be number in [1.0, 10.0]. Got: ' + config.retry.backoff.multiplier);
+// RETRY-C3: PO retry interval in [30, 1440] (30 min .. 24 h). Default 240 = 4 h (team, 2026-06-11).
+if (!Number.isInteger(config.retry.interval.po) || config.retry.interval.po < 30 || config.retry.interval.po > 1440) {
+    console.error('[CONFIG ERROR] RETRY_INTERVAL_PO_MIN must be integer in [30, 1440]. Got: ' + config.retry.interval.po);
     process.exit(1);
 }
 
-// RETRY-05: maxMin in [60, 10080].
-if (!Number.isInteger(config.retry.backoff.maxMin) || config.retry.backoff.maxMin < 60 || config.retry.backoff.maxMin > 10080) {
-    console.error('[CONFIG ERROR] RETRY_BACKOFF_MAX_MIN must be integer in [60, 10080]. Got: ' + config.retry.backoff.maxMin);
-    process.exit(1);
+// RETRY-C3 (D-03): the three RETRY_BACKOFF_* vars were removed together with the geometric curve.
+// A leftover value in a deployed .env is INERT -- nothing reads it -- so warn the operator and
+// keep booting. Deliberately NOT fail-fast: this is an always-on service handling production
+// payment data, and refusing to start over a removed OPTIONAL var is the exact outage shape that
+// hurt the customer at the April month-end close. Fail-fast stays reserved for invalid REQUIRED
+// config (see validate() above) and for out-of-range values that would corrupt timing.
+const OBSOLETE_RETRY_VARS = ['RETRY_BACKOFF_INITIAL_MIN', 'RETRY_BACKOFF_MULTIPLIER', 'RETRY_BACKOFF_MAX_MIN'];
+for (const varName of OBSOLETE_RETRY_VARS) {
+    if ((process.env[varName] || '').trim() !== '') {
+        console.warn('[CONFIG WARN] ' + varName + ' is obsolete and ignored — retry timing now uses RETRY_INTERVAL_PAYMENT_MIN / RETRY_INTERVAL_PO_MIN.');
+    }
 }
 
 // EOM-01: hour in [0, 23].
