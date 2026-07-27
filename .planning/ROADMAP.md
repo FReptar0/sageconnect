@@ -127,12 +127,19 @@ See `.planning/MILESTONES.md` for accomplishments.
 **Depends on**: Phase 20.1 (executed on `feat/reintentos`, 15 commits, unpushed).
 **Explicitly deferred (NOT in this scope)**: **CR-04** — `lastUpdate` and `createdAt` are both typed `date`, so no time-of-day exists for OC errors and the 240-min PO interval cannot work without an `ALTER TABLE`; deferred pending measurement of whether RETRY-C7 alone stops the portal hammering. **CR-03** — nothing writes `status='ERROR'` for payments and the table has no column to hold an error time or message; needs a design decision, complicated by the payment dedupe having no status filter. **CANCELLED (18) / OPEN (5)** rows that the RETRY-C7 dedupe does not cover.
 **Worktree branch**: n/a (sequential on `feat/reintentos`; `workflow.use_worktrees=false`).
-**Requirements**: defined in `20.2-SPEC.md`.
+**Requirements**: RETRY-S1, RETRY-S2, RETRY-S3, RETRY-S4, RETRY-S5 (defined in `20.2-SPEC.md`).
 **Success Criteria** (what must be TRUE — detailed acceptance in `20.2-SPEC.md`):
   1. No SQL emitted by `src/` references a column absent from the real schema — in particular, nothing selects `lastUpdate` or `responseAPI` from `fesa.dbo.fesaPagosFocaltec`.
   2. The payment cron query executes without error and processes the payments it finds, instead of failing into the empty-recordset fallback.
   3. The retry elapsed-time comparison no longer mixes the Node clock with a SQL Server timestamp, so a `-360` server offset cannot make every row look eligible.
   4. `npm test` baseline holds with no NEW failures.
+**Plans**: 6 plans in 4 waves
+- [ ] 20.2-01-PLAN.md (wave 1) — `buildErrorStatsApply` gains a required closed-set `timestampColumn` (`'lastUpdate'` | `'none'`, throws otherwise); payments branch emits `CAST(NULL AS datetime) AS lastErrorAt`, OC branch byte-identical; all 7 call sites (5 production + 2 test) audited [RETRY-S1]
+- [ ] 20.2-05-PLAN.md (wave 1) — EOM payments query drops the `responseAPI` sub-select and `ORDER BY lastUpdate`; payments email table drops the "Último error" column and gains one honest footnote; POs query, table and snapshot fixture untouched [RETRY-S3]
+- [ ] 20.2-02-PLAN.md (wave 2) — `computeRetryEligibility` fail-open guarantee extended to `now` (H-1: `null`/`''`/`0` currently defer every row forever via the Unix epoch); clock-basis JSDoc rewritten with the D-04 `Z`-suffix operator warning; skew-resistant helper test [RETRY-S4]
+- [ ] 20.2-03-PLAN.md (wave 3) — both cron controllers project `GETDATE()` as `dbNow` and feed it to the eligibility helper; `[RETRY-CLOCK]` warn when absent; cron-where fixtures rederived from a `dbNow` 360 min behind the process clock; records hazard H-4 as D-ITEM-03 (developer decision 2026-07-27: defer — `PortalOC_Creator.js` never projects `ef.errorCount`/`ef.lastErrorAt`, so its interval is inert; to be fixed together with CR-04's `ALTER TABLE`) [RETRY-S2, RETRY-S4]
+- [ ] 20.2-04-PLAN.md (wave 3) — `dbNow` in all three operator tools; in `po-cron-diagnostic.js` it lands in block r6 (the query that feeds eligibility), NOT block r4; `retry-month-pos.js` keeps it out of the `GROUP BY` [RETRY-S4]
+- [ ] 20.2-06-PLAN.md (wave 4) — repo-wide statement-scoped schema guard (`tests/schema-guard.test.js`, self-tested against the original defect shape) + RETRY-S5 baseline verification and untouchables audit [RETRY-S1, RETRY-S5]
 
 ### Phase 21: Partial payment completion policy
 **Goal**: Decide and implement what happens when a multi-CFDI payment fails partway through upload, so operators stop seeing inconsistent partial state in the portal vs. the control table. Introduce `PARTIAL_PAYMENT_POLICY` env with three valid values — `atomic` (mark entire payment ERROR + surface to operator), `resume` (retry only the unfinished CFDIs), `idempotent` (re-POST the whole payment relying on portal dedupe by `external_id`). The default is set in `.env.example` based on the engineering verification of portal dedupe semantics in the sandbox (PARTIAL-02), which is part of the phase and blocks `/gsd-plan-phase`.
