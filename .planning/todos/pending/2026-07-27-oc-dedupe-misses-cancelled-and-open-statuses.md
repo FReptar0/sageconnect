@@ -37,8 +37,50 @@ the same failure shape RETRY-C7 exists to prevent.
 match a CANCELLED row, so the behavior is identical before and after RETRY-C7. It is a
 pre-existing gap that RETRY-C7 simply did not widen far enough.
 
-**`OPEN` semantics are unknown** — the status appears nowhere in `src/`. Do not assume it should
-be excluded; ask what writes it and what it means before touching the predicate.
+## `OPEN` semantics — RESOLVED 2026-07-27
+
+Answered by Yahir and confirmed in code: **`OPEN` means the OC is open *in the portal*, i.e. it
+already exists there.** It must therefore be excluded from the dedupe — re-uploading gives a 409,
+the exact loop RETRY-C7 exists to stop.
+
+Proof: `src/controller/PortalOC_StatusUpdater.js:117-124` (the `PUT /api/pos/status` endpoint
+added in v2.2, driven from `pos.html`) writes the portal status straight into the control table
+with `WHERE ... AND idFocaltec IS NOT NULL` — it only touches rows for OCs that already carry a
+portal ID. An `OPEN` row is therefore, by construction, an OC that reached the portal and whose
+status an operator set back to OPEN from the dashboard.
+
+## Root cause — the column mixes two vocabularies
+
+This is why the dedupe has now been wrong twice, and it matters more than the individual fix:
+
+| Vocabulary | Written by | Values |
+|---|---|---|
+| Integration state | the cron uploader (`PortalOC_Creator`) | `POSTED`, `ERROR` |
+| Portal state | `PortalOC_StatusUpdater`, `PortalOC_Closer`, `PortalOC_Canceller` | `OPEN`, `CLOSED`, `CANCELLED`, `GENERATED` |
+
+The portal enum is declared in four places: `PortalOC_StatusUpdater.js:16`,
+`PortalOC_StatusService.js:25`, `src/models/PurchaseOrder.js:91`, `src/routes/schemas/po-schemas.js:95`.
+
+Enumerating `IN ('CLOSED','POSTED')` lists *instances* of the intent instead of expressing it.
+The actual intent is singular: **"do not re-upload an OC that already reached the portal."** The
+only status meaning "it did not reach the portal" is `ERROR`; every other value means it did.
+
+**Recommended predicate: `AND status <> 'ERROR'`** — covers today's 23 orphaned rows plus
+`GENERATED` (0 rows today, but a valid portal status that will appear eventually), and cannot
+drift again as the portal vocabulary grows.
+
+**Honest trade-off to weigh before applying it:** if a status ever appears that genuinely means
+"did not reach the portal", `<> 'ERROR'` would wrongly exclude it and that OC would never upload
+— a silent failure, which is this codebase's documented enemy (CLAUDE.md §3). An explicit `IN`
+list fails the other way: a noisy, visible 409. The list has nonetheless proven twice that nobody
+keeps it complete, which is why the recommendation still stands.
+
+## Payments — not affected
+
+`fesa.dbo.fesaPagosFocaltec` uses an entirely different vocabulary (`PAID 2678`, `PARTIAL 27`,
+`SYNCED 3`, `REVERTED 2`) with no `OPEN`/`CLOSED`/`CANCELLED` at all, and its dedupe
+(`P.DOCNBR NOT IN (SELECT NoPagoSage …)`) has no status filter, so this class of problem does not
+apply there. No change needed on the payment side.
 
 ## Why this has no home yet
 
@@ -49,11 +91,11 @@ not lost.
 
 ## Solution
 
-1. **Ask first**: what writes `status = 'OPEN'`, and does an OPEN row mean the OC already exists
-   in the portal? The answer decides whether OPEN belongs in the dedupe list at all.
-2. If CANCELLED (and possibly OPEN) should be excluded, extend the predicate in **both** places
-   that carry RETRY-C7 — `PortalOC_Creator.js:186` (the cron) and `retry-month-pos.js:109` (the
-   dry-run preview) — keeping them identical so preview/apply parity holds.
+1. ~~Ask what `OPEN` means~~ — **done, see above.** Both `CANCELLED` and `OPEN` mean the OC
+   reached the portal and must be excluded.
+2. Apply `AND status <> 'ERROR'` in **both** places that carry RETRY-C7 —
+   `PortalOC_Creator.js:186` (the cron) and `retry-month-pos.js:109` (the dry-run preview) —
+   keeping them identical so preview/apply parity holds.
 3. Consider whether `po-cron-diagnostic.js:181` should mirror it too — see `D-ITEM-01` in
    `.planning/phases/20.1-retry-policy-correction/deferred-items.md`, which is the same
    replica-drift problem for the CLOSED case.
