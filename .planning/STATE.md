@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: verifying
-stopped_at: Completed 20.1-03-PLAN.md — phase 20.1 fully executed (3/3 plans); next is /gsd-verify-work 20.1
-last_updated: "2026-07-27T17:13:35.229Z"
+stopped_at: Phase 20.2 context gathered
+last_updated: "2026-07-27T20:28:42.163Z"
 last_activity: 2026-07-27
 progress:
-  total_phases: 3
-  completed_phases: 1
+  total_phases: 4
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 12
+  completed_plans: 13
   percent: 100
 ---
 
@@ -98,8 +98,8 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-07-27T17:02:14.671Z
+Last session: 2026-07-27T20:28:42.156Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
-Stopped at: Phase 20.1 fully executed — 20.1-03 (operator-script caller-audit tail) complete, `npm test` back to the 6-suite / 7-test pre-existing baseline
+Stopped at: Phase 20.2 context gathered
 Resume next: `/gsd-verify-work 20.1`. Two items are queued for it: (a) the milestone `REQUIREMENTS.md` reconciliation flagged by 20.1-01 (RETRY-04 / RETRY-05 describe the geometric curve and backoff env vars this phase deliberately removed, and `RETRY-C*` IDs are not tracked there); (b) the out-of-scope RETRY-C7 third site logged in `.planning/phases/20.1-retry-policy-correction/deferred-items.md` (`po-cron-diagnostic.js` section-4 cron replica still dedupes on POSTED only). Post-deploy operator checks for the phase: run `node src/scripts/po-cron-diagnostic.js <PO>` and both `retry-month-*` dry-runs on `ZCL-RDS-02` — there is no local Sage DB, so live script output could not be observed here.
 Earlier context (Phase 20 execution notes): re-run `/gsd-execute-phase 20` in a session launched with `SAGECONNECT_HOOKS_BYPASS=1` exported. Nothing has executed yet (0 SUMMARY.md files) — execution will start fresh from Wave 1. Two hook issues were handled on 2026-05-15: (1) `pre-edit-gsd-guard.sh` had a real bug — its active-phase detection used literal filenames (`SPEC.md`) and missed numbered artifacts (`20-SPEC.md`); fixed in commit `0ceb4c4` to glob-match. (2) `pre-edit-critical.sh` is friction-by-design (guards 13 load-bearing files); Phase 20 edits 2 of them (`src/config.js` via 20-01, `src/background.js` via 20-07) — user chose to clear it via session-level `SAGECONNECT_HOOKS_BYPASS=1` (covers `pre-edit-critical.sh` + `pre-write-always-on.sh`; `pre-edit-gsd-guard.sh` now passes on its own). `workflow.use_worktrees` was set to `false` because the Agent worktree isolation forked stale at `origin/master` (11 commits behind) and could not see the plan files — the restarted run executes sequentially on the main checkout. To restore worktree parallelism later: push `master` to origin so worktrees fork current, then `gsd-sdk query config-set workflow.use_worktrees true`.
