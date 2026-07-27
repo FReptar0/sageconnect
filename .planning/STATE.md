@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.1 amended (RETRY-C7 CLOSED dedupe) — ready to execute
-last_updated: "2026-07-22"
-last_activity: 2026-07-22 -- Phase 20.1 amended with RETRY-C7 after Santiago session; ready to /gsd-execute-phase 20.1
+stopped_at: Phase 20.1 plan 01 complete (wave 1)
+last_updated: "2026-07-27T16:47:54.607Z"
+last_activity: 2026-07-27 -- Phase 20.1 plan 01 executed (wave 1)
 progress:
   total_phases: 3
   completed_phases: 1
@@ -21,16 +21,25 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** v2.4 Retry policies — Phases 20 (cron retry + EOM notification) + 21 (partial payment policy) closing GH #21, #22, #23. Roadmap drafted; ready for `/gsd-spec-phase 20`.
+**Current focus:** Phase 20.1 — retry-policy-correction
 
 ## Current Position
 
-Phase: 20 — Cron retry policy + EOM notification
-Plan: 20-09 complete (9 of 9)
-Status: Ready to execute
+Phase: 20.1 (retry-policy-correction) — EXECUTING
+Plan: 2 of 3
+Status: Plan 20.1-01 (wave 1) complete — fixed-interval helpers + config landed
 Total phases: 21 (Phases 20-21 active this milestone)
-Next: Phase 20 verification, then Phase 21
-Last activity: 2026-07-22 -- Phase 20.1 amended with RETRY-C7 (CLOSED dedupe) after Santiago session; ready to execute
+Next: plans 20.1-02 (controllers + cron-where suites) and 20.1-03 (diagnostic + retry-month scripts) — wave 2 must land before the suite is green again
+Last activity: 2026-07-27 -- Phase 20.1 plan 01 executed (3 commits: 0f963d2, 1b4f269, 51f8325)
+
+## Decisions
+
+Decisions recorded during v2.4 execution (milestone-level history lives in `.planning/PROJECT.md`).
+
+- **20.1-01:** `config.retry.interval.{payment, po}` (30 / 240 min) replaces `config.retry.backoff` — the retry wait is fixed per document type and no longer grows with the attempt count. `getRetryIntervalMinutes` has no error-count parameter at all, so no call site can reintroduce the curve.
+- **20.1-01:** Leftover `RETRY_BACKOFF_*` env vars are inert and emit one non-fatal `[CONFIG WARN]` each — never fail-fast on a removed OPTIONAL var. Refusing to boot on this always-on payment service is the April month-end outage shape.
+- **20.1-01:** `computeRetryEligibility` fails OPEN (eligible now) on an unusable `intervalMinutes` or unparseable `lastErrorAt`. An over-eager retry is a portal 409 at worst; a permanently deferred row is invisible and unbounded.
+- **20.1-01 (expected intermediate state):** Wave 1 removes `computeBackoffWaitMinutes` while its five callers still import it, so four suites (`PortalOC_Creator.cron-where`, `PortalPaymentController.cron-where`, `retry-month-pos`, `retry-month-payments`) are red by construction until wave 2. Do **not** hotfix them outside plans 20.1-02 / 20.1-03.
 
 ## Phase 20.1 — 2026-07-22 Santiago session + RETRY-C7 amendment
 
@@ -44,7 +53,7 @@ Last activity: 2026-07-22 -- Phase 20.1 amended with RETRY-C7 (CLOSED dedupe) af
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Phase 20.1 SPEC + 3 plans amended for RETRY-C7. Ready for `/gsd-execute-phase 20.1` (launch the session with `SAGECONNECT_HOOKS_BYPASS=1` for the `src/config.js` edit). Q3 + the 409 detection query still need spec/plan + build before the deploy (409 portal GET confirmed via the repo swagger — no external dependency). Nothing executed yet (0 SUMMARY.md in `20.1-retry-policy-correction`).
+**Status:** Executing — plan 20.1-01 (wave 1) complete; plans 20.1-02 / 20.1-03 (wave 2) pending.
 
 ## Deferred Items
 
@@ -80,7 +89,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-07-20T19:34:49.143Z
+Last session: 2026-07-27T16:47:27.860Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
 Stopped at: Phase 20.1 context gathered
 Resume next: continue Phase 20 remaining plans, or re-run `/gsd-execute-phase 20` in a session launched with `SAGECONNECT_HOOKS_BYPASS=1` exported. Nothing has executed yet (0 SUMMARY.md files) — execution will start fresh from Wave 1. Two hook issues were handled on 2026-05-15: (1) `pre-edit-gsd-guard.sh` had a real bug — its active-phase detection used literal filenames (`SPEC.md`) and missed numbered artifacts (`20-SPEC.md`); fixed in commit `0ceb4c4` to glob-match. (2) `pre-edit-critical.sh` is friction-by-design (guards 13 load-bearing files); Phase 20 edits 2 of them (`src/config.js` via 20-01, `src/background.js` via 20-07) — user chose to clear it via session-level `SAGECONNECT_HOOKS_BYPASS=1` (covers `pre-edit-critical.sh` + `pre-write-always-on.sh`; `pre-edit-gsd-guard.sh` now passes on its own). `workflow.use_worktrees` was set to `false` because the Agent worktree isolation forked stale at `origin/master` (11 commits behind) and could not see the plan files — the restarted run executes sequentially on the main checkout. To restore worktree parallelism later: push `master` to origin so worktrees fork current, then `gsd-sdk query config-set workflow.use_worktrees true`.
