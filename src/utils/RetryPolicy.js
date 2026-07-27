@@ -1,51 +1,90 @@
-// RETRY-04 / RETRY-05 / D-01 / D-02 / D-05: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for backoff math + scope-WHERE SQL + OUTER APPLY error-stats fragment.
+// RETRY-C2 / RETRY-C4 / D-01 / D-02 / D-05: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for the fixed retry interval + eligibility rule + scope-WHERE SQL + OUTER APPLY error-stats fragment.
 
-// Internal defaults — used only when a backoffConfig member is missing or invalid.
-// The authoritative values live in config.retry.backoff.* (range-guarded at boot by 20-01);
-// these mirror the customer-confirmed curve 15→30→60→…→1440 and exist purely as a
-// defensive fallback so a malformed caller-supplied config never yields NaN/Infinity.
-const DEFAULT_INITIAL_MIN = 15;
-const DEFAULT_MULTIPLIER = 2;
-const DEFAULT_MAX_MIN = 1440;
+// Minutes → milliseconds. The interval values are minutes everywhere (config, logs, operator
+// docs); only this module converts, so no call site has to remember the factor.
+const MS_PER_MINUTE = 60000;
 
 /**
- * Compute the backoff wait (in minutes) before a failed row becomes eligible for retry.
+ * Resolve the fixed retry interval (in minutes) for a document type.
  *
- * Geometric backoff: wait = initialMin * multiplier^(errorCount - 1), capped at maxMin.
- * With the customer-confirmed defaults (initialMin=15, multiplier=2, maxMin=1440) the
- * canonical curve is: 0→0, 1→15, 2→30, 3→60, 4→120, 5→240, 6→480, 7→960, 8→1440,
- * and 1440 thereafter (capped at the 24h ceiling).
+ * The wait between retries is FIXED per document type — payments 30 min (client, 2026-05-20),
+ * POs 240 min (team, 2026-06-11) — and deliberately does NOT grow with the attempt count.
+ * There is no error-count parameter: a document that failed eight times waits exactly as long
+ * as one that failed once. `errorCount` survives only as operator log context (`attempts=`).
  *
- * Defensive: a non-finite/negative `errorCount` returns 0 (treated as "never failed",
- * eligible immediately) — prevents `wait=Infinity` from poisoning the JS post-filter loop.
- * Missing/invalid `backoffConfig` members fall back to the module defaults; the function
- * never throws — callers interpolate the result into timing math, not SQL.
+ * The authoritative values live in `config.retry.interval.{payment, po}`, range-guarded at boot
+ * ([10,60] / [30,1440]) — so callers pass `config.retry.interval` straight in.
  *
- * @param {number} errorCount - Count of prior ERROR rows for this PO/payment.
- * @param {{initialMin:number, multiplier:number, maxMin:number}} backoffConfig - Backoff tuning (typically config.retry.backoff).
- * @returns {number} Minutes to wait. 0 for errorCount=0. Example curve: 1→15, 2→30, 3→60, …, 8→1440.
+ * An unknown `docType` throws: the two call sites are hardcoded ('payment' in the payment
+ * controller, 'po' in the PO controller/diagnostic), so a third value is a programmer error
+ * worth surfacing loudly — same posture as buildScopeWhere's invalid-scope throw.
+ *
+ * @param {{payment:number, po:number}} intervalConfig - Interval tuning (typically config.retry.interval).
+ * @param {'payment'|'po'} docType - Which document type is being retried.
+ * @returns {number} Fixed interval in minutes.
+ * @throws {Error} If `docType` is neither 'payment' nor 'po'.
  */
-function computeBackoffWaitMinutes(errorCount, backoffConfig) {
-    if (typeof errorCount !== 'number' || !Number.isFinite(errorCount) || errorCount < 0) {
-        return 0;
-    }
-    if (errorCount === 0) {
-        return 0;
+function getRetryIntervalMinutes(intervalConfig, docType) {
+    const cfg = intervalConfig || {};
+
+    if (docType === 'payment') {
+        return cfg.payment;
     }
 
-    const cfg = backoffConfig || {};
-    const initialMin = (typeof cfg.initialMin === 'number' && Number.isFinite(cfg.initialMin) && cfg.initialMin > 0)
-        ? cfg.initialMin
-        : DEFAULT_INITIAL_MIN;
-    const multiplier = (typeof cfg.multiplier === 'number' && Number.isFinite(cfg.multiplier) && cfg.multiplier >= 1)
-        ? cfg.multiplier
-        : DEFAULT_MULTIPLIER;
-    const maxMin = (typeof cfg.maxMin === 'number' && Number.isFinite(cfg.maxMin) && cfg.maxMin > 0)
-        ? cfg.maxMin
-        : DEFAULT_MAX_MIN;
+    if (docType === 'po') {
+        return cfg.po;
+    }
 
-    const wait = initialMin * Math.pow(multiplier, errorCount - 1);
-    return Math.min(wait, maxMin);
+    throw new Error('getRetryIntervalMinutes: invalid docType ' + docType);
+}
+
+/**
+ * Decide whether a candidate row may be (re)uploaded now, and when it next becomes eligible.
+ *
+ * The whole retry-eligibility rule lives here so it cannot drift between the two controllers
+ * and po-cron-diagnostic.js (D-01):
+ *   - No `lastErrorAt` (no prior ERROR row) → eligible IMMEDIATELY. A first upload is not a
+ *     retry; deferring it would stall normal traffic, which is the highest-blast-radius
+ *     regression in this policy (RETRY-C4).
+ *   - With `lastErrorAt` → eligible once `now - lastErrorAt >= intervalMinutes`. The comparison
+ *     is INCLUSIVE (`>=`): a row that failed exactly one interval ago goes in this tick, not the
+ *     next one — with a 15-min cron cadence an exclusive test would silently add a whole tick.
+ *
+ * Fails OPEN, never throws: an unusable `intervalMinutes` (missing/NaN/negative) or an
+ * unparseable `lastErrorAt` yields "eligible now" rather than a permanently deferred row.
+ * Retrying too eagerly is a portal 409 at worst; a stuck row is invisible and unbounded.
+ *
+ * Clock basis: `now` is the Node process clock while `lastErrorAt` comes from SQL Server
+ * (`MAX(lastUpdate)`). Any skew between the two hosts shifts the boundary by that skew —
+ * a pre-existing Phase 20 assumption, explicitly out of scope for 20.1.
+ *
+ * @param {object} params
+ * @param {Date|string|null} [params.lastErrorAt] - Most recent ERROR timestamp (ef.lastErrorAt), null when never failed.
+ * @param {number} params.intervalMinutes - Fixed interval for this document type (see getRetryIntervalMinutes).
+ * @param {Date} [params.now=new Date()] - Evaluation instant; injectable so tests pin the boundary.
+ * @returns {{eligible:boolean, nextEligibleAt:Date|null}} `nextEligibleAt` is null only for the never-failed case.
+ */
+function computeRetryEligibility({ lastErrorAt, intervalMinutes, now = new Date() } = {}) {
+    if (!lastErrorAt) {
+        return { eligible: true, nextEligibleAt: null };
+    }
+
+    const lastErrorMs = new Date(lastErrorAt).getTime();
+    if (!Number.isFinite(lastErrorMs)) {
+        return { eligible: true, nextEligibleAt: null };
+    }
+
+    const interval = (typeof intervalMinutes === 'number' && Number.isFinite(intervalMinutes) && intervalMinutes > 0)
+        ? intervalMinutes
+        : 0;
+
+    const nextEligibleAt = new Date(lastErrorMs + interval * MS_PER_MINUTE);
+    const nowMs = (now instanceof Date ? now : new Date(now)).getTime();
+
+    return {
+        eligible: nowMs >= nextEligibleAt.getTime(),
+        nextEligibleAt,
+    };
 }
 
 /**
@@ -93,8 +132,9 @@ function buildScopeWhere(scopeConfig, options = {}) {
  * Produces a sub-select aliased `ef` that the consuming controller references as
  * `ef.errorCount` and `ef.lastErrorAt` after the OUTER APPLY. The fragment counts
  * ERROR rows in the FESA control table for a single PO/payment and reports the most
- * recent failure timestamp — the JS post-filter then feeds `errorCount` into
- * `computeBackoffWaitMinutes` and `lastErrorAt` into the next-eligible calculation.
+ * recent failure timestamp — the JS post-filter feeds `lastErrorAt` into
+ * `computeRetryEligibility`. Since 20.1 the interval is fixed, so `errorCount` no longer
+ * drives any timing math (D-04); it survives purely as operator log context (`attempts=`).
  *
  * The alias `ef` is fixed — all consumers reference `ef.errorCount` / `ef.lastErrorAt`.
  *
@@ -128,4 +168,4 @@ function buildErrorStatsApply({ fesaTable, joinColumn, joinKey, dbAlias, dbColum
 ) AS ef`;
 }
 
-module.exports = { computeBackoffWaitMinutes, buildScopeWhere, buildErrorStatsApply };
+module.exports = { getRetryIntervalMinutes, computeRetryEligibility, buildScopeWhere, buildErrorStatsApply };
