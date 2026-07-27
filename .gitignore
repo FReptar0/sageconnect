@@ -100,3 +100,8 @@ Thumbs.db
 # .planning/phases/<phase>/MEETING-*-NOTES.md).
 reintentos.txt
 *-transcript.txt
+
+# Production logs pulled from the server for local analysis. May contain
+# payment info, CFDI UUIDs, PO numbers and other customer data — keep
+# local-only, never commit.
+data/
