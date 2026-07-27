@@ -5,7 +5,7 @@
  * all pending POs in the configured retry scope. Default --dry-run (HANDOFF.md §6 +
  * Convention A); --apply opt-in for actual upload.
  *
- * On --dry-run: prints aligned table of POs the cron would process, with backoff
+ * On --dry-run: prints aligned table of POs the cron would process, with retry
  * state per row (errorCount, nextEligibleAt, verdict). No mutations.
  * On --apply: iterates tenants and calls createPurchaseOrders(tenantIndex) —
  * REUSES the rewritten Wave 2 cron path. Same SQL, same JS post-filter, same
@@ -26,7 +26,7 @@ const config = require('../config');
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
-const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 const { createPurchaseOrders } = require('../controller/PortalOC_Creator');
 
 const LOG_FILE = 'RetryMonthPOs';
@@ -106,21 +106,26 @@ async function sweepTenantPOs(tenantIndex) {
             SELECT 1 FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = A.PONUMBER
               AND idDatabase = '${tenantDb}'
-              AND status = 'POSTED'
+              AND status IN ('CLOSED', 'POSTED')
           )
         GROUP BY A.PONUMBER, ef.errorCount, ef.lastErrorAt
     `;
     const { recordset } = await runQuery(sql, tenantDb);
     const now = new Date();
+    // Intervalo fijo por tipo de documento (D-02); constante para todo el barrido, así que
+    // se resuelve una sola vez fuera del bucle — igual que en el cron (PortalOC_Creator.js).
+    const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
     const eligible = [];
     const deferred = [];
     for (const row of recordset) {
         const errorCount = row.errorCount || 0;
-        const waitMin = computeBackoffWaitMinutes(errorCount, config.retry.backoff);
-        const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
-        const nextEligibleAt = lastError
-            ? new Date(lastError.getTime() + waitMin * 60000)
-            : null;
+        // `isEligible`, no `eligible`: `eligible` ya es el arreglo acumulador de esta función.
+        // La regla completa (incluido "primer intento => elegible ya") vive en el helper (D-01).
+        const { eligible: isEligible, nextEligibleAt } = computeRetryEligibility({
+            lastErrorAt: row.lastErrorAt,
+            intervalMinutes: intervalMin,
+            now,
+        });
         const entry = {
             po: row.po,
             tenant: row.tenant,
@@ -129,11 +134,11 @@ async function sweepTenantPOs(tenantIndex) {
             nextEligibleAt: nextEligibleAt ? nextEligibleAt.toISOString() : null,
             verdict: null, // filled below
         };
-        if (errorCount === 0) {
+        if (!row.lastErrorAt) {
             entry.verdict = 'never-tried';
             eligible.push(entry);
-        } else if (nextEligibleAt && nextEligibleAt > now) {
-            entry.verdict = 'in-backoff';
+        } else if (!isEligible) {
+            entry.verdict = 'in-interval';
             deferred.push(entry);
         } else {
             entry.verdict = 'ready-to-retry';
@@ -151,7 +156,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
     console.log(`RETRY-MONTH POS — Mode: ${apply ? 'APPLY' : 'DRY-RUN'}`);
     console.log(`Tenants:           ${indices.map(i => tenantIds[i]).join(', ')}`);
     console.log(`Scope:             ${config.retry.scope}${config.retry.scope === 'last_n_days' ? ' (' + config.retry.lookbackDays + ' days)' : ''}`);
-    console.log(`Backoff:           initialMin=${config.retry.backoff.initialMin}, multiplier=${config.retry.backoff.multiplier}, maxMin=${config.retry.backoff.maxMin}`);
+    console.log(`Interval:          po=${config.retry.interval.po} min`);
     console.log('========================================================');
 
     const perTenant = [];
@@ -168,7 +173,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
             perTenant.push({ tenant: tenantIds[i], error: err.message });
             continue;
         }
-        console.log(`Candidates: ${sweep.candidates} | Eligible: ${sweep.eligible.length} | Deferred (backoff): ${sweep.deferred.length}`);
+        console.log(`Candidates: ${sweep.candidates} | Eligible: ${sweep.eligible.length} | Deferred (interval): ${sweep.deferred.length}`);
 
         const allRows = [...sweep.eligible, ...sweep.deferred];
         if (allRows.length > 0) {
@@ -177,7 +182,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
             console.log('(No pending POs in scope.)');
         }
 
-        // Per-row log lines per CONTEXT D-13 / Backoff Q3 DISCUSSION-LOG
+        // Per-row log lines per CONTEXT D-13 / D-05 (mismo shape de campos que las [RETRY*] del cron)
         const prefix = apply ? '[APPLY]' : '[DRY-RUN]';
         sweep.eligible.forEach(e => {
             logGenerator(LOG_FILE, 'info',
@@ -185,7 +190,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
         });
         sweep.deferred.forEach(d => {
             logGenerator(LOG_FILE, 'info',
-                `${prefix} deferred PO ${d.po} tenant=${d.tenant} attempts=${d.errorCount} nextEligibleAt=${d.nextEligibleAt} verdict=in-backoff`);
+                `${prefix} deferred PO ${d.po} tenant=${d.tenant} attempts=${d.errorCount} nextEligibleAt=${d.nextEligibleAt} verdict=in-interval`);
         });
 
         if (apply && sweep.eligible.length > 0) {
@@ -209,7 +214,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
     }
 
     console.log(`\n--- ${apply ? 'APPLY' : 'DRY-RUN'} SUMMARY ---`);
-    console.log(`Total eligible: ${totalEligible} | Total deferred (backoff): ${totalDeferred}`);
+    console.log(`Total eligible: ${totalEligible} | Total deferred (interval): ${totalDeferred}`);
 
     return successResult(
         {
@@ -218,7 +223,7 @@ async function runRetryMonthPOs(apply, tenantIndex) {
             totalEligible,
             totalDeferred,
         },
-        `Retry-month-pos ${apply ? 'apply' : 'dry-run'}: ${totalEligible} eligible, ${totalDeferred} deferred (backoff)`,
+        `Retry-month-pos ${apply ? 'apply' : 'dry-run'}: ${totalEligible} eligible, ${totalDeferred} deferred (interval)`,
         { startTime }
     );
 }

@@ -6,7 +6,7 @@
  * (HANDOFF.md §6 + Convention A); --apply opt-in for actual upload.
  *
  * On --dry-run: prints aligned table of payments the cron would process, with
- * backoff state per row (errorCount, nextEligibleAt, verdict). No mutations.
+ * retry state per row (errorCount, nextEligibleAt, verdict). No mutations.
  * On --apply: iterates tenants and calls uploadPayments(tenantIndex) — REUSES
  * the rewritten Wave 2 cron path. Same SQL, same JS post-filter, same INSERT
  * control-table semantics. The 60-min antiquity filter is PRESERVED per
@@ -27,7 +27,7 @@ const config = require('../config');
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
-const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 const { uploadPayments } = require('../controller/PortalPaymentController');
 
 const LOG_FILE = 'RetryMonthPayments';
@@ -126,15 +126,20 @@ async function sweepTenantPayments(tenantIndex) {
     `;
     const { recordset } = await runQuery(sql, tenantDb);
     const now = new Date();
+    // Intervalo fijo por tipo de documento (D-02); constante para todo el barrido, así que
+    // se resuelve una sola vez fuera del bucle — igual que en el cron (PortalPaymentController.js).
+    const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'payment');
     const eligible = [];
     const deferred = [];
     for (const row of recordset) {
         const errorCount = row.errorCount || 0;
-        const waitMin = computeBackoffWaitMinutes(errorCount, config.retry.backoff);
-        const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
-        const nextEligibleAt = lastError
-            ? new Date(lastError.getTime() + waitMin * 60000)
-            : null;
+        // `isEligible`, no `eligible`: `eligible` ya es el arreglo acumulador de esta función.
+        // La regla completa (incluido "primer intento => elegible ya") vive en el helper (D-01).
+        const { eligible: isEligible, nextEligibleAt } = computeRetryEligibility({
+            lastErrorAt: row.lastErrorAt,
+            intervalMinutes: intervalMin,
+            now,
+        });
         const entry = {
             payment_id: row.payment_id,
             tenant: row.tenant,
@@ -143,11 +148,11 @@ async function sweepTenantPayments(tenantIndex) {
             nextEligibleAt: nextEligibleAt ? nextEligibleAt.toISOString() : null,
             verdict: null,
         };
-        if (errorCount === 0) {
+        if (!row.lastErrorAt) {
             entry.verdict = 'never-tried';
             eligible.push(entry);
-        } else if (nextEligibleAt && nextEligibleAt > now) {
-            entry.verdict = 'in-backoff';
+        } else if (!isEligible) {
+            entry.verdict = 'in-interval';
             deferred.push(entry);
         } else {
             entry.verdict = 'ready-to-retry';
@@ -165,7 +170,7 @@ async function runRetryMonthPayments(apply, tenantIndex) {
     console.log(`RETRY-MONTH PAYMENTS — Mode: ${apply ? 'APPLY' : 'DRY-RUN'}`);
     console.log(`Tenants:           ${indices.map(i => tenantIds[i]).join(', ')}`);
     console.log(`Scope:             ${config.retry.scope}${config.retry.scope === 'last_n_days' ? ' (' + config.retry.lookbackDays + ' days)' : ''}`);
-    console.log(`Backoff:           initialMin=${config.retry.backoff.initialMin}, multiplier=${config.retry.backoff.multiplier}, maxMin=${config.retry.backoff.maxMin}`);
+    console.log(`Interval:          payment=${config.retry.interval.payment} min`);
     console.log('60-min antiquity filter: PRESERVED (REQ RETRY-02 boundary)');
     console.log('========================================================');
 
@@ -183,7 +188,7 @@ async function runRetryMonthPayments(apply, tenantIndex) {
             perTenant.push({ tenant: tenantIds[i], error: err.message });
             continue;
         }
-        console.log(`Candidates: ${sweep.candidates} | Eligible: ${sweep.eligible.length} | Deferred (backoff): ${sweep.deferred.length}`);
+        console.log(`Candidates: ${sweep.candidates} | Eligible: ${sweep.eligible.length} | Deferred (interval): ${sweep.deferred.length}`);
 
         const allRows = [...sweep.eligible, ...sweep.deferred];
         if (allRows.length > 0) {
@@ -199,7 +204,7 @@ async function runRetryMonthPayments(apply, tenantIndex) {
         });
         sweep.deferred.forEach(d => {
             logGenerator(LOG_FILE, 'info',
-                `${prefix} deferred Pago ${d.payment_id} tenant=${d.tenant} attempts=${d.errorCount} nextEligibleAt=${d.nextEligibleAt} verdict=in-backoff`);
+                `${prefix} deferred Pago ${d.payment_id} tenant=${d.tenant} attempts=${d.errorCount} nextEligibleAt=${d.nextEligibleAt} verdict=in-interval`);
         });
 
         if (apply && sweep.eligible.length > 0) {
@@ -223,7 +228,7 @@ async function runRetryMonthPayments(apply, tenantIndex) {
     }
 
     console.log(`\n--- ${apply ? 'APPLY' : 'DRY-RUN'} SUMMARY ---`);
-    console.log(`Total eligible: ${totalEligible} | Total deferred (backoff): ${totalDeferred}`);
+    console.log(`Total eligible: ${totalEligible} | Total deferred (interval): ${totalDeferred}`);
 
     return successResult(
         {
@@ -232,7 +237,7 @@ async function runRetryMonthPayments(apply, tenantIndex) {
             totalEligible,
             totalDeferred,
         },
-        `Retry-month-payments ${apply ? 'apply' : 'dry-run'}: ${totalEligible} eligible, ${totalDeferred} deferred (backoff)`,
+        `Retry-month-payments ${apply ? 'apply' : 'dry-run'}: ${totalEligible} eligible, ${totalDeferred} deferred (interval)`,
         { startTime }
     );
 }

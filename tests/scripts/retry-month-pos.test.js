@@ -16,7 +16,7 @@ jest.mock('../../src/config', () => ({
         addressIdentifiersSkip: [] },
     security: { apiKey: 'k' },
     schedule: { cronExpression: '*/15 * * * *', operationDelayMs: 0, lockTimeoutMs: 14 * 60 * 1000, childProcessTimeoutMs: 600000, stepTimeoutMs: 300000 },
-    retry: { scope: 'current_month', lookbackDays: 30, backoff: { initialMin: 15, multiplier: 2, maxMin: 1440 } },
+    retry: { scope: 'current_month', lookbackDays: 30, interval: { payment: 30, po: 240 } },
     eom: { notificationHour: 18, notificationEnabled: true },
 }));
 
@@ -31,16 +31,20 @@ jest.mock('../../src/controller/PortalOC_Creator', () => ({ createPurchaseOrders
 
 const { runRetryMonthPOs } = require('../../src/scripts/retry-month-pos');
 
+// Mirrors config.retry.interval.po in the mock above. Fixtures derive from it (+10 min) so the
+// "must exceed the interval" intent survives a retune of the default (20.1: fixed 240-min PO interval).
+const PO_INTERVAL_MIN = 240;
+
 describe('retry-month-pos script', () => {
     beforeEach(() => { jest.clearAllMocks(); });
 
     test('dry-run mode: does NOT call createPurchaseOrders, returns mode=dry-run', async () => {
         const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-        const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000);
+        const pastIntervalAt = new Date(Date.now() - (PO_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [
-                { po: 'PO0083449', tenant: 'COPDAT', fechaAuth: '2026-05-07', errorCount: 1, lastErrorAt: fiveMinAgo }, // in-backoff → defer
-                { po: 'PO0083500', tenant: 'COPDAT', fechaAuth: '2026-05-12', errorCount: 1, lastErrorAt: twentyMinAgo }, // out-of-backoff → eligible
+                { po: 'PO0083449', tenant: 'COPDAT', fechaAuth: '2026-05-07', errorCount: 1, lastErrorAt: fiveMinAgo }, // in-interval → defer
+                { po: 'PO0083500', tenant: 'COPDAT', fechaAuth: '2026-05-12', errorCount: 1, lastErrorAt: pastIntervalAt }, // past interval → eligible
             ],
         });
 
@@ -56,13 +60,17 @@ describe('retry-month-pos script', () => {
         expect(sqlPassed).toMatch(/OUTER APPLY/);
         expect(sqlPassed).toMatch(/DATEFROMPARTS|DATEADD\(month/);
         expect(sqlPassed).toMatch(/NOT EXISTS/);
+        // RETRY-C7: the dry-run preview dedupe must mirror PortalOC_Creator's — excluding CLOSED
+        // as well as POSTED — or the preview stops matching what --apply actually processes.
+        expect(sqlPassed).toMatch(/status IN \('CLOSED', 'POSTED'\)/);
+        expect(sqlPassed).not.toMatch(/AND status = 'POSTED'/);
     });
 
     test('apply mode: calls createPurchaseOrders(0), returns mode=apply', async () => {
-        const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000);
+        const pastIntervalAt = new Date(Date.now() - (PO_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [
-                { po: 'PO0083500', tenant: 'COPDAT', fechaAuth: '2026-05-12', errorCount: 1, lastErrorAt: twentyMinAgo },
+                { po: 'PO0083500', tenant: 'COPDAT', fechaAuth: '2026-05-12', errorCount: 1, lastErrorAt: pastIntervalAt },
             ],
         });
         mockCreatePurchaseOrders.mockResolvedValue(undefined);
@@ -79,7 +87,7 @@ describe('retry-month-pos script', () => {
         const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [
-                { po: 'PO0083449', tenant: 'COPDAT', fechaAuth: '2026-05-07', errorCount: 1, lastErrorAt: fiveMinAgo }, // all in-backoff
+                { po: 'PO0083449', tenant: 'COPDAT', fechaAuth: '2026-05-07', errorCount: 1, lastErrorAt: fiveMinAgo }, // all in-interval
             ],
         });
 

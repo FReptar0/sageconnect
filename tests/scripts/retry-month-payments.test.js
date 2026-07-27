@@ -13,7 +13,7 @@ jest.mock('../../src/config', () => ({
     app: { company: 'TestCo', timezone: 'America/Mexico_City', rfc: '', regimen: '', arg: '', importRoute: '' },
     security: { apiKey: 'k' },
     schedule: { cronExpression: '*/15 * * * *', operationDelayMs: 0, lockTimeoutMs: 14 * 60 * 1000, childProcessTimeoutMs: 600000, stepTimeoutMs: 300000 },
-    retry: { scope: 'current_month', lookbackDays: 30, backoff: { initialMin: 15, multiplier: 2, maxMin: 1440 } },
+    retry: { scope: 'current_month', lookbackDays: 30, interval: { payment: 30, po: 240 } },
     eom: { notificationHour: 18, notificationEnabled: true },
 }));
 
@@ -28,14 +28,18 @@ jest.mock('../../src/controller/PortalPaymentController', () => ({ uploadPayment
 
 const { runRetryMonthPayments } = require('../../src/scripts/retry-month-payments');
 
+// Mirrors config.retry.interval.payment in the mock above. Fixtures derive from it (+10 min) so the
+// "must exceed the interval" intent survives a retune of the default (20.1: fixed 30-min payment interval).
+const PAYMENT_INTERVAL_MIN = 30;
+
 describe('retry-month-payments script', () => {
     beforeEach(() => { jest.clearAllMocks(); });
 
     test('dry-run mode: does NOT call uploadPayments, returns mode=dry-run; SQL preserves 60-min filter + idCia', async () => {
-        const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000);
+        const pastIntervalAt = new Date(Date.now() - (PAYMENT_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [
-                { payment_id: 'PAY00001234', tenant: 'COPDAT', fechaAuth: '20260507', errorCount: 1, lastErrorAt: twentyMinAgo },
+                { payment_id: 'PAY00001234', tenant: 'COPDAT', fechaAuth: '20260507', errorCount: 1, lastErrorAt: pastIntervalAt },
             ],
         });
 
@@ -54,10 +58,10 @@ describe('retry-month-payments script', () => {
     });
 
     test('apply mode: calls uploadPayments(0)', async () => {
-        const twentyMinAgo = new Date(Date.now() - 20 * 60 * 1000);
+        const pastIntervalAt = new Date(Date.now() - (PAYMENT_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [
-                { payment_id: 'PAY00001234', tenant: 'COPDAT', fechaAuth: '20260507', errorCount: 1, lastErrorAt: twentyMinAgo },
+                { payment_id: 'PAY00001234', tenant: 'COPDAT', fechaAuth: '20260507', errorCount: 1, lastErrorAt: pastIntervalAt },
             ],
         });
         mockUploadPayments.mockResolvedValue(undefined);
