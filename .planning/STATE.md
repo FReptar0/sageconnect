@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: executing
-stopped_at: Completed 20.1-02-PLAN.md (controllers + cron-where suites); next is 20.1-03
-last_updated: "2026-07-27T17:02:36.500Z"
+status: verifying
+stopped_at: Completed 20.1-03-PLAN.md — phase 20.1 fully executed (3/3 plans); next is /gsd-verify-work 20.1
+last_updated: "2026-07-27T17:13:35.229Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 3
@@ -25,13 +25,13 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 ## Current Position
 
-Phase: 20.1 (retry-policy-correction) — EXECUTING
-Plan: 3 of 3
-Status: Ready to execute
+Phase: 20.1 (retry-policy-correction) — EXECUTED (3/3 plans)
+Plan: 3 of 3 — complete
+Status: Phase complete — ready for verification
 Total phases: 21 (Phases 20-21 active this milestone)
-Next: plan 20.1-03 (po-cron-diagnostic + retry-month-pos + retry-month-payments) — the last three callers of the removed `computeBackoffWaitMinutes`. Both `retry-month-*` scripts are operator-run on prod and throw today, so 20.1-03 must land before any push to `master` triggers the obfuscate-and-deploy Action. 20.1-03 also owns the RETRY-C7 mirror in `retry-month-pos.js`'s dry-run preview.
+Next: `/gsd-verify-work 20.1`. All five callers of the removed `computeBackoffWaitMinutes` are migrated — nothing under `src/` references `computeBackoffWaitMinutes`, `config.retry.backoff`, `backoffWaitMin` or the `in-backoff` token any more, so the two operator-run `retry-month-*` scripts no longer throw. The code is push-safe; per the 2026-07-22 todo-junto directive the actual push + deploy still waits for Q3 (alerts) + the 409/detection query and the August window.
 Last activity: 2026-07-27
-Test suite after 20.1-02: 8 failed suites / 12 failed tests of 484 — 6 pre-existing (CLAUDE.md §6) + 2 owned by 20.1-03 (`retry-month-pos`, `retry-month-payments`). Zero new failures. Expect 6 / 7 once 20.1-03 lands.
+Test suite after 20.1-03: **6 failed suites / 7 failed tests of 484** — exactly the pre-existing CLAUDE.md §6 baseline (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes). Baseline restored; 476 passed vs 466 at the pre-phase baseline (+10 tests added by waves 1-3).
 
 ## Decisions
 
@@ -45,6 +45,10 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 - **20.1-02:** RETRY-C7 shipped as a **single-line** edit to the `PortalOC_Creator` `NOT EXISTS` dedupe (`status IN ('CLOSED', 'POSTED')`). `grep -rn "status = 'POSTED'" src/` still returns 14 other occurrences — all deliberately untouched. `retry-month-pos.js` carries the preview mirror and belongs to plan 20.1-03; the `background.js` EOM query is out of scope per SPEC RETRY-C7 / CONTEXT D-09.
 - **20.1-02:** Both cron-where config mocks keep `scope: 'current_month'` on purpose — the suites assert the `DATEFROMPARTS` SQL shape, which flipping the mock to `last_n_days` would silently void. The default flip is proven one layer down, in `tests/utils/RetryPolicy.test.js`.
 - **20.1-02 (test-infra bug, auto-fixed):** `jest.clearAllMocks()` does **not** drain queued `mockResolvedValueOnce` implementations. Both cron-where suites leaked stubs across cases — the RED run caught the first-attempt case grading a leaked empty recordset. Both suites now `mockReset()` the shared `runQuery` / portal mocks in `beforeEach`.
+- **20.1-03:** The three operator scripts now call the same `computeRetryEligibility` the cron uses, so the diagnostic's verdict and the month-sweep's classification cannot drift from what the cron actually does (D-01). Both sweeps key the first-attempt branch on `lastErrorAt` (not `errorCount === 0`), matching the helper's own rule; the helper boolean is destructured as `isEligible` because `eligible` is already the accumulator array in both files.
+- **20.1-03:** RETRY-C7's second half — the `retry-month-pos.js` dry-run preview dedupe — now reads `status IN ('CLOSED', 'POSTED')`, so the preview matches what `--apply` (`createPurchaseOrders`) processes. `retry-month-payments.js` SQL is byte-identical (`fesaPagosFocaltec` has no CLOSED lifecycle); the 60-min antiquity filter is untouched. 13 `status = 'POSTED'` sites remain across 10 files in `src/` — all deliberately out of scope.
+- **20.1-03 (plan defect, corrected during execution):** plan 20.1-03 claimed the retry-month scripts had "no Jest coverage" and that structural greps were the only local gate. Two suites exist (`tests/scripts/retry-month-{pos,payments}.test.js`, added 2026-05-15) and their fixtures encoded the retired 15-min geometric windows. They were migrated with the source in the same commit — a 20-min fixture is now INSIDE both new intervals, so tests and source could not move independently.
+- **20.1-03 (out of scope, logged not fixed):** `po-cron-diagnostic.js` section 4 replicates the cron WHERE but still dedupes on `status = 'POSTED'` only, while the real cron now uses `status IN ('CLOSED','POSTED')`. Its `cronWouldMatch` can therefore read `true` for an OC the cron would skip. SPEC RETRY-C7 names only `PortalOC_Creator.js` + the `retry-month-pos.js` preview, so this third site was left alone — see `.planning/phases/20.1-retry-policy-correction/deferred-items.md`.
 
 ## Phase 20.1 — 2026-07-22 Santiago session + RETRY-C7 amendment
 
@@ -58,7 +62,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Ready to execute
+**Status:** Phase complete — ready for verification
 
 ## Deferred Items
 
@@ -96,5 +100,6 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 Last session: 2026-07-27T17:02:14.671Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
-Stopped at: Phase 20.1 context gathered
-Resume next: continue Phase 20 remaining plans, or re-run `/gsd-execute-phase 20` in a session launched with `SAGECONNECT_HOOKS_BYPASS=1` exported. Nothing has executed yet (0 SUMMARY.md files) — execution will start fresh from Wave 1. Two hook issues were handled on 2026-05-15: (1) `pre-edit-gsd-guard.sh` had a real bug — its active-phase detection used literal filenames (`SPEC.md`) and missed numbered artifacts (`20-SPEC.md`); fixed in commit `0ceb4c4` to glob-match. (2) `pre-edit-critical.sh` is friction-by-design (guards 13 load-bearing files); Phase 20 edits 2 of them (`src/config.js` via 20-01, `src/background.js` via 20-07) — user chose to clear it via session-level `SAGECONNECT_HOOKS_BYPASS=1` (covers `pre-edit-critical.sh` + `pre-write-always-on.sh`; `pre-edit-gsd-guard.sh` now passes on its own). `workflow.use_worktrees` was set to `false` because the Agent worktree isolation forked stale at `origin/master` (11 commits behind) and could not see the plan files — the restarted run executes sequentially on the main checkout. To restore worktree parallelism later: push `master` to origin so worktrees fork current, then `gsd-sdk query config-set workflow.use_worktrees true`.
+Stopped at: Phase 20.1 fully executed — 20.1-03 (operator-script caller-audit tail) complete, `npm test` back to the 6-suite / 7-test pre-existing baseline
+Resume next: `/gsd-verify-work 20.1`. Two items are queued for it: (a) the milestone `REQUIREMENTS.md` reconciliation flagged by 20.1-01 (RETRY-04 / RETRY-05 describe the geometric curve and backoff env vars this phase deliberately removed, and `RETRY-C*` IDs are not tracked there); (b) the out-of-scope RETRY-C7 third site logged in `.planning/phases/20.1-retry-policy-correction/deferred-items.md` (`po-cron-diagnostic.js` section-4 cron replica still dedupes on POSTED only). Post-deploy operator checks for the phase: run `node src/scripts/po-cron-diagnostic.js <PO>` and both `retry-month-*` dry-runs on `ZCL-RDS-02` — there is no local Sage DB, so live script output could not be observed here.
+Earlier context (Phase 20 execution notes): re-run `/gsd-execute-phase 20` in a session launched with `SAGECONNECT_HOOKS_BYPASS=1` exported. Nothing has executed yet (0 SUMMARY.md files) — execution will start fresh from Wave 1. Two hook issues were handled on 2026-05-15: (1) `pre-edit-gsd-guard.sh` had a real bug — its active-phase detection used literal filenames (`SPEC.md`) and missed numbered artifacts (`20-SPEC.md`); fixed in commit `0ceb4c4` to glob-match. (2) `pre-edit-critical.sh` is friction-by-design (guards 13 load-bearing files); Phase 20 edits 2 of them (`src/config.js` via 20-01, `src/background.js` via 20-07) — user chose to clear it via session-level `SAGECONNECT_HOOKS_BYPASS=1` (covers `pre-edit-critical.sh` + `pre-write-always-on.sh`; `pre-edit-gsd-guard.sh` now passes on its own). `workflow.use_worktrees` was set to `false` because the Agent worktree isolation forked stale at `origin/master` (11 commits behind) and could not see the plan files — the restarted run executes sequentially on the main checkout. To restore worktree parallelism later: push `master` to origin so worktrees fork current, then `gsd-sdk query config-set workflow.use_worktrees true`.
