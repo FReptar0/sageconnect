@@ -1,5 +1,8 @@
 // tests/utils/RetryPolicy.test.js
-// RETRY-04 / RETRY-05 — unit coverage for the pure cron-retry helpers.
+// RETRY-C1 / RETRY-C2 / RETRY-C4 / RETRY-C6 — unit coverage for the pure cron-retry helpers.
+// The retry wait is a FIXED interval per document type (payments 30 min, POs 240 min); it does
+// not grow with the attempt count. Eligibility lives in one shared helper so the first-attempt
+// rule (RETRY-C4) cannot diverge between the two controllers and the diagnostic script.
 
 // Mock config to prevent process.exit(1) from config validation. RetryPolicy.js
 // itself does not require config, but the test runner may load it transitively;
@@ -22,45 +25,130 @@ jest.mock('../../src/config', () => ({
     },
     license: {},
     retry: {
-        scope: 'current_month',
+        scope: 'last_n_days',
         lookbackDays: 30,
-        backoff: { initialMin: 15, multiplier: 2, maxMin: 1440 }
+        interval: { payment: 30, po: 240 }
     },
     eom: { notificationHour: 18, notificationEnabled: true }
 }));
 
-const { computeBackoffWaitMinutes, buildScopeWhere, buildErrorStatsApply } = require('../../src/utils/RetryPolicy');
+const {
+    getRetryIntervalMinutes,
+    computeRetryEligibility,
+    buildScopeWhere,
+    buildErrorStatsApply
+} = require('../../src/utils/RetryPolicy');
 
-describe('computeBackoffWaitMinutes', () => {
-    const cfg = { initialMin: 15, multiplier: 2, maxMin: 1440 };
+const MS_PER_MINUTE = 60000;
 
-    test('returns canonical curve 0,15,30,60,120,240,480,960,1440 for n=0..8', () => {
-        const expected = [0, 15, 30, 60, 120, 240, 480, 960, 1440];
-        for (let n = 0; n <= 8; n++) {
-            expect(computeBackoffWaitMinutes(n, cfg)).toBe(expected[n]);
-        }
+describe('getRetryIntervalMinutes', () => {
+    const intervalCfg = { payment: 30, po: 240 };
+
+    test('returns the payment interval (30) for docType "payment"', () => {
+        expect(getRetryIntervalMinutes(intervalCfg, 'payment')).toBe(30);
     });
 
-    test('caps at maxMin (1440) for high n', () => {
-        expect(computeBackoffWaitMinutes(20, cfg)).toBe(1440);
-        expect(computeBackoffWaitMinutes(100, cfg)).toBe(1440);
+    test('returns the PO interval (240) for docType "po"', () => {
+        expect(getRetryIntervalMinutes(intervalCfg, 'po')).toBe(240);
     });
 
-    test('returns 0 defensively for invalid input', () => {
-        const bad = [-1, NaN, Infinity, -Infinity, null, undefined, 'abc'];
-        bad.forEach((value) => {
-            expect(computeBackoffWaitMinutes(value, cfg)).toBe(0);
+    test('is fixed — identical regardless of any attempt-count argument', () => {
+        [0, 1, 2, 3, 5, 8, 20, 100].forEach((attempts) => {
+            expect(getRetryIntervalMinutes(intervalCfg, 'payment', attempts)).toBe(30);
+            expect(getRetryIntervalMinutes(intervalCfg, 'po', attempts)).toBe(240);
         });
     });
 
-    test('respects custom backoffConfig', () => {
-        const custom = { initialMin: 5, multiplier: 3, maxMin: 600 };
-        expect(computeBackoffWaitMinutes(1, custom)).toBe(5);
-        expect(computeBackoffWaitMinutes(2, custom)).toBe(15);
-        expect(computeBackoffWaitMinutes(3, custom)).toBe(45);
-        expect(computeBackoffWaitMinutes(4, custom)).toBe(135);
-        expect(computeBackoffWaitMinutes(5, custom)).toBe(405);
-        expect(computeBackoffWaitMinutes(6, custom)).toBe(600); // capped
+    test('honors a custom interval config (env-tuned values)', () => {
+        const custom = { payment: 45, po: 600 };
+        expect(getRetryIntervalMinutes(custom, 'payment')).toBe(45);
+        expect(getRetryIntervalMinutes(custom, 'po')).toBe(600);
+    });
+
+    test('throws for an unknown docType', () => {
+        expect(() => getRetryIntervalMinutes(intervalCfg, 'invoice')).toThrow(/invalid docType/i);
+        expect(() => getRetryIntervalMinutes(intervalCfg, undefined)).toThrow(/invalid docType/i);
+        expect(() => getRetryIntervalMinutes(intervalCfg, 'PO')).toThrow(/invalid docType/i);
+    });
+});
+
+describe('computeRetryEligibility', () => {
+    // Fixed `now` so the >=-inclusive boundary is deterministic; every lastErrorAt is derived from it.
+    const now = new Date('2026-07-20T12:00:00.000Z');
+
+    test('first attempt (lastErrorAt null/undefined) is eligible immediately, nextEligibleAt null', () => {
+        expect(computeRetryEligibility({ lastErrorAt: null, intervalMinutes: 240, now }))
+            .toEqual({ eligible: true, nextEligibleAt: null });
+        expect(computeRetryEligibility({ lastErrorAt: undefined, intervalMinutes: 30, now }))
+            .toEqual({ eligible: true, nextEligibleAt: null });
+    });
+
+    test('lastErrorAt exactly intervalMinutes ago is eligible (>= inclusive boundary)', () => {
+        const intervalMinutes = 240;
+        const lastErrorAt = new Date(now.getTime() - intervalMinutes * MS_PER_MINUTE);
+
+        const result = computeRetryEligibility({ lastErrorAt, intervalMinutes, now });
+
+        expect(result.eligible).toBe(true);
+        expect(result.nextEligibleAt).toBeInstanceOf(Date);
+        expect(result.nextEligibleAt.getTime()).toBe(now.getTime());
+    });
+
+    test('one ms inside the interval is deferred and reports nextEligibleAt', () => {
+        const intervalMinutes = 30;
+        const lastErrorAt = new Date(now.getTime() - (intervalMinutes * MS_PER_MINUTE - 1));
+
+        const result = computeRetryEligibility({ lastErrorAt, intervalMinutes, now });
+
+        expect(result.eligible).toBe(false);
+        expect(result.nextEligibleAt).toBeInstanceOf(Date);
+        expect(result.nextEligibleAt.getTime()).toBe(lastErrorAt.getTime() + intervalMinutes * MS_PER_MINUTE);
+        expect(result.nextEligibleAt.getTime()).toBe(now.getTime() + 1);
+    });
+
+    test('lastErrorAt well past the interval is eligible and still reports nextEligibleAt', () => {
+        const intervalMinutes = 240;
+        const lastErrorAt = new Date(now.getTime() - 3 * intervalMinutes * MS_PER_MINUTE);
+
+        const result = computeRetryEligibility({ lastErrorAt, intervalMinutes, now });
+
+        expect(result.eligible).toBe(true);
+        expect(result.nextEligibleAt.getTime()).toBe(lastErrorAt.getTime() + intervalMinutes * MS_PER_MINUTE);
+    });
+
+    test('accepts a SQL/ISO timestamp string for lastErrorAt (mssql may not hand back a Date)', () => {
+        const intervalMinutes = 30;
+        const eligible = computeRetryEligibility({
+            lastErrorAt: new Date(now.getTime() - 31 * MS_PER_MINUTE).toISOString(),
+            intervalMinutes,
+            now
+        });
+        const deferred = computeRetryEligibility({
+            lastErrorAt: new Date(now.getTime() - 29 * MS_PER_MINUTE).toISOString(),
+            intervalMinutes,
+            now
+        });
+
+        expect(eligible.eligible).toBe(true);
+        expect(deferred.eligible).toBe(false);
+    });
+
+    test('the two document types defer differently for the same lastErrorAt', () => {
+        const lastErrorAt = new Date(now.getTime() - 60 * MS_PER_MINUTE); // failed 1 h ago
+
+        expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 30, now }).eligible).toBe(true);
+        expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 240, now }).eligible).toBe(false);
+    });
+
+    test('fails open (eligible) on an unusable intervalMinutes or lastErrorAt — never stalls the cron', () => {
+        const lastErrorAt = new Date(now.getTime() - 5 * MS_PER_MINUTE);
+
+        [undefined, null, NaN, Infinity, -10, 'abc'].forEach((bad) => {
+            expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: bad, now }).eligible).toBe(true);
+        });
+
+        expect(computeRetryEligibility({ lastErrorAt: 'not-a-date', intervalMinutes: 240, now }))
+            .toEqual({ eligible: true, nextEligibleAt: null });
     });
 });
 
