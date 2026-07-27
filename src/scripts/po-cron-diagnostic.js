@@ -26,7 +26,7 @@ const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
 const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const config = require('../config');
-const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 
 const LOG_FILE = 'PO_Cron_Diagnostic';
 
@@ -72,7 +72,7 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         fesaIdFocaltec: null,
         errorCount: null,
         lastErrorAt: null,
-        backoffWaitMin: null,
+        retryIntervalMin: null,
         nextEligibleAt: null,
         reason: null,
     };
@@ -221,9 +221,11 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         }
     }
 
-    // 6. Estado de backoff (errorCount + lastErrorAt + backoffWaitMin + nextEligibleAt)
-    console.log('\n6. ESTADO DE BACKOFF');
-    const r6 = await safeRun('backoff state', async () => {
+    // 6. Estado de retry-interval (errorCount + lastErrorAt + retryIntervalMin + nextEligibleAt)
+    //    RETRY-C5 / D-06: el intervalo es FIJO por tipo de documento (config.retry.interval.po),
+    //    ya no crece con el numero de intentos. errorCount es solo contexto de operador.
+    console.log('\n6. ESTADO DE RETRY-INTERVAL');
+    const r6 = await safeRun('retry-interval state', async () => {
         const sql = `
             SELECT
                 COUNT(*) AS errorCount,
@@ -239,35 +241,40 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
     if (r6 && !r6.__error && r6.length > 0) {
         const errorCount = r6[0].errorCount || 0;
         const lastErrorAt = r6[0].lastErrorAt;
-        const backoffWaitMin = computeBackoffWaitMinutes(errorCount, config.retry.backoff);
-        const nextEligibleAt = lastErrorAt
-            ? new Date(new Date(lastErrorAt).getTime() + backoffWaitMin * 60000)
-            : null;
+        // La regla de elegibilidad vive completa en computeRetryEligibility (D-01), la misma
+        // que usa el cron en PortalOC_Creator.js — asi el veredicto del diagnostico no puede
+        // divergir de lo que el cron realmente hace.
+        const retryIntervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
+        const { nextEligibleAt } = computeRetryEligibility({
+            lastErrorAt,
+            intervalMinutes: retryIntervalMin,
+            now: new Date(),
+        });
         verdict.errorCount = errorCount;
         verdict.lastErrorAt = lastErrorAt ? new Date(lastErrorAt).toISOString() : null;
-        verdict.backoffWaitMin = backoffWaitMin;
+        verdict.retryIntervalMin = retryIntervalMin;
         verdict.nextEligibleAt = nextEligibleAt ? nextEligibleAt.toISOString() : null;
         console.table([{
             errorCount,
             lastErrorAt: verdict.lastErrorAt,
-            backoffWaitMin,
+            retryIntervalMin,
             nextEligibleAt: verdict.nextEligibleAt,
         }]);
     }
 
-    // 7. Verdict — 5-priority order per SPEC RETRY-07 + HANDOFF.md §7 (BOTH portal POSTED + fesa.* control table)
+    // 7. Verdict — 5-priority order per SPEC RETRY-C5 / D-06 (amends RETRY-07) + HANDOFF.md §7 (BOTH portal POSTED + fesa.* control table)
     if (!verdict.reason) {
         // Priority 1: POSTED — already processed by cron
         if (verdict.fesaStatus === 'POSTED') {
             verdict.reason = 'Ya está POSTED en fesaOCFocaltec — ya está procesada por el cron.';
         }
-        // Priority 2: ERROR + within backoff window — cron is intentionally waiting
+        // Priority 2: ERROR + dentro del intervalo — el cron está esperando a propósito
         else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) > new Date()) {
-            verdict.reason = `ERROR previo (${verdict.errorCount} intentos). Esperando backoff hasta ${verdict.nextEligibleAt}.`;
+            verdict.reason = `ERROR previo (${verdict.errorCount} intentos). Esperando reintento hasta ${verdict.nextEligibleAt}.`;
         }
-        // Priority 3: ERROR + outside backoff window — ready to retry
+        // Priority 3: ERROR + intervalo cumplido — lista para reintentar
         else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) <= new Date()) {
-            verdict.reason = `ERROR previo (${verdict.errorCount} intentos), backoff vencido. Lista para reintentar en el próximo tick.`;
+            verdict.reason = `ERROR previo (${verdict.errorCount} intentos), intervalo cumplido. Lista para reintentar en el próximo tick.`;
         }
         // Priority 4: zero rows in fesa — never tried
         else if (verdict.fesaRowCount === 0) {
