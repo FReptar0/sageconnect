@@ -106,7 +106,7 @@ See `.planning/MILESTONES.md` for accomplishments.
 **Depends on**: Phase 20 (built code; `master` ~45 commits ahead of `origin/master`, undeployed).
 **Deferred to a later amendment of this SPEC (NOT in this scope)**: Q3 differentiated alerts (immediate PO alert + biweekly payment report), the separate cross-system (Sage + portal) retry-detection query, manual sync button — pending the Santiago working session.
 **Worktree branch**: n/a (sequential on `master` checkout; `workflow.use_worktrees=false`).
-**Requirements**: RETRY-C1..C6 (defined in `20.1-SPEC.md`) — corrections that amend/supersede the Phase 20 REQs above.
+**Requirements**: RETRY-C1..C7 (defined in `20.1-SPEC.md`) — corrections that amend/supersede the Phase 20 REQs above. RETRY-C7 was added by the 2026-07-22 amendment (CLOSED dedupe).
 **Success Criteria** (what must be TRUE — detailed acceptance in `20.1-SPEC.md`):
   1. With no env overrides, `config.retry.scope === 'last_n_days'` and `config.retry.lookbackDays === 30`, and `buildScopeWhere` emits the rolling-30-day fragment; `RETRY_SCOPE=current_month` still restores month scope (option retained — only the default changed).
   2. `src/utils/RetryPolicy.js` exposes a fixed-interval helper (no `errorCount` input) that returns the payment interval for payments and the PO interval for POs; geometric `computeBackoffWaitMinutes` and the `RETRY_BACKOFF_*` env vars + guards no longer exist.
