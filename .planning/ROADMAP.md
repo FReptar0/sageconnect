@@ -115,7 +115,7 @@ See `.planning/MILESTONES.md` for accomplishments.
   6. `npm test` baseline holds (~7 pre-existing failures) with no NEW failures from the correction.
 **Plans**: 3 plans in 2 waves
 - [x] 20.1-01-PLAN.md (wave 1) — Fixed-interval foundation: RetryPolicy helper (getRetryIntervalMinutes + computeRetryEligibility, geometric removed) + config.retry.interval envs/guards + [CONFIG WARN] on obsolete backoff vars + RETRY_SCOPE default flip to last_n_days + .env.example + RetryPolicy.test.js rewrite [RETRY-C1, C2, C3, C6]
-- [ ] 20.1-02-PLAN.md (wave 2) — Both cron controllers' JS post-filter migrated to the interval helper (PO 240 / payment 30) + [BACKOFF*]→[RETRY*] labels + four-case cron-where suites (incl. first-attempt) + full npm test baseline [RETRY-C4, C2, C6]
+- [x] 20.1-02-PLAN.md (wave 2) — Both cron controllers' JS post-filter migrated to the interval helper (PO 240 / payment 30) + [BACKOFF*]→[RETRY*] labels + four-case cron-where suites (incl. first-attempt) + full npm test baseline [RETRY-C4, C2, C6]
 - [ ] 20.1-03-PLAN.md (wave 2) — Operator-script caller-audit tail: po-cron-diagnostic.js Section 6 relabel + retry-month-pos.js / retry-month-payments.js migrated off computeBackoffWaitMinutes/config.retry.backoff [RETRY-C5, C2, C3]
 
 ### Phase 21: Partial payment completion policy
