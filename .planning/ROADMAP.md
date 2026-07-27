@@ -13,7 +13,7 @@
 ## Phases
 
 - [ ] **Phase 20: Cron retry policy + EOM notification** — Replace `MAX(Fecha)=today` filter with configurable scope (current_month default, env override to rolling N-day), add exponential backoff derived from existing fesa.* rows, and ship end-of-month operator email
-- [ ] **Phase 20.1: Retry policy correction** — Gap-closure of Phase 20 to match the 2026-05-20 client meeting + 2026-06-11 team refinements before deploy. Q1: default retry scope → rolling 30-day window (`last_n_days`/30). Q2: replace geometric backoff with fixed, document-type-differentiated retry intervals (payments 30 min, POs 240 min), both env-configurable. Q3 alerts + cross-system retry-detection query deferred to a later amendment (pending Santiago session).
+- [x] **Phase 20.1: Retry policy correction** (completed 2026-07-27) — Gap-closure of Phase 20 to match the 2026-05-20 client meeting + 2026-06-11 team refinements before deploy. Q1: default retry scope → rolling 30-day window (`last_n_days`/30). Q2: replace geometric backoff with fixed, document-type-differentiated retry intervals (payments 30 min, POs 240 min), both env-configurable. Q3 alerts + cross-system retry-detection query deferred to a later amendment (pending Santiago session).
 - [ ] **Phase 20.2: Retry code vs. real schema** — Correct three defects found by the 2026-07-27 production schema read (`fesa.INFORMATION_SCHEMA.COLUMNS`): the payment cron and EOM queries reference `lastUpdate`/`responseAPI` columns that do not exist on `fesaPagosFocaltec`, and the OC `lastErrorAt` round-trip is skewed 360 min by the tedious `useUTC` default. Code-only; the `ALTER TABLE` needed to restore the PO interval is explicitly deferred.
 - [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
@@ -170,4 +170,6 @@ See `.planning/MILESTONES.md` for accomplishments.
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 20. Cron retry + EOM email    | v2.4      | 8/9 | In Progress|  |
+| 20.1 Retry policy correction  | v2.4      | 3/3            | Complete | 2026-07-27 |
+| 20.2 Retry code vs. schema    | v2.4      | 0/0            | Pending  | —          |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |

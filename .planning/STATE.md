@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: verifying
+status: ready_to_plan
 stopped_at: Phase 20.2 context gathered
 last_updated: "2026-07-27T20:28:42.163Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 12
+  completed_phases: 3
+  total_plans: 15
   completed_plans: 13
-  percent: 100
+  percent: 75
 ---
 
 # Project State
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Phase 20.1 — retry-policy-correction
+**Current focus:** Phase 20.2 — retry-code-vs-real-schema (SPEC + CONTEXT done, ready to plan)
 
 ## Current Position
 
-Phase: 20.1 (retry-policy-correction) — EXECUTED (3/3 plans)
-Plan: 3 of 3 — complete
-Status: Phase complete — ready for verification
+Phase: 20.2 — retry-code-vs-real-schema
+Plan: Not started (SPEC + CONTEXT committed)
+Status: Phase 20.1 COMPLETE (verified 7/7, `human_needed` — 6 post-deploy UAT items persisted in `20.1-HUMAN-UAT.md`)
 Total phases: 21 (Phases 20-21 active this milestone)
-Next: `/gsd-verify-work 20.1`. All five callers of the removed `computeBackoffWaitMinutes` are migrated — nothing under `src/` references `computeBackoffWaitMinutes`, `config.retry.backoff`, `backoffWaitMin` or the `in-backoff` token any more, so the two operator-run `retry-month-*` scripts no longer throw. The code is push-safe; per the 2026-07-22 todo-junto directive the actual push + deploy still waits for Q3 (alerts) + the 409/detection query and the August window.
+Next: `/gsd-plan-phase 20.2`. All five callers of the removed `computeBackoffWaitMinutes` are migrated — nothing under `src/` references `computeBackoffWaitMinutes`, `config.retry.backoff`, `backoffWaitMin` or the `in-backoff` token any more, so the two operator-run `retry-month-*` scripts no longer throw. **The code is NOT deploy-ready yet:** the 2026-07-27 production schema read proved the payment cron query selects `lastUpdate` from `fesaPagosFocaltec`, which has only 4 columns — SQL Server would raise `Invalid column name`, the `.catch()` at `PortalPaymentController.js:103` would swallow it, and the payment cron would silently process zero payments every tick. Phase 20.2 fixes that plus the EOM query and the -360 min clock skew. Per the 2026-07-22 todo-junto directive the push + deploy also still wait for Q3 (alerts) + the 409/detection query and the August window.
 Last activity: 2026-07-27
 Test suite after 20.1-03: **6 failed suites / 7 failed tests of 484** — exactly the pre-existing CLAUDE.md §6 baseline (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes). Baseline restored; 476 passed vs 466 at the pre-phase baseline (+10 tests added by waves 1-3).
 
@@ -62,7 +62,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Phase complete — ready for verification
+**Status:** Phase 20.1 complete (verified 7/7). Phase 20.2 specified + discussed — ready to plan.
 
 ## Deferred Items
 
