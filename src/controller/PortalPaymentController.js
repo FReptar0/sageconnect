@@ -5,7 +5,7 @@ const { resolveUuidByFolio } = require('../services/UuidResolver');
 const portalClient = require('../utils/PortalClient');
 const notifier = require('node-notifier');
 const config = require('../config');
-const { buildScopeWhere, buildErrorStatsApply, computeBackoffWaitMinutes } = require('../utils/RetryPolicy');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -109,31 +109,37 @@ SELECT A.* FROM (
 
         console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos (con al menos 60 minutos de antigüedad).`);
 
-        // RETRY-04 (D-01, D-13): JS post-filter for exponential backoff.
-        // OUTER APPLY ef gave us errorCount + lastErrorAt per payment row; defer rows still inside backoff window.
+        // RETRY-C4 (D-01, D-04, D-05): JS post-filter for the fixed retry interval.
+        // OUTER APPLY ef gave us errorCount + lastErrorAt per payment row; defer rows whose last
+        // ERROR is still inside the payment interval (config.retry.interval.payment).
+        // The whole eligibility rule — including "first attempt" (no lastErrorAt => eligible now) —
+        // lives in computeRetryEligibility and is deliberately NOT re-implemented here, so it
+        // cannot drift from the PO controller or po-cron-diagnostic. errorCount no longer feeds
+        // the timing math (D-04); it survives only as operator log context (attempts=).
         const _candidatesCount = payments.recordset.length;
         const _now = new Date();
+        const _intervalMin = getRetryIntervalMinutes(config.retry.interval, 'payment');
         const _deferred = [];
         payments.recordset = payments.recordset.filter((row) => {
-            if (!row.errorCount || row.errorCount <= 0) return true;
-            const waitMin = computeBackoffWaitMinutes(row.errorCount, config.retry.backoff);
-            const lastError = row.lastErrorAt ? new Date(row.lastErrorAt) : null;
-            if (!lastError) return true;
-            const nextEligibleAt = new Date(lastError.getTime() + waitMin * 60000);
-            if (nextEligibleAt > _now) {
-                _deferred.push({ id: row.external_id, attempts: row.errorCount, nextEligibleAt });
+            const { eligible, nextEligibleAt } = computeRetryEligibility({
+                lastErrorAt: row.lastErrorAt,
+                intervalMinutes: _intervalMin,
+                now: _now,
+            });
+            if (!eligible) {
+                _deferred.push({ id: row.external_id, attempts: row.errorCount || 0, nextEligibleAt });
                 return false;
             }
             return true;
         });
-        // Per CONTEXT D-13: per-row [BACKOFF-DEFER] log entries
+        // Per CONTEXT D-05: per-row [RETRY-DEFER] log entries
         _deferred.forEach((d) => {
             logGenerator(logFileName, 'info',
-                `[BACKOFF-DEFER] Pago ${d.id} tenant=${database[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+                `[RETRY-DEFER] Pago ${d.id} tenant=${database[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
         });
-        // Per CONTEXT D-13: rolled-up [BACKOFF] summary
+        // Per CONTEXT D-05: rolled-up [RETRY] summary
         logGenerator(logFileName, 'info',
-            `[BACKOFF] tenant=${database[index]} candidates=${_candidatesCount} deferred=${_deferred.length} processing=${payments.recordset.length}`);
+            `[RETRY] tenant=${database[index]} candidates=${_candidatesCount} deferred=${_deferred.length} processing=${payments.recordset.length}`);
         // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
         const _retryWindow = config.retry.scope === 'last_n_days'
             ? `last ${config.retry.lookbackDays} days`
