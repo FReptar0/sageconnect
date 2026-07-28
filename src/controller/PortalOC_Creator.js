@@ -147,7 +147,13 @@ select
     (CASE WHEN A.TXEXCLUDE3>0 THEN 0 ELSE A.TXEXCLUDE3 END) +
     (CASE WHEN A.TXEXCLUDE4>0 THEN 0 ELSE A.TXEXCLUDE4 END) +
     (CASE WHEN A.TXEXCLUDE5>0 THEN 0 ELSE A.TXEXCLUDE5 END)
-  )                                            as [WITHHOLD_TAX_SUM]
+  )                                            as [WITHHOLD_TAX_SUM],
+  -- D-01: reloj único. Sale del MISMO SELECT que lastErrorAt, así que la reinterpretación de
+  -- zona horaria del driver aplica a ambos operandos y se cancela en la resta. D-05: GETDATE()
+  -- es constante de runtime por statement, así que todas las filas del tick comparten un dbNow.
+  -- El alias va en camelCase a propósito — el resto de este archivo usa MAYÚSCULAS, pero el
+  -- lado JS lee row.dbNow y la misma clave se usa en los cinco call sites de la fase.
+  GETDATE()                                    as [dbNow]
 from ${databases[index]}.dbo.POPORH1 A
 left outer join ${databases[index]}.dbo.POPORH2 A1
   on A.PORHSEQ = A1.PORHSEQ
@@ -208,15 +214,28 @@ order by A.PONUMBER, B.PORLREV;
   // "primer intento" (sin lastErrorAt => elegible ya): no se replica aquí para que no
   // pueda divergir entre los dos controladores y el diagnóstico. errorCount ya no
   // interviene en el cálculo (D-04); sobrevive solo como contexto de operador (attempts=).
+  //
+  // 20.2 D-01: `now` ya NO es el reloj del proceso Node — se toma del dbNow que proyecta el
+  // mismo SELECT que produjo lastErrorAt, resuelto una sola vez por lote (D-05). Medido el
+  // 2026-07-27 en el host SQL desplegado: DATEDIFF(mi, GETUTCDATE(), GETDATE()) = -360, seis
+  // horas — más que ambos intervalos configurados (240 OC, 30 pago), así que con el reloj de
+  // Node toda fila candidata salía elegible siempre y el log de diferimiento por fila
+  // (etiqueta RETRY-DEFER) no podía dispararse nunca.
   const candidatesCount = recordset.length;
-  const now = new Date();
+  const dbNow = candidatesCount > 0 ? recordset[0].dbNow : null;
+  // Una sola línea por tick, nunca por fila (CLAUDE.md §3): el helper no puede distinguir un
+  // dbNow ausente de una omisión deliberada, así que la condición se vuelve grepeable.
+  if (candidatesCount > 0 && !dbNow) {
+    logGenerator(logFileName, 'warn',
+      `[RETRY-CLOCK] tenant=${databases[index]} dbNow=missing fallback=node-clock`);
+  }
   const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
   const deferred = [];
   recordset = recordset.filter((row) => {
     const { eligible, nextEligibleAt } = computeRetryEligibility({
       lastErrorAt: row.lastErrorAt,
       intervalMinutes: intervalMin,
-      now,
+      now: dbNow,
     });
     if (!eligible) {
       deferred.push({ id: row.EXTERNAL_ID, attempts: row.errorCount || 0, nextEligibleAt });

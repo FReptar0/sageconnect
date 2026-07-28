@@ -58,7 +58,12 @@ SELECT A.* FROM (
         SYSDATETIME()
     ) AS DIFERENCIA_MINUTOS,
     ef.errorCount  AS errorCount,
-    ef.lastErrorAt AS lastErrorAt
+    ef.lastErrorAt AS lastErrorAt,
+    -- D-01: reloj único para la comparación de reintentos. Sale del MISMO SELECT que
+    -- lastErrorAt, así que cualquier reinterpretación de zona horaria del driver aplica a
+    -- ambos operandos y se cancela en la resta. D-05: GETDATE() en una lista SELECT es una
+    -- constante de runtime por statement, así que todas las filas del tick comparten un dbNow.
+    GETDATE()      AS dbNow
     FROM APBTA B
     JOIN BKACCT BK ON B.IDBANK    = BK.BANK
     JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
@@ -116,15 +121,29 @@ SELECT A.* FROM (
         // lives in computeRetryEligibility and is deliberately NOT re-implemented here, so it
         // cannot drift from the PO controller or po-cron-diagnostic. errorCount no longer feeds
         // the timing math (D-04); it survives only as operator log context (attempts=).
+        //
+        // 20.2 D-01: `now` ya NO es el reloj del proceso Node — se toma del dbNow que proyecta
+        // el mismo SELECT que produjo lastErrorAt, resuelto una sola vez por lote (D-05).
+        // Nota (CR-03): para pagos, lastErrorAt es estructuralmente siempre null —
+        // fesa.dbo.fesaPagosFocaltec tiene sólo cuatro columnas (idCia, NoPagoSage, status,
+        // idFocaltec) y ninguna de tiempo, así que el fragmento emite CAST(NULL AS datetime).
+        // Ninguna fila puede diferirse hasta que CR-03 agregue la columna; el reloj único queda
+        // correcto de antemano para que ese día no haya que volver a tocar esta ruta.
         const _candidatesCount = payments.recordset.length;
-        const _now = new Date();
+        const _dbNow = _candidatesCount > 0 ? payments.recordset[0].dbNow : null;
+        // Una sola línea por tick, nunca por fila (CLAUDE.md §3): el helper no puede distinguir
+        // un dbNow ausente de una omisión deliberada, así que la condición se hace grepeable.
+        if (_candidatesCount > 0 && !_dbNow) {
+            logGenerator(logFileName, 'warn',
+                `[RETRY-CLOCK] tenant=${database[index]} dbNow=missing fallback=node-clock`);
+        }
         const _intervalMin = getRetryIntervalMinutes(config.retry.interval, 'payment');
         const _deferred = [];
         payments.recordset = payments.recordset.filter((row) => {
             const { eligible, nextEligibleAt } = computeRetryEligibility({
                 lastErrorAt: row.lastErrorAt,
                 intervalMinutes: _intervalMin,
-                now: _now,
+                now: _dbNow,
             });
             if (!eligible) {
                 _deferred.push({ id: row.external_id, attempts: row.errorCount || 0, nextEligibleAt });
