@@ -4,8 +4,8 @@ milestone: v2.4
 milestone_name: Retry policies
 status: executing
 stopped_at: Phase 20.2 plan 01 complete (3 task commits `a9d8d8c` / `6150d69` / `6aab1c2`)
-last_updated: "2026-07-28T16:33:59.779Z"
-last_activity: 2026-07-28
+last_updated: "2026-07-28T16:40:32.891Z"
+last_activity: 2026-07-28 -- Phase 20.2 execution started
 progress:
   total_phases: 4
   completed_phases: 2
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 20.2 (retry-code-vs-real-schema) — EXECUTING
-Plan: 3 of 6
-Status: Ready to execute
+Plan: 1 of 6
+Status: Executing Phase 20.2
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: `/gsd-execute-phase 20.2` continues with plan 20.2-02. Plan 01 closed the `buildErrorStatsApply` half of RETRY-S1: the payments fragment no longer references `lastUpdate`, so the payment cron query is schema-valid and the "zero payments per tick, forever" failure mode is gone from that emitter. **The code is still NOT deploy-ready:** `src/background.js:495-497` hand-writes the same defect for the EOM payments query (plan 20.2-05), and the -360 min clock skew is untouched (plans 20.2-02..04). Per the 2026-07-22 todo-junto directive the push + deploy also still wait for Q3 (alerts) + the 409/detection query and the August window.
-Last activity: 2026-07-28
+Last activity: 2026-07-28 -- Phase 20.2 execution started
 Test suite after 20.2-01: **6 failed suites / 7 failed tests of 485** (477 passed, 1 skipped) — exactly the pre-existing CLAUDE.md §6 baseline (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes). Identical failing-suite set to the pre-plan baseline of 484; the +1/+1 delta is the new `timestampColumn` throw test.
 
 ## Decisions
@@ -70,7 +70,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Ready to execute
+**Status:** Executing Phase 20.2
 
 ## Deferred Items
 
