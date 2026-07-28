@@ -254,11 +254,16 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         // que usa el cron en PortalOC_Creator.js — asi el veredicto del diagnostico no puede
         // divergir de lo que el cron realmente hace.
         const retryIntervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
-        const { nextEligibleAt } = computeRetryEligibility({
+        // Se conserva el veredicto `eligible` del helper, no solo nextEligibleAt: la seccion 7
+        // debe REUSARLO, nunca recomparar nextEligibleAt contra new Date(). Ambos operandos de
+        // esa comparacion tienen que salir del mismo reloj, y nextEligibleAt deriva de dbNow
+        // (hora local del servidor etiquetada UTC) mientras new Date() es UTC real.
+        const { eligible: retryEligible, nextEligibleAt } = computeRetryEligibility({
             lastErrorAt,
             intervalMinutes: retryIntervalMin,
             now: dbNow,
         });
+        verdict.retryEligible = retryEligible;
         verdict.errorCount = errorCount;
         verdict.lastErrorAt = lastErrorAt ? new Date(lastErrorAt).toISOString() : null;
         verdict.retryIntervalMin = retryIntervalMin;
@@ -281,12 +286,18 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         if (verdict.fesaStatus === 'POSTED') {
             verdict.reason = 'Ya está POSTED en fesaOCFocaltec — ya está procesada por el cron.';
         }
-        // Priority 2: ERROR + dentro del intervalo — el cron está esperando a propósito
-        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) > new Date()) {
+        // Priority 2: ERROR + dentro del intervalo — el cron está esperando a propósito.
+        // Se reusa el veredicto que el helper ya calculó contra dbNow (20.2 D-01). Recomparar
+        // aquí con new Date() mezclaría relojes: nextEligibleAt deriva de la hora local del
+        // servidor y new Date() es UTC real, así que con el desfase medido de -360 min y un
+        // intervalo de 240 el máximo de nextEligibleAt es (ahora - 120 min) y esta rama sería
+        // INALCANZABLE — el diagnóstico diría "lista para reintentar" para una OC que el cron
+        // difiere, justo la divergencia que el helper compartido existe para impedir.
+        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && verdict.retryEligible === false) {
             verdict.reason = `ERROR previo (${verdict.errorCount} intentos). Esperando reintento hasta ${verdict.nextEligibleAt}.`;
         }
         // Priority 3: ERROR + intervalo cumplido — lista para reintentar
-        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && new Date(verdict.nextEligibleAt) <= new Date()) {
+        else if (verdict.errorCount > 0 && verdict.nextEligibleAt && verdict.retryEligible === true) {
             verdict.reason = `ERROR previo (${verdict.errorCount} intentos), intervalo cumplido. Lista para reintentar en el próximo tick.`;
         }
         // Priority 4: zero rows in fesa — never tried
