@@ -1,4 +1,4 @@
-// RETRY-C2 / RETRY-C4 / D-01 / D-02 / D-05 / RETRY-S1 / D-06 / D-07: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for the fixed retry interval + eligibility rule + scope-WHERE SQL + OUTER APPLY error-stats fragment.
+// RETRY-C2 / RETRY-C4 / D-01 / D-02 / D-05 / RETRY-S1 / D-06 / D-07 / RETRY-S4 / 20.2 D-01 / D-04 / D-05: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for the fixed retry interval + eligibility rule + scope-WHERE SQL + OUTER APPLY error-stats fragment.
 
 // Minutes → milliseconds. The interval values are minutes everywhere (config, logs, operator
 // docs); only this module converts, so no call site has to remember the factor.
@@ -50,18 +50,33 @@ function getRetryIntervalMinutes(intervalConfig, docType) {
  *     is INCLUSIVE (`>=`): a row that failed exactly one interval ago goes in this tick, not the
  *     next one — with a 15-min cron cadence an exclusive test would silently add a whole tick.
  *
- * Fails OPEN, never throws: an unusable `intervalMinutes` (missing/NaN/negative) or an
- * unparseable `lastErrorAt` yields "eligible now" rather than a permanently deferred row.
- * Retrying too eagerly is a portal 409 at worst; a stuck row is invisible and unbounded.
+ * Fails OPEN, never throws — for ALL THREE inputs (RETRY-S4). An unusable `intervalMinutes`
+ * (missing/NaN/negative), an unparseable `lastErrorAt`, or an unusable `now` (missing, null,
+ * empty string, 0, NaN, unparseable) each yield "eligible now" rather than a permanently
+ * deferred row: a bad `now` falls back to the process clock, so the verdict is eligible *per
+ * that clock* — never a permanent defer, and never a throw (an exception here aborts a cron
+ * tick mid-batch on an always-on service). Retrying too eagerly is a portal 409 at worst; a
+ * stuck row is invisible and unbounded.
  *
- * Clock basis: `now` is the Node process clock while `lastErrorAt` comes from SQL Server
- * (`MAX(lastUpdate)`). Any skew between the two hosts shifts the boundary by that skew —
- * a pre-existing Phase 20 assumption, explicitly out of scope for 20.1.
+ * Clock basis (D-01): `now` MUST originate from the SAME SELECT statement that produced
+ * `lastErrorAt` — the `GETDATE() AS dbNow` column each caller adds to its projection. Both
+ * operands then come off the same SQL Server, so any driver-level timezone reinterpretation
+ * applies identically to both and cancels out of the subtraction. `GETDATE()` in a SELECT list
+ * is a per-statement runtime constant (D-05), so every row in one tick shares one identical
+ * `dbNow` — no intra-batch drift. This helper cannot detect a caller that violates the rule;
+ * the SQL-shape tests on the call sites are the net for that half.
+ *
+ * Operator warning (D-04): both operands live in "server-local wall clock labelled UTC" space,
+ * so the `nextEligibleAt` that `[RETRY-DEFER]` prints via `.toISOString()` renders SERVER-LOCAL
+ * time carrying a `Z` suffix. Read it as Mexico time, not as UTC. Measured 2026-07-27 on the
+ * deployed SQL Server host (`ZCL-SQL-01`): `DATEDIFF(mi, GETUTCDATE(), GETDATE())` = -360, i.e.
+ * six hours. Documented rather than corrected on purpose — the `[RETRY*]` log labels are
+ * anchored by `^...$` regexes in the controller tests, so the log line itself must not change.
  *
  * @param {object} params
  * @param {Date|string|null} [params.lastErrorAt] - Most recent ERROR timestamp (ef.lastErrorAt), null when never failed.
  * @param {number} params.intervalMinutes - Fixed interval for this document type (see getRetryIntervalMinutes).
- * @param {Date} [params.now=new Date()] - Evaluation instant; injectable so tests pin the boundary.
+ * @param {Date|string} [params.now=new Date()] - Evaluation instant, SQL-sourced (`GETDATE() AS dbNow`, row.dbNow) so it shares a clock with `lastErrorAt`; still injectable so tests pin the boundary. Falls back to the process clock when omitted or unusable.
  * @returns {{eligible:boolean, nextEligibleAt:Date|null}} `nextEligibleAt` is null only for the never-failed case.
  */
 function computeRetryEligibility({ lastErrorAt, intervalMinutes, now = new Date() } = {}) {
@@ -79,7 +94,17 @@ function computeRetryEligibility({ lastErrorAt, intervalMinutes, now = new Date(
         : 0;
 
     const nextEligibleAt = new Date(lastErrorMs + interval * MS_PER_MINUTE);
-    const nowMs = (now instanceof Date ? now : new Date(now)).getTime();
+
+    // Fail OPEN on an unusable `now`, same posture as the two guards above (20.1-01).
+    // `now` is now SQL-sourced (row.dbNow), so a null/absent column — driver quirk, hand-edited
+    // fixture, future query variant — would land the evaluation instant on the Unix epoch:
+    // `0 >= nextEligibleAt` is never true, so EVERY candidate row would defer forever behind
+    // normal-looking [RETRY-DEFER] lines. Falling back to the process clock is the deliberate
+    // choice: an over-eager retry is a portal 409 at worst, a stuck row is invisible and unbounded.
+    // Both tests are needed — the falsy test catches null/''/0 (each yields a *finite* epoch
+    // timestamp), Number.isFinite catches NaN and unparseable strings such as 'not-a-date'.
+    const candidateNowMs = (now instanceof Date ? now : new Date(now)).getTime();
+    const nowMs = (!now || !Number.isFinite(candidateNowMs)) ? Date.now() : candidateNowMs;
 
     return {
         eligible: nowMs >= nextEligibleAt.getTime(),
