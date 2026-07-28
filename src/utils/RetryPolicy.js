@@ -1,4 +1,4 @@
-// RETRY-C2 / RETRY-C4 / D-01 / D-02 / D-05: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for the fixed retry interval + eligibility rule + scope-WHERE SQL + OUTER APPLY error-stats fragment.
+// RETRY-C2 / RETRY-C4 / D-01 / D-02 / D-05 / RETRY-S1 / D-06 / D-07: pure helpers for the cron retry policy — used by both controllers, the diagnostic script, and the retry-month operator scripts. Single source of truth for the fixed retry interval + eligibility rule + scope-WHERE SQL + OUTER APPLY error-stats fragment.
 
 // Minutes → milliseconds. The interval values are minutes everywhere (config, logs, operator
 // docs); only this module converts, so no call site has to remember the factor.
@@ -127,7 +127,7 @@ function buildScopeWhere(scopeConfig, options = {}) {
 }
 
 /**
- * Build the OUTER APPLY fragment that pulls per-row error stats (D-02 / D-05).
+ * Build the OUTER APPLY fragment that pulls per-row error stats (D-02 / D-05 / RETRY-S1).
  *
  * Produces a sub-select aliased `ef` that the consuming controller references as
  * `ef.errorCount` and `ef.lastErrorAt` after the OUTER APPLY. The fragment counts
@@ -138,14 +138,24 @@ function buildScopeWhere(scopeConfig, options = {}) {
  *
  * The alias `ef` is fixed — all consumers reference `ef.errorCount` / `ef.lastErrorAt`.
  *
- * Field-name discipline (PATTERNS.md CRITICAL FIELD-NAME NOTE):
- *   - POs       → fesaTable 'fesa.dbo.fesaOCFocaltec', joinColumn 'ocSage',     dbColumn 'idDatabase'
- *   - Payments  → fesaTable 'fesa.dbo.fesaPagosFocaltec', joinColumn 'NoPagoSage', dbColumn 'idCia'
+ * Field-name discipline (PATTERNS.md CRITICAL FIELD-NAME NOTE, reconciled against the
+ * 2026-07-27 production read of fesa.INFORMATION_SCHEMA.COLUMNS):
+ *   - POs       → fesaTable 'fesa.dbo.fesaOCFocaltec',    joinColumn 'ocSage',     dbColumn 'idDatabase', timestampColumn 'lastUpdate'
+ *   - Payments  → fesaTable 'fesa.dbo.fesaPagosFocaltec', joinColumn 'NoPagoSage', dbColumn 'idCia',      timestampColumn 'none'
  * `dbColumn` defaults to 'idDatabase' and `joinColumn` to 'ocSage' (the POs case).
  *
- * All five params are hardcoded SQL identifiers / controlled tenant values chosen by the
- * caller — none are user input — so template-literal interpolation is the established
+ * `timestampColumn` deliberately has NO default (D-06). fesa.dbo.fesaPagosFocaltec has only
+ * FOUR columns — idCia, NoPagoSage, status, idFocaltec — so it has no lastUpdate at all: a
+ * 'lastUpdate' default would be right for OCs and silently invalid for payments, aborting the
+ * whole payment cron query with `Invalid column name` (RETRY-S1). That is precisely the
+ * implicit-default trap CLAUDE.md §6 pitfall #2 records, so an omitted or unknown value throws
+ * before any SQL string is built (D-07) and every caller must state its table shape (D-08).
+ *
+ * The five interpolated params are hardcoded SQL identifiers / controlled tenant values chosen
+ * by the caller — none are user input — so template-literal interpolation is the established
  * codebase pattern here (CLAUDE.md §6 #1; do not migrate to parameterized queries).
+ * `timestampColumn` is NOT interpolated: it is a closed two-value set that selects between two
+ * fixed literal SELECT lines, so no caller string ever reaches the emitted SQL for this column.
  *
  * @param {object} params
  * @param {string} params.fesaTable - Fully-qualified FESA control table (e.g., 'fesa.dbo.fesaOCFocaltec').
@@ -153,14 +163,25 @@ function buildScopeWhere(scopeConfig, options = {}) {
  * @param {string} params.joinKey - Outer-query SQL identifier to join on (e.g., 'A.PONUMBER').
  * @param {string} params.dbAlias - Tenant DB alias from the controlled tenant list (e.g., 'COPDAT').
  * @param {string} [params.dbColumn='idDatabase'] - Control-table DB-discriminator column ('idDatabase' for POs, 'idCia' for payments).
+ * @param {'lastUpdate'|'none'} params.timestampColumn - REQUIRED, closed set, no default. 'lastUpdate' emits `MAX(lastUpdate) AS lastErrorAt` (fesaOCFocaltec); 'none' emits `CAST(NULL AS datetime) AS lastErrorAt` (fesaPagosFocaltec, which has no timestamp column).
  * @returns {string} A multi-line `OUTER APPLY (...) AS ef` SQL fragment.
+ * @throws {Error} If `timestampColumn` is anything other than 'lastUpdate' or 'none' — missing, null, empty and wrong-cased values all throw, before any SQL is built.
  */
-function buildErrorStatsApply({ fesaTable, joinColumn, joinKey, dbAlias, dbColumn } = {}) {
+function buildErrorStatsApply({ fesaTable, joinColumn, joinKey, dbAlias, dbColumn, timestampColumn } = {}) {
+    if (timestampColumn !== 'lastUpdate' && timestampColumn !== 'none') {
+        throw new Error('buildErrorStatsApply: invalid timestampColumn ' + timestampColumn);
+    }
+
     const resolvedJoinColumn = joinColumn || 'ocSage';
     const resolvedDbColumn = dbColumn || 'idDatabase';
+    // Both branches hand `computeRetryEligibility` the same JS type: a Date for the OC case,
+    // null for payments — which the helper already treats as "never failed" (eligible now).
+    const errorStatsSelect = timestampColumn === 'lastUpdate'
+        ? 'SELECT COUNT(*) AS errorCount, MAX(lastUpdate) AS lastErrorAt'
+        : 'SELECT COUNT(*) AS errorCount, CAST(NULL AS datetime) AS lastErrorAt';
 
     return `OUTER APPLY (
-    SELECT COUNT(*) AS errorCount, MAX(lastUpdate) AS lastErrorAt
+    ${errorStatsSelect}
     FROM ${fesaTable}
     WHERE ${resolvedJoinColumn} = ${joinKey}
       AND ${resolvedDbColumn} = '${dbAlias}'
