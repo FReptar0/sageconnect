@@ -165,4 +165,53 @@ describe('buildEomEmailHtml', () => {
         expect(actual).toMatch(/<a[^>]*pos\.html[^>]*>Ver POs<\/a>/);
         expect(actual).toMatch(/<a[^>]*payments\.html[^>]*>Ver pagos<\/a>/);
     });
+
+    // Phase 20.2 / RETRY-S3 / D-10 / D-11: the payments table is deliberately one column
+    // narrower than the POs table. Its control table (fesa.dbo.fesaPagosFocaltec) has four
+    // columns and none of them can hold an error description, so the column is removed
+    // rather than filled with a placeholder, and one footnote states the gap.
+    test('payments category with 2 rows renders 5 columns, no error column, and the footnote', () => {
+        const rows = [
+            // The lastError values are deliberate: they must NOT reach the payments output.
+            { tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2026-05-12', attempts: 1, lastError: 'TIMEOUT 30s' },
+            { tenant: 'COPDAT', idOrPo: 'PAY00005678', fechaAuth: '2026-05-20', attempts: 2, lastError: 'CFDI VENDOR_NOT_FOUND' },
+        ];
+        const actual = buildEomEmailHtml(rows, 'payments');
+
+        // Header and body branch together — 5 headers over 2 rows x 5 cells.
+        expect((actual.match(/<th>/g) || []).length).toBe(5);
+        expect((actual.match(/<td>/g) || []).length).toBe(10);
+        // The dropped column, by header text and by leaked value.
+        expect(actual).not.toMatch(/Último error/);
+        expect(actual).not.toMatch(/TIMEOUT 30s/);
+        expect(actual).not.toMatch(/CFDI VENDOR_NOT_FOUND/);
+        // The rows themselves still render.
+        expect(actual).toMatch(/PAY00001234/);
+        expect(actual).toMatch(/PAY00005678/);
+        // The D-10 footnote.
+        expect(actual).toMatch(/<p><em>Nota:/);
+    });
+
+    test('payments category with 0 rows still carries "Sin pendientes", the footnote and the footer', () => {
+        const actual = buildEomEmailHtml([], 'payments');
+        expect(actual).toMatch(/Sin pendientes en esta categoría este mes/);
+        // The footnote sits OUTSIDE the if/else on purpose: the empty case is exactly when
+        // an operator might otherwise conclude that nothing failed.
+        expect(actual).toMatch(/<p><em>Nota:/);
+        expect(actual).toMatch(/<a[^>]*pos\.html[^>]*>Ver POs<\/a>/);
+        expect(actual).toMatch(/<a[^>]*payments\.html[^>]*>Ver pagos<\/a>/);
+    });
+
+    test('pos category never renders the payments footnote (D-11)', () => {
+        const rows = [
+            { tenant: 'COPDAT', idOrPo: 'PO0083449', fechaAuth: '2026-05-07', attempts: 3, lastError: 'CFDI VENDOR_NOT_FOUND' },
+            { tenant: 'COPDAT', idOrPo: 'PO0083500', fechaAuth: '2026-05-12', attempts: 1, lastError: 'TIMEOUT 30s' },
+        ];
+        expect(buildEomEmailHtml(rows, 'pos')).not.toMatch(/<p><em>Nota:/);
+        expect(buildEomEmailHtml([], 'pos')).not.toMatch(/<p><em>Nota:/);
+        // The POs table keeps all six columns and its error cell.
+        expect((buildEomEmailHtml(rows, 'pos').match(/<th>/g) || []).length).toBe(6);
+        expect((buildEomEmailHtml(rows, 'pos').match(/<td>/g) || []).length).toBe(12);
+        expect(buildEomEmailHtml(rows, 'pos')).toMatch(/Último error/);
+    });
 });

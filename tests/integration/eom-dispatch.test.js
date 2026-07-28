@@ -71,7 +71,9 @@ jest.mock('../../src/utils/AdminEmailSender', () => ({
 }));
 
 // dispatchEomIfDue is exported from background.js for testability.
-const { dispatchEomIfDue } = require('../../src/background');
+// buildEomDataQuery comes from the same module and is a pure string builder — the
+// RETRY-S3 shape assertions below call it directly, no DB and no extra mocks needed.
+const { dispatchEomIfDue, buildEomDataQuery } = require('../../src/background');
 const config = require('../../src/config');
 
 describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
@@ -93,7 +95,8 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         // runQuery returns 1 row per tenant per category (1 tenant × 2 categories = 2 calls).
         mockRunQuery
             .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083449', fechaAuth: '2026-05-07', attempts: 3, lastError: 'CFDI VENDOR_NOT_FOUND' }] }) // POs
-            .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2026-05-12', attempts: 1, lastError: 'TIMEOUT 30s' }] }); // payments
+            // Payments rows carry no error description — the fixed query cannot produce one (RETRY-S3).
+            .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2026-05-12', attempts: 1 }] }); // payments
 
         await dispatchEomIfDue(lastDayLateHour, config);
 
@@ -159,7 +162,8 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
             .mockRejectedValueOnce(new Error('SMTP connection refused')); // operator email payments — fail
         mockRunQuery
             .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083449', fechaAuth: '2026-05-07', attempts: 3, lastError: 'X' }] })
-            .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2026-05-12', attempts: 1, lastError: 'Y' }] });
+            // Payments rows carry no error description — the fixed query cannot produce one (RETRY-S3).
+            .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2026-05-12', attempts: 1 }] });
 
         await dispatchEomIfDue(lastDayLateHour, config);
 
@@ -183,5 +187,37 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         await dispatchEomIfDue(new Date(2026, 4, 31, 18, 30, 0), config);
         expect(mockSendOperatorReport).not.toHaveBeenCalled();
         expect(mockRunQuery).not.toHaveBeenCalled();
+    });
+});
+
+describe('buildEomDataQuery SQL shape (Phase 20.2, SPEC RETRY-S3)', () => {
+    test('payments branch references only columns that exist on fesa.dbo.fesaPagosFocaltec', () => {
+        const sql = buildEomDataQuery('payments', 'COPDAT');
+
+        // fesa.dbo.fesaPagosFocaltec has exactly four columns — idCia, NoPagoSage, status,
+        // idFocaltec (production schema read 2026-07-27 on ZCL-SQL-01). Selecting an error
+        // description or ordering by an update timestamp made SQL Server abort the whole
+        // statement; the try/catch at background.js:398 swallowed it, so the month-end
+        // payments email always read "Sin pendientes" and the failure was invisible.
+        expect(sql).not.toMatch(/responseAPI/);
+        expect(sql).not.toMatch(/lastUpdate/);
+        expect(sql).not.toMatch(/lastError/);
+
+        // What the query must keep: a real attempt count and the pending-payment predicate.
+        expect(sql).toMatch(/OUTER APPLY/);
+        expect(sql).toMatch(/COUNT\(\*\) AS errorCount/);
+        expect(sql).toMatch(/COALESCE\(ef\.errorCount, 0\) AS attempts/);
+        expect(sql).toMatch(/status NOT IN \('PAID', ?'PARTIAL'\)/);
+        expect(sql).toMatch(/fesa\.dbo\.fesaPagosFocaltec/);
+    });
+
+    test('POs branch is unchanged — still selects responseAPI and orders by lastUpdate (D-11)', () => {
+        const sql = buildEomDataQuery('pos', 'COPDAT');
+
+        // fesaOCFocaltec genuinely has responseAPI and lastUpdate and carries real data, so
+        // the two branches are deliberately asymmetric. This is the D-11 regression guard.
+        expect(sql).toMatch(/responseAPI/);
+        expect(sql).toMatch(/ORDER BY lastUpdate DESC/);
+        expect(sql).toMatch(/ef\.lastError AS lastError/);
     });
 });
