@@ -1,4 +1,5 @@
 // EOM-01 / EOM-03 / EOM-04 / D-07 / D-08 / D-10 / D-15 / D-16: gate evaluation, atomic sentinel I/O, and HTML body builder for the end-of-month operator email.
+// 20.2: RETRY-S3 / D-10 / D-11 — the payments table drops the error-description column (its control table cannot hold one); the POs table is unchanged.
 
 const fs = require('fs');
 const path = require('path');
@@ -96,8 +97,19 @@ function shouldDispatchEom(now, sentinelPath, eomConfig) {
  * attempts: number, lastError: string|null}>. `lastError` is truncated to 100
  * chars with an ellipsis. Empty `rows` yields the "Sin pendientes" body per D-10.
  *
+ * RETRY-S3 / 20.2 D-10 / D-11: `category` drives the table SHAPE, not just the intro
+ * sentence. `lastError` is produced only by the `pos` query and consumed only by the
+ * `pos` branch, so the POs table is six columns wide and the payments table is
+ * deliberately five. The payments control table has four columns and none of them can
+ * hold an error description, so the column is REMOVED rather than filled with a
+ * placeholder: a cell that always reads "no registrado" trains the operator to ignore
+ * it and normalises the gap. A single footnote states the gap once and keeps visible
+ * pressure to resolve CR-03. The footnote renders in both the populated and the
+ * "Sin pendientes" payments cases — the empty case is precisely when an operator might
+ * otherwise conclude that nothing failed.
+ *
  * @param {Array<object>} rows - Pending-document rows for one category.
- * @param {'pos'|'payments'} category - Drives the table title.
+ * @param {'pos'|'payments'} category - Drives the table title AND the table shape.
  * @returns {string} HTML string.
  */
 function buildEomEmailHtml(rows, category) {
@@ -128,26 +140,47 @@ function buildEomEmailHtml(rows, category) {
         lines.push('<table border="1" cellspacing="0" cellpadding="4">');
         lines.push('  <thead>');
         lines.push('    <tr>');
-        lines.push('      <th>#</th><th>Tenant</th><th>PO / ID</th><th>Fecha autorización</th><th>Intentos</th><th>Último error</th>');
+        // El encabezado y el cuerpo DEBEN ramificar juntos: si solo uno cambia la tabla
+        // queda desalineada (6 encabezados sobre 5 celdas). La rama `pos` es byte a byte
+        // la de siempre — tests/fixtures/eom-email-sample.html la fija (D-11).
+        if (isPos) {
+            lines.push('      <th>#</th><th>Tenant</th><th>PO / ID</th><th>Fecha autorización</th><th>Intentos</th><th>Último error</th>');
+        } else {
+            lines.push('      <th>#</th><th>Tenant</th><th>PO / ID</th><th>Fecha autorización</th><th>Intentos</th>');
+        }
         lines.push('    </tr>');
         lines.push('  </thead>');
         lines.push('  <tbody>');
         safeRows.forEach((row, index) => {
-            let lastError = row.lastError == null ? '' : String(row.lastError);
-            if (lastError.length > 100) {
-                lastError = lastError.slice(0, 100) + '…';
-            }
-            lines.push(
+            const commonCells =
                 `    <tr><td>${index + 1}</td>` +
                 `<td>${escapeHtml(row.tenant)}</td>` +
                 `<td>${escapeHtml(row.idOrPo)}</td>` +
                 `<td>${escapeHtml(row.fechaAuth)}</td>` +
-                `<td>${escapeHtml(row.attempts)}</td>` +
-                `<td>${escapeHtml(lastError)}</td></tr>`
-            );
+                `<td>${escapeHtml(row.attempts)}</td>`;
+            if (isPos) {
+                // Truncado solo en la rama POs: en pagos no hay dato que truncar y el
+                // valor no debe llegar a la salida. escapeHtml sigue envolviéndolo aquí
+                // (amenaza T-20-14, inyección de HTML vía `lastError`).
+                let lastError = row.lastError == null ? '' : String(row.lastError);
+                if (lastError.length > 100) {
+                    lastError = lastError.slice(0, 100) + '…';
+                }
+                lines.push(commonCells + `<td>${escapeHtml(lastError)}</td></tr>`);
+            } else {
+                lines.push(commonCells + '</tr>');
+            }
         });
         lines.push('  </tbody>');
         lines.push('</table>');
+    }
+
+    // 20.2 D-10: una sola nota honesta. Va FUERA del if/else a propósito, para que
+    // también aparezca en el caso "Sin pendientes" — ese es justamente el momento en que
+    // un operador podría concluir que no falló nada. Literal fija, sin contenido
+    // dinámico, por lo que no requiere escapeHtml.
+    if (!isPos) {
+        lines.push('<p><em>Nota: el sistema de control todavía no registra el detalle del error de cada pago, por lo que esta tabla no incluye una columna de descripción de error.</em></p>');
     }
 
     lines.push(`<p><a href="${baseUrl}/pos.html">Ver POs</a> | <a href="${baseUrl}/payments.html">Ver pagos</a></p>`);
