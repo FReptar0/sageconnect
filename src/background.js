@@ -443,6 +443,13 @@ async function dispatchEomIfDue(now, cfg) {
 /**
  * Build the EOM data query for a category. Uses HARDCODED current_month scope per CONTEXT D-09.
  * Per CLAUDE.md §6 #1: template-literal SQL with controlled tenant DB interpolation.
+ *
+ * RETRY-S3 / D-10 / D-11: the two branches are deliberately asymmetric. The POs branch reports
+ * an error description per row because its own control table genuinely stores one, and stays
+ * untouched. The payments branch reports pending payments WITHOUT one: its control table
+ * `fesa.dbo.fesaPagosFocaltec` has only four columns (idCia, NoPagoSage, status, idFocaltec —
+ * production schema read 2026-07-27), so no column can hold an error description or an error
+ * timestamp. Recording payment failures is CR-03, deliberately deferred.
  */
 function buildEomDataQuery(category, tenantDb) {
     if (category === 'pos') {
@@ -479,22 +486,26 @@ function buildEomDataQuery(category, tenantDb) {
     }
     // category === 'payments'
     const dateField = 'P.AUDTDATE';
+    // RETRY-S3 / D-10: este OUTER APPLY solo puede contar filas. `fesa.dbo.fesaPagosFocaltec`
+    // tiene exactamente cuatro columnas (idCia, NoPagoSage, status, idFocaltec) segun la lectura
+    // del esquema de produccion del 2026-07-27, asi que no existe columna alguna que pueda
+    // guardar la descripcion de un error ni su fecha. El sub-select de descripcion de error y su
+    // ordenamiento que vivian aqui referenciaban columnas inexistentes: SQL Server abortaba toda
+    // la consulta, el try/catch de dispatchEomIfDue lo convertia en cero filas, y el correo de
+    // pagos siempre decia "Sin pendientes". Registrar los fallos de pago es CR-03 (diferido);
+    // el pie de nota del correo (EomNotification.buildEomEmailHtml) declara ese hueco.
     return `
         SELECT
             '${tenantDb}' AS tenant,
             RTRIM(P.DOCNBR) AS idOrPo,
             P.AUDTDATE AS fechaAuth,
-            COALESCE(ef.errorCount, 0) AS attempts,
-            ef.lastError AS lastError
+            COALESCE(ef.errorCount, 0) AS attempts
         FROM APBTA B
         JOIN BKACCT BK ON B.IDBANK = BK.BANK
         JOIN APTCR P ON B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
         OUTER APPLY (
             SELECT
-                COUNT(*) AS errorCount,
-                (SELECT TOP 1 responseAPI FROM fesa.dbo.fesaPagosFocaltec
-                 WHERE NoPagoSage = P.DOCNBR AND idCia = '${tenantDb}'
-                 ORDER BY lastUpdate DESC) AS lastError
+                COUNT(*) AS errorCount
             FROM fesa.dbo.fesaPagosFocaltec
             WHERE NoPagoSage = P.DOCNBR
               AND idCia = '${tenantDb}'
