@@ -65,6 +65,17 @@ const { createPurchaseOrders } = require('../../src/controller/PortalOC_Creator'
 // PO interval under test — mirrors the config mock above (config.retry.interval.po).
 const PO_INTERVAL_MIN = 240;
 
+// Single-clock fixtures (20.2 D-01 / hazard H-2).
+// SERVER_SKEW_MIN is the measured DATEDIFF(mi, GETUTCDATE(), GETDATE()) on the deployed SQL
+// host, 2026-07-27: tedious hands timestamps back 360 minutes behind the Node process clock.
+// DB_NOW stands in for the `GETDATE() as [dbNow]` column the cron query now projects.
+//
+// Every lastErrorAt below derives from DB_NOW, never from Date.now(). No fixture in this repo
+// set dbNow before this phase, so one that leaves it unset falls through to the process clock
+// and keeps passing whatever the controller does — it would prove nothing.
+const SERVER_SKEW_MIN = 360;
+const DB_NOW = new Date(Date.now() - SERVER_SKEW_MIN * 60 * 1000);
+
 describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -88,6 +99,12 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
         expect(sqlPassed).toMatch(/status IN \('CLOSED', ?'POSTED'\)/);
         expect(sqlPassed).not.toMatch(/AND status = 'POSTED'/);
         expect(mockRunQuery.mock.calls[0][1]).toBe('COPDAT');
+        // D-12 #1 (20.2 D-01): the single clock, projected by the same statement as lastErrorAt.
+        // Only this assertion catches removal of the column — the helper's fallback is silent.
+        expect(sqlPassed).toMatch(/GETDATE\(\)\s+as\s+\[dbNow\]/);
+        // SPEC acceptance guard: fesaOCFocaltec DOES have lastUpdate, so the OC branch must keep
+        // emitting MAX(lastUpdate). Proves the payments fix (plan 20.2-01) did not regress it.
+        expect(sqlPassed).toMatch(/MAX\(lastUpdate\) AS lastErrorAt/);
 
         expect(mockPortalPost).not.toHaveBeenCalled();
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
@@ -95,12 +112,23 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
     });
 
     test('ERROR row inside the PO interval deferred — [RETRY-DEFER] log, no portal POST', async () => {
-        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        // Derived from DB_NOW, not Date.now(): 5 minutes old on the SERVER clock, 365 on the
+        // process clock. Under the pre-20.2 `new Date()` implementation this row read as
+        // eligible and the deferred=1 assertion below would fail.
+        const fiveMinAgo = new Date(DB_NOW.getTime() - 5 * 60 * 1000);
+        // INTENTIONALLY OPTIMISTIC FIXTURE — see D-ITEM-03 in deferred-items.md.
+        // This recordset supplies lastErrorAt, but the real PortalOC_Creator query does NOT
+        // project ef.lastErrorAt (it joins the OUTER APPLY and discards the result), so a live
+        // row can never carry it. Every PO is therefore ruled eligible in production and the
+        // per-row deferral log has never been able to fire for POs. The fixture is retained
+        // deliberately so the helper's deferral logic keeps its coverage for the day D-ITEM-03
+        // and CR-04 are resolved together.
         mockRunQuery.mockResolvedValueOnce({
             recordset: [{
                 EXTERNAL_ID: 'PO0083449',
                 errorCount: 1,
                 lastErrorAt: fiveMinAgo,
+                dbNow: DB_NOW,
             }],
         });
         await createPurchaseOrders(0);
@@ -117,13 +145,15 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
     });
 
     test('ERROR row past the PO interval included — [RETRY] processing=1', async () => {
-        // 250 min ago — must exceed the 240-min PO interval, otherwise this row would defer.
-        const pastIntervalAt = new Date(Date.now() - (PO_INTERVAL_MIN + 10) * 60 * 1000);
+        // 250 min ago on the SERVER clock — must exceed the 240-min PO interval, otherwise this
+        // row would defer. Derived from DB_NOW so the fix is proven not to over-defer.
+        const pastIntervalAt = new Date(DB_NOW.getTime() - (PO_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [{
                 EXTERNAL_ID: 'PO0083500',
                 errorCount: 1,
                 lastErrorAt: pastIntervalAt,
+                dbNow: DB_NOW,
             }],
         });
         // Subsequent FESA INSERT calls (ERROR row after the forced POST failure).
@@ -147,6 +177,7 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
                 EXTERNAL_ID: 'PO0083600',
                 errorCount: 0,
                 lastErrorAt: null,
+                dbNow: DB_NOW,
             }],
         });
         mockRunQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });

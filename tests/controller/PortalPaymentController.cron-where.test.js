@@ -57,6 +57,18 @@ const { uploadPayments } = require('../../src/controller/PortalPaymentController
 // Payment interval under test — mirrors the config mock above (config.retry.interval.payment).
 const PAYMENT_INTERVAL_MIN = 30;
 
+// Single-clock fixtures (20.2 D-01 / hazard H-2).
+// SERVER_SKEW_MIN is the measured DATEDIFF(mi, GETUTCDATE(), GETDATE()) on the deployed SQL
+// host, 2026-07-27: tedious hands timestamps back 360 minutes behind the Node process clock.
+// DB_NOW stands in for the `GETDATE() AS dbNow` column the cron query now projects.
+//
+// Every lastErrorAt below derives from DB_NOW, never from Date.now(). That is the whole point:
+// no fixture in this repo set dbNow before this phase, so a fixture that leaves it unset falls
+// through to the process clock and keeps passing no matter what the controller does — it would
+// prove nothing. Deriving from DB_NOW is what makes the deferral case a skew proof.
+const SERVER_SKEW_MIN = 360;
+const DB_NOW = new Date(Date.now() - SERVER_SKEW_MIN * 60 * 1000);
+
 // Full payment field set so the row survives the PROVIDERID / DIFERENCIA_MINUTOS branches
 // downstream and actually reaches the upload loop.
 const paymentRow = (overrides) => ({
@@ -78,6 +90,7 @@ const paymentRow = (overrides) => ({
     DIFERENCIA_MINUTOS: 120,
     errorCount: 0,
     lastErrorAt: null,
+    dbNow: DB_NOW, // the GETDATE() AS dbNow column — the controller's single clock (D-01)
     ...overrides,
 });
 
@@ -117,6 +130,19 @@ describe('PortalPaymentController cron WHERE + fixed-interval retry (Phase 20.1)
         expect(sqlPassed).toMatch(/idCia\s*=/);
         // Tenant-DB query passes database[index] explicit (CLAUDE.md §6 #2)
         expect(mockRunQuery.mock.calls[0][1]).toBe('COPDAT');
+        // D-12 #1 (20.2 D-01): the single clock must be projected by the SAME statement that
+        // produces lastErrorAt. This assertion is the ONLY thing that catches removal of the
+        // column — computeRetryEligibility fails open to the process clock when dbNow is absent,
+        // which is silent and is precisely the defect this phase removes.
+        expect(sqlPassed).toMatch(/GETDATE\(\)\s+AS\s+dbNow/);
+        // RETRY-S1: fesaPagosFocaltec has FOUR columns (idCia, NoPagoSage, status, idFocaltec),
+        // so the payments error-stats fragment emits a typed NULL rather than MAX(lastUpdate).
+        expect(sqlPassed).toMatch(/CAST\(NULL AS datetime\) AS lastErrorAt/);
+        // RETRY-S1/S2 guard: any lastUpdate reference aborts the WHOLE query with
+        // 'Invalid column name', the .catch() substitutes { recordset: [] }, and the tick
+        // processes zero payments behind a normal-looking [RETRY] summary. Nothing else in the
+        // suite would notice — this negative assertion is the net.
+        expect(sqlPassed).not.toMatch(/lastUpdate/);
         // No portal POST happened (recordset empty)
         expect(mockPortalPost).not.toHaveBeenCalled();
         // Summary log shows zero candidates
@@ -125,7 +151,11 @@ describe('PortalPaymentController cron WHERE + fixed-interval retry (Phase 20.1)
     });
 
     test('ERROR payment inside the payment interval deferred — [RETRY-DEFER] log, no portal POST', async () => {
-        const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+        // Derived from DB_NOW, not Date.now(): 5 minutes old on the SERVER clock, but 365
+        // minutes old on the process clock. Under the pre-20.2 `new Date()` implementation this
+        // row read as eligible and the deferred=1 assertion below would fail — that is what
+        // makes this fixture the skew proof rather than a restatement of the interval math.
+        const fiveMinAgo = new Date(DB_NOW.getTime() - 5 * 60 * 1000);
         mockRunQuery.mockResolvedValueOnce({
             recordset: [paymentRow({ external_id: 'PAY00001234', errorCount: 1, lastErrorAt: fiveMinAgo })],
         });
@@ -140,8 +170,9 @@ describe('PortalPaymentController cron WHERE + fixed-interval retry (Phase 20.1)
     });
 
     test('ERROR payment past the payment interval included — [RETRY] processing=1', async () => {
-        // 40 min ago — must exceed the 30-min payment interval, otherwise this row would defer.
-        const pastIntervalAt = new Date(Date.now() - (PAYMENT_INTERVAL_MIN + 10) * 60 * 1000);
+        // 40 min ago on the SERVER clock — must exceed the 30-min payment interval, otherwise
+        // this row would defer. Derived from DB_NOW so the fix is proven not to over-defer.
+        const pastIntervalAt = new Date(DB_NOW.getTime() - (PAYMENT_INTERVAL_MIN + 10) * 60 * 1000);
         mockRunQuery
             .mockResolvedValueOnce({
                 recordset: [paymentRow({
@@ -191,5 +222,36 @@ describe('PortalPaymentController cron WHERE + fixed-interval retry (Phase 20.1)
             expect.stringMatching(/^\[RETRY\] tenant=COPDAT candidates=1 deferred=0 processing=1$/));
         const deferCalls = mockLogGenerator.mock.calls.filter((c) => /\[RETRY-DEFER\] Pago PAY00009999/.test(c[2] || ''));
         expect(deferCalls.length).toBe(0);
+    });
+
+    test('rows present but dbNow absent — one [RETRY-CLOCK] warn per tick, not per row', async () => {
+        // The one failure mode computeRetryEligibility cannot detect. A missing dbNow is
+        // indistinguishable from a deliberate omission: the helper fails open to the process
+        // clock and the tick looks normal. This warn is what makes the condition greppable in
+        // the winston audit trail. Bounded at one line per tick (CLAUDE.md §3).
+        mockRunQuery
+            .mockResolvedValueOnce({
+                recordset: [paymentRow({
+                    external_id: 'PAY00007777',
+                    LotePago: 400,
+                    AsientoPago: 4,
+                    provider_external_id: 'V004',
+                    total_amount: 400,
+                    PROVIDERID: 'PROV-4',
+                    errorCount: 0,
+                    lastErrorAt: null,
+                    dbNow: undefined, // the column the query stopped projecting
+                })],
+            })
+            .mockResolvedValueOnce({ recordset: [] })  // queryPagosRegistrados
+            .mockResolvedValueOnce({ recordset: [] }); // queryFacturasPagadas
+
+        await uploadPayments(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalPaymentController', 'warn',
+            expect.stringMatching(/^\[RETRY-CLOCK\] tenant=COPDAT dbNow=missing fallback=node-clock$/));
+        // Exactly one, regardless of row count — this is a per-tick line, not a per-row one.
+        const clockCalls = mockLogGenerator.mock.calls.filter((c) => /\[RETRY-CLOCK\]/.test(c[2] || ''));
+        expect(clockCalls.length).toBe(1);
     });
 });
