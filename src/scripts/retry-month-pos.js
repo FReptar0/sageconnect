@@ -92,7 +92,10 @@ async function sweepTenantPOs(tenantIndex) {
             '${tenantDb}' AS tenant,
             ${dateFieldExpr} AS fechaAuth,
             COALESCE(ef.errorCount, 0) AS errorCount,
-            ef.lastErrorAt
+            ef.lastErrorAt,
+            -- D-01: reloj único de la comparación de reintentos, del MISMO SELECT que lastErrorAt.
+            -- D-05: GETDATE() se evalúa una vez por statement, así que todo el barrido comparte uno.
+            GETDATE() AS dbNow
         FROM ${tenantDb}.dbo.POPORH1 A
         LEFT OUTER JOIN ${tenantDb}.dbo.POPORL B
           ON A.PORHSEQ = B.PORHSEQ
@@ -108,10 +111,18 @@ async function sweepTenantPOs(tenantIndex) {
               AND idDatabase = '${tenantDb}'
               AND status IN ('CLOSED', 'POSTED')
           )
+        -- La columna dbNow queda deliberadamente FUERA del agrupamiento de abajo.
+        -- SQL Server trata GETDATE() como constante de runtime, no como referencia a columna,
+        -- así que es legal en el SELECT de una consulta agrupada sin listarla. No lo "arregles".
         GROUP BY A.PONUMBER, ef.errorCount, ef.lastErrorAt
     `;
     const { recordset } = await runQuery(sql, tenantDb);
-    const now = new Date();
+    // 20.2 D-01: el instante de evaluación sale del recordset, no del reloj del proceso Node.
+    // Se resuelve una vez por barrido (D-05: todas las filas traen el mismo valor).
+    const dbNow = recordset.length > 0 ? recordset[0].dbNow : null;
+    if (recordset.length > 0 && !dbNow) {
+        logGenerator(LOG_FILE, 'warn', `[RETRY-CLOCK] tenant=${tenantDb} dbNow=missing fallback=node-clock`);
+    }
     // Intervalo fijo por tipo de documento (D-02); constante para todo el barrido, así que
     // se resuelve una sola vez fuera del bucle — igual que en el cron (PortalOC_Creator.js).
     const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
@@ -124,7 +135,7 @@ async function sweepTenantPOs(tenantIndex) {
         const { eligible: isEligible, nextEligibleAt } = computeRetryEligibility({
             lastErrorAt: row.lastErrorAt,
             intervalMinutes: intervalMin,
-            now,
+            now: dbNow,
         });
         const entry = {
             po: row.po,

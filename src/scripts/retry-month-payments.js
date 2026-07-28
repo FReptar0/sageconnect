@@ -92,7 +92,10 @@ async function sweepTenantPayments(tenantIndex) {
             '${tenantDb}' AS tenant,
             P.AUDTDATE AS fechaAuth,
             COALESCE(ef.errorCount, 0) AS errorCount,
-            ef.lastErrorAt
+            ef.lastErrorAt,
+            -- D-01: reloj único de la comparación de reintentos, del MISMO SELECT que lastErrorAt.
+            -- D-05: GETDATE() se evalúa una vez por statement, así que todo el barrido comparte uno.
+            GETDATE() AS dbNow
         FROM APBTA B
         JOIN BKACCT BK ON B.IDBANK = BK.BANK
         JOIN APTCR P ON B.PAYMTYPE = P.BTCHTYPE
@@ -125,7 +128,12 @@ async function sweepTenantPayments(tenantIndex) {
             ) >= 60
     `;
     const { recordset } = await runQuery(sql, tenantDb);
-    const now = new Date();
+    // 20.2 D-01: el instante de evaluación sale del recordset, no del reloj del proceso Node.
+    // Se resuelve una vez por barrido (D-05: todas las filas traen el mismo valor).
+    const dbNow = recordset.length > 0 ? recordset[0].dbNow : null;
+    if (recordset.length > 0 && !dbNow) {
+        logGenerator(LOG_FILE, 'warn', `[RETRY-CLOCK] tenant=${tenantDb} dbNow=missing fallback=node-clock`);
+    }
     // Intervalo fijo por tipo de documento (D-02); constante para todo el barrido, así que
     // se resuelve una sola vez fuera del bucle — igual que en el cron (PortalPaymentController.js).
     const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'payment');
@@ -138,7 +146,7 @@ async function sweepTenantPayments(tenantIndex) {
         const { eligible: isEligible, nextEligibleAt } = computeRetryEligibility({
             lastErrorAt: row.lastErrorAt,
             intervalMinutes: intervalMin,
-            now,
+            now: dbNow,
         });
         const entry = {
             payment_id: row.payment_id,
