@@ -1,8 +1,12 @@
 // tests/utils/RetryPolicy.test.js
-// RETRY-C1 / RETRY-C2 / RETRY-C4 / RETRY-C6 — unit coverage for the pure cron-retry helpers.
+// RETRY-C1 / RETRY-C2 / RETRY-C4 / RETRY-C6 / RETRY-S1 — unit coverage for the pure cron-retry helpers.
 // The retry wait is a FIXED interval per document type (payments 30 min, POs 240 min); it does
 // not grow with the attempt count. Eligibility lives in one shared helper so the first-attempt
 // rule (RETRY-C4) cannot diverge between the two controllers and the diagnostic script.
+// RETRY-S1: fesa.dbo.fesaPagosFocaltec has only FOUR columns — idCia, NoPagoSage, status,
+// idFocaltec (2026-07-27 production read of fesa.INFORMATION_SCHEMA.COLUMNS) — so its error-stats
+// fragment must never reference lastUpdate, while fesaOCFocaltec's (which does have the column)
+// must stay byte-identical.
 
 // Mock config to prevent process.exit(1) from config validation. RetryPolicy.js
 // itself does not require config, but the test runner may load it transitively;
@@ -191,7 +195,8 @@ describe('buildErrorStatsApply', () => {
             fesaTable: 'fesa.dbo.fesaOCFocaltec',
             joinColumn: 'ocSage',
             joinKey: 'A.PONUMBER',
-            dbAlias: 'COPDAT'
+            dbAlias: 'COPDAT',
+            timestampColumn: 'lastUpdate'
         });
         expect(sql).toMatch(/OUTER APPLY/);
         expect(sql).toMatch(/COUNT\(\*\) AS errorCount/);
@@ -200,6 +205,9 @@ describe('buildErrorStatsApply', () => {
         expect(sql).toMatch(/status = 'ERROR'/);
         expect(sql).toMatch(/ocSage = A\.PONUMBER/);
         expect(sql).toMatch(/AS ef/);
+        // RETRY-S1 byte-identity guard: fesaOCFocaltec genuinely HAS lastUpdate, so the payments
+        // fix must leave this line untouched down to its 4-space indent (SPEC acceptance #3).
+        expect(sql.split('\n')[1]).toBe('    SELECT COUNT(*) AS errorCount, MAX(lastUpdate) AS lastErrorAt');
     });
 
     test('payments case — explicit dbColumn "idCia"', () => {
@@ -208,11 +216,45 @@ describe('buildErrorStatsApply', () => {
             joinColumn: 'NoPagoSage',
             joinKey: 'P.DOCNBR',
             dbAlias: 'COPDAT',
-            dbColumn: 'idCia'
+            dbColumn: 'idCia',
+            timestampColumn: 'none'
         });
         expect(sql).toMatch(/idCia = 'COPDAT'/);
         expect(sql).toMatch(/NoPagoSage = P\.DOCNBR/);
         expect(sql).not.toMatch(/idDatabase/);
         expect(sql).not.toMatch(/ocSage/);
+        // RETRY-S1: fesaPagosFocaltec has no lastUpdate column. Emitting it aborts the whole
+        // payment cron query with `Invalid column name`; the .catch() at
+        // PortalPaymentController.js:103 swallows that into { recordset: [] }, so the cron would
+        // process zero payments on every tick behind a normal-looking [RETRY] summary.
+        expect(sql).not.toMatch(/lastUpdate/);
+        // The shape both controllers consume is unchanged: errorCount stays a real COUNT(*)
+        // (legal — `status` exists) and lastErrorAt survives as a typed NULL.
+        expect(sql).toMatch(/COUNT\(\*\) AS errorCount/);
+        expect(sql).toMatch(/CAST\(NULL AS datetime\) AS lastErrorAt/);
+        // Mirror of the OC byte-identity guard above — pins the whole payments SELECT line so a
+        // future edit cannot reintroduce a column that does not exist on this table.
+        expect(sql.split('\n')[1]).toBe('    SELECT COUNT(*) AS errorCount, CAST(NULL AS datetime) AS lastErrorAt');
+    });
+
+    test('throws for a missing or unknown timestampColumn', () => {
+        // D-06: there is deliberately NO default. A 'lastUpdate' default would be right for OCs
+        // and silently invalid for payments — the CLAUDE.md §6 pitfall #2 shape (PR #16 → #19).
+        const base = {
+            fesaTable: 'fesa.dbo.fesaPagosFocaltec',
+            joinColumn: 'NoPagoSage',
+            joinKey: 'P.DOCNBR',
+            dbAlias: 'COPDAT',
+            dbColumn: 'idCia'
+        };
+        expect(() => buildErrorStatsApply(base)).toThrow(/invalid timestampColumn/i);
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: null }))).toThrow(/invalid timestampColumn/i);
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: '' }))).toThrow(/invalid timestampColumn/i);
+        // Near-misses: the closed set is case-sensitive, same posture as getRetryIntervalMinutes' 'PO' case.
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: 'lastupdate' }))).toThrow(/invalid timestampColumn/i);
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: 'LastUpdate' }))).toThrow(/invalid timestampColumn/i);
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: 'None' }))).toThrow(/invalid timestampColumn/i);
+        // Plausible but wrong: fesaOCFocaltec does have a createdAt column, but it is not a selector.
+        expect(() => buildErrorStatsApply(Object.assign({}, base, { timestampColumn: 'createdAt' }))).toThrow(/invalid timestampColumn/i);
     });
 });
