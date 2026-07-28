@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.2 plan 01 complete
-last_updated: "2026-07-28T16:22:51.790Z"
-last_activity: 2026-07-28 -- Phase 20.2 plan 01 executed (RETRY-S1)
+stopped_at: Phase 20.2 plan 01 complete (3 task commits `a9d8d8c` / `6150d69` / `6aab1c2`)
+last_updated: "2026-07-28T16:33:59.779Z"
+last_activity: 2026-07-28
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 18
-  completed_plans: 14
-  percent: 78
+  completed_plans: 15
+  percent: 83
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 20.2 (retry-code-vs-real-schema) — EXECUTING
-Plan: 2 of 6
-Status: Executing Phase 20.2 (plan 01 complete)
+Plan: 3 of 6
+Status: Ready to execute
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: `/gsd-execute-phase 20.2` continues with plan 20.2-02. Plan 01 closed the `buildErrorStatsApply` half of RETRY-S1: the payments fragment no longer references `lastUpdate`, so the payment cron query is schema-valid and the "zero payments per tick, forever" failure mode is gone from that emitter. **The code is still NOT deploy-ready:** `src/background.js:495-497` hand-writes the same defect for the EOM payments query (plan 20.2-05), and the -360 min clock skew is untouched (plans 20.2-02..04). Per the 2026-07-22 todo-junto directive the push + deploy also still wait for Q3 (alerts) + the 409/detection query and the August window.
-Last activity: 2026-07-28 -- Phase 20.2 plan 01 executed (RETRY-S1)
+Last activity: 2026-07-28
 Test suite after 20.2-01: **6 failed suites / 7 failed tests of 485** (477 passed, 1 skipped) — exactly the pre-existing CLAUDE.md §6 baseline (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes). Identical failing-suite set to the pre-plan baseline of 484; the +1/+1 delta is the new `timestampColumn` throw test.
 
 ## Decisions
@@ -53,6 +53,10 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 - **20.2-01:** The payments branch emits `CAST(NULL AS datetime) AS lastErrorAt` — a truthful projection, not a stub. `fesaPagosFocaltec` has only 4 columns and nothing writes `status='ERROR'` for payments (prod distribution: `PAID 2678 / PARTIAL 27 / SYNCED 3 / REVERTED 2`, zero ERROR), so every payment row hands `computeRetryEligibility` a null `lastErrorAt` and **the 30-min payment interval is inert for payments until CR-03 (deferred) provides somewhere to record a failure**. Same behaviour as pre-Phase-20; a one-line swap when CR-03 lands.
 - **20.2-01:** Only the SELECT line is branched, not the whole template — the smallest change that makes the OC fragment provably byte-identical. Verified by loading the `HEAD~1` builder alongside the new one and comparing FULL output strings, not just line 2; pinned permanently by a strict line-equality assertion in `tests/utils/RetryPolicy.test.js`. Both branches are now pinned that way — the one that must not change and the one that did.
 - **20.2-01 (out of scope, logged not fixed):** `src/background.js:495-497` still selects `responseAPI` and orders by `lastUpdate` on `fesaPagosFocaltec`. It hand-writes its own OUTER APPLY and is NOT a `buildErrorStatsApply` call site (D-09), so nothing in plan 01 reached it. The SPEC's repo-wide acceptance ("no statement anywhere in `src/` selects `lastUpdate`/`responseAPI` from `fesaPagosFocaltec`") is **not satisfiable until plan 20.2-05 lands** — expect the 20.2-06 schema-guard test to stay red until then.
+- **20.2-05:** `background.js:495-497` — **resolved.** The hand-written payments `OUTER APPLY` no longer selects an error description nor orders by an update timestamp; it emits `COUNT(*) AS errorCount` only, against the three columns that exist (`NoPagoSage`, `idCia`, `status`). The POs branch is untouched and proven so by `git diff -U0 src/background.js | grep -c fesaOCFocaltec` = **0**. This closes the second of the two emitters plan 01 flagged, so the SPEC's repo-wide acceptance is now satisfiable and 20.2-06 is unblocked.
+- **20.2-05:** The EOM payments email **drops** the error-description column rather than placeholding it (D-10) — a cell that always reads "no registrado" trains the operator to ignore it. One hardcoded Spanish footnote states the gap instead, and it is pushed **outside** the empty/populated `if/else` on purpose so it renders in the "Sin pendientes" case too: that is precisely when an operator concludes nothing failed. The POs table stays six columns and never shows the footnote (D-11), pinned byte-for-byte by the existing snapshot against `tests/fixtures/eom-email-sample.html`.
+- **20.2-05:** Footnote wording deliberately omits the removed header's literal text. The plan *suggested* a sentence quoting it, which contradicts the plan's own acceptance criterion that the payments output must not match that string — and honouring the suggestion would have destroyed the only assertion proving the header cell is gone. Meaning preserved, literal dropped.
+- **20.2-05 (guard-design note for 20.2-06):** `src/background.js` legitimately contains `responseAPI`, `lastUpdate` **and** `fesa.dbo.fesaPagosFocaltec` after this fix — the first two in the POs branch, the third in the payments branch. A file-level "contains both" scan flags it forever; the schema guard must be proximity- or statement-scoped (PATTERNS Q4). The payments-side comments and JSDoc were written to avoid naming the OC table for exactly this reason.
 
 ## Phase 20.1 — 2026-07-22 Santiago session + RETRY-C7 amendment
 
@@ -102,7 +106,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-07-28T16:22:31.129Z
+Last session: 2026-07-28T16:33:54.654Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
 Stopped at: Phase 20.2 plan 01 complete (3 task commits `a9d8d8c` / `6150d69` / `6aab1c2`)
 Resume next: `/gsd-execute-phase 20.2` — plan 20.2-02 onward. Plan 01 delivered RETRY-S1's `buildErrorStatsApply` half only: the selector is now required and closed-set, the payments fragment emits `CAST(NULL AS datetime) AS lastErrorAt`, and all 7 call sites (5 production + 2 test) were audited in the same run because the parameter is required from commit `a9d8d8c` onward. Full-suite gate held at the CLAUDE.md §6 baseline (6 failed suites / 7 failed tests, 477 passed of 485). Still open in this phase: the `background.js` EOM payments query (20.2-05), the -360 min two-clock comparison (20.2-02..04) and the repo-wide schema guard (20.2-06).
