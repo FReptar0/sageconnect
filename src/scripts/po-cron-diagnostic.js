@@ -169,7 +169,7 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
               ON A.PORHSEQ = B.PORHSEQ
             LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X
               ON A.PONUMBER = X.PONumber
-            ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: database, dbColumn: 'idDatabase' })}
+            ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: database, dbColumn: 'idDatabase', timestampColumn: 'lastUpdate' })}
             WHERE A.PONUMBER = '${poNumber}'
               AND X.Autorizada = 1
               AND X.Empresa = '${database}'

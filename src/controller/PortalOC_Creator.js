@@ -174,7 +174,7 @@ left outer join ${databases[index]}.dbo.ICLOC F
   on B.[LOCATION] = F.[LOCATION]
 left outer join Autorizaciones_electronicas.dbo.Autoriza_OC X
   on A.PONUMBER = X.PONumber
-${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: databases[index], dbColumn: 'idDatabase' })}
+${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: databases[index], dbColumn: 'idDatabase', timestampColumn: 'lastUpdate' })}
 where
   X.Autorizada = 1
   and X.Empresa = '${databases[index]}'

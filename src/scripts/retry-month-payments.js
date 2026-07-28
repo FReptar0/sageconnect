@@ -97,7 +97,7 @@ async function sweepTenantPayments(tenantIndex) {
         JOIN BKACCT BK ON B.IDBANK = BK.BANK
         JOIN APTCR P ON B.PAYMTYPE = P.BTCHTYPE
             AND B.CNTBTCH = P.CNTBTCH
-        ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: tenantDb, dbColumn: 'idCia' })}
+        ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: tenantDb, dbColumn: 'idCia', timestampColumn: 'none' })}
         WHERE B.PAYMTYPE = 'PY'
             AND B.BATCHSTAT = 3
             AND P.ERRENTRY = 0

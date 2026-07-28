@@ -98,7 +98,7 @@ async function sweepTenantPOs(tenantIndex) {
           ON A.PORHSEQ = B.PORHSEQ
         LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X
           ON A.PONUMBER = X.PONumber
-        ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: tenantDb, dbColumn: 'idDatabase' })}
+        ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: tenantDb, dbColumn: 'idDatabase', timestampColumn: 'lastUpdate' })}
         WHERE X.Autorizada = 1
           AND X.Empresa = '${tenantDb}'
           AND ${buildScopeWhere(config.retry, { dateField: dateFieldExpr })}

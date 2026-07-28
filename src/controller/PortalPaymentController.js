@@ -63,7 +63,7 @@ SELECT A.* FROM (
     JOIN BKACCT BK ON B.IDBANK    = BK.BANK
     JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
         AND B.CNTBTCH   = P.CNTBTCH
-    ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: database[index], dbColumn: 'idCia' })}
+    ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: database[index], dbColumn: 'idCia', timestampColumn: 'none' })}
     WHERE B.PAYMTYPE   = 'PY'
         AND B.BATCHSTAT  = 3
         AND P.ERRENTRY   = 0
