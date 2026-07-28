@@ -154,6 +154,67 @@ describe('computeRetryEligibility', () => {
         expect(computeRetryEligibility({ lastErrorAt: 'not-a-date', intervalMinutes: 240, now }))
             .toEqual({ eligible: true, nextEligibleAt: null });
     });
+
+    // RETRY-S4 / D-01 / D-05 — the single-clock contract. Both operands of the elapsed-time
+    // comparison must come off ONE clock: `now` is the `GETDATE() AS dbNow` column of the very
+    // SELECT that produced `lastErrorAt`. Per hazard H-2, every fixture below derives its
+    // lastErrorAt from `dbNow` — a fixture that leaves dbNow unset falls back to the Node clock
+    // and would keep passing no matter what the call sites do, i.e. it would prove nothing.
+    describe('single clock — a SQL-sourced now (dbNow)', () => {
+        // Measured 2026-07-27 on the deployed SQL Server host:
+        // DATEDIFF(mi, GETUTCDATE(), GETDATE()) = -360. tedious@18.6.1 defaults useUTC: true and
+        // SQLServerConnection.js overrides only trustServerCertificate, so lastErrorAt arrives as
+        // server-local wall clock labelled UTC while new Date() returns true UTC — 360 min apart.
+        const SKEW_MIN = 360;
+        const dbNow = new Date('2026-07-20T12:00:00.000Z');
+        // What new Date() would return while SQL hands back timestamps labelled 360 min behind.
+        const nodeNow = new Date(dbNow.getTime() + SKEW_MIN * MS_PER_MINUTE);
+
+        test('a 5-minute-old error defers on the server clock but reads eligible under the 360-min skew', () => {
+            const intervalMinutes = 30;
+            const lastErrorAt = new Date(dbNow.getTime() - 5 * MS_PER_MINUTE);
+
+            const onServerClock = computeRetryEligibility({ lastErrorAt, intervalMinutes, now: dbNow });
+            const onSkewedNodeClock = computeRetryEligibility({ lastErrorAt, intervalMinutes, now: nodeNow });
+
+            // The correct verdict: 5 min elapsed, 30 min required.
+            expect(onServerClock.eligible).toBe(false);
+            expect(onServerClock.nextEligibleAt.getTime())
+                .toBe(lastErrorAt.getTime() + intervalMinutes * MS_PER_MINUTE);
+
+            // What the defect did: 360 min of skew swamps both configured intervals (30 payment,
+            // 240 PO), so every candidate always looked eligible and [RETRY-DEFER] could never
+            // fire. Asserting the skewed verdict too is what makes this test fail the moment a
+            // call site reverts to new Date() — the pair encodes both outcomes.
+            expect(onSkewedNodeClock.eligible).toBe(true);
+        });
+
+        test('does not over-defer — 40 minutes past a 30-minute interval is eligible on the server clock', () => {
+            const lastErrorAt = new Date(dbNow.getTime() - 40 * MS_PER_MINUTE);
+
+            expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 30, now: dbNow }).eligible).toBe(true);
+        });
+
+        test('fails open on an unusable now — no bad dbNow can permanently defer a row', () => {
+            // Regression guard for hazard H-1. Before this phase `null`, `''` and `0` each
+            // returned eligible: false, because new Date(<falsy>) is the Unix epoch, so
+            // 0 >= nextEligibleAt is never true and EVERY candidate row deferred forever behind
+            // normal-looking [RETRY-DEFER] lines. These values fall back to the process clock,
+            // so lastErrorAt is derived from it rather than from dbNow.
+            const lastErrorAt = new Date(Date.now() - 300 * MS_PER_MINUTE);
+
+            [null, '', 0, 'not-a-date', NaN].forEach((badNow) => {
+                expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 240, now: badNow }).eligible).toBe(true);
+            });
+        });
+
+        test('now: undefined uses the process clock — the documented default, pinned so a change stays deliberate', () => {
+            const lastErrorAt = new Date(Date.now() - 300 * MS_PER_MINUTE);
+
+            expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 240, now: undefined }).eligible).toBe(true);
+            expect(computeRetryEligibility({ lastErrorAt, intervalMinutes: 240 }).eligible).toBe(true);
+        });
+    });
 });
 
 describe('buildScopeWhere', () => {
