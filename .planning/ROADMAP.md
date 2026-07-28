@@ -137,7 +137,7 @@ See `.planning/MILESTONES.md` for accomplishments.
 - [x] 20.2-01-PLAN.md (wave 1) — `buildErrorStatsApply` gains a required closed-set `timestampColumn` (`'lastUpdate'` | `'none'`, throws otherwise); payments branch emits `CAST(NULL AS datetime) AS lastErrorAt`, OC branch byte-identical; all 7 call sites (5 production + 2 test) audited [RETRY-S1]
 - [x] 20.2-05-PLAN.md (wave 1) — EOM payments query drops the `responseAPI` sub-select and `ORDER BY lastUpdate`; payments email table drops the "Último error" column and gains one honest footnote; POs query, table and snapshot fixture untouched [RETRY-S3]
 - [x] 20.2-02-PLAN.md (wave 2) — `computeRetryEligibility` fail-open guarantee extended to `now` (H-1: `null`/`''`/`0` currently defer every row forever via the Unix epoch); clock-basis JSDoc rewritten with the D-04 `Z`-suffix operator warning; skew-resistant helper test [RETRY-S4]
-- [ ] 20.2-03-PLAN.md (wave 3) — both cron controllers project `GETDATE()` as `dbNow` and feed it to the eligibility helper; `[RETRY-CLOCK]` warn when absent; cron-where fixtures rederived from a `dbNow` 360 min behind the process clock; records hazard H-4 as D-ITEM-03 (developer decision 2026-07-27: defer — `PortalOC_Creator.js` never projects `ef.errorCount`/`ef.lastErrorAt`, so its interval is inert; to be fixed together with CR-04's `ALTER TABLE`) [RETRY-S2, RETRY-S4]
+- [x] 20.2-03-PLAN.md (wave 3) — both cron controllers project `GETDATE()` as `dbNow` and feed it to the eligibility helper; `[RETRY-CLOCK]` warn when absent; cron-where fixtures rederived from a `dbNow` 360 min behind the process clock; records hazard H-4 as D-ITEM-03 (developer decision 2026-07-27: defer — `PortalOC_Creator.js` never projects `ef.errorCount`/`ef.lastErrorAt`, so its interval is inert; to be fixed together with CR-04's `ALTER TABLE`) [RETRY-S2, RETRY-S4]
 - [ ] 20.2-04-PLAN.md (wave 3) — `dbNow` in all three operator tools; in `po-cron-diagnostic.js` it lands in block r6 (the query that feeds eligibility), NOT block r4; `retry-month-pos.js` keeps it out of the `GROUP BY` [RETRY-S4]
 - [ ] 20.2-06-PLAN.md (wave 4) — repo-wide statement-scoped schema guard (`tests/schema-guard.test.js`, self-tested against the original defect shape) + RETRY-S5 baseline verification and untouchables audit [RETRY-S1, RETRY-S5]
 
@@ -178,5 +178,5 @@ See `.planning/MILESTONES.md` for accomplishments.
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 20. Cron retry + EOM email    | v2.4      | 8/9 | In Progress|  |
 | 20.1 Retry policy correction  | v2.4      | 3/3            | Complete | 2026-07-27 |
-| 20.2 Retry code vs. schema    | v2.4      | 3/6 | In Progress|  |
+| 20.2 Retry code vs. schema    | v2.4      | 4/6 | In Progress|  |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
