@@ -229,7 +229,8 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         const sql = `
             SELECT
                 COUNT(*) AS errorCount,
-                MAX(lastUpdate) AS lastErrorAt
+                MAX(lastUpdate) AS lastErrorAt,
+                GETDATE() AS dbNow -- D-01: reloj unico del veredicto, del MISMO SELECT que lastErrorAt (sin GROUP BY, la constante de runtime es legal junto a los agregados)
             FROM fesa.dbo.fesaOCFocaltec
             WHERE ocSage = '${poNumber}'
               AND idDatabase = '${database}'
@@ -241,6 +242,14 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
     if (r6 && !r6.__error && r6.length > 0) {
         const errorCount = r6[0].errorCount || 0;
         const lastErrorAt = r6[0].lastErrorAt;
+        // 20.2 D-01: el instante de evaluacion sale del mismo SELECT que lastErrorAt, no del
+        // reloj del proceso. Con el reloj de Node el diagnostico reportaria "lista para
+        // reintentar" para una OC que el cron difiere — exactamente la divergencia que el
+        // helper compartido existe para impedir.
+        const dbNow = r6[0].dbNow || null;
+        if (!dbNow) {
+            console.log('   ⚠ Reloj del servidor no disponible (dbNow ausente) — usando el reloj del proceso.');
+        }
         // La regla de elegibilidad vive completa en computeRetryEligibility (D-01), la misma
         // que usa el cron en PortalOC_Creator.js — asi el veredicto del diagnostico no puede
         // divergir de lo que el cron realmente hace.
@@ -248,7 +257,7 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
         const { nextEligibleAt } = computeRetryEligibility({
             lastErrorAt,
             intervalMinutes: retryIntervalMin,
-            now: new Date(),
+            now: dbNow,
         });
         verdict.errorCount = errorCount;
         verdict.lastErrorAt = lastErrorAt ? new Date(lastErrorAt).toISOString() : null;
@@ -259,6 +268,10 @@ async function diagnoseOne(poNumber, database, tenantIndex) {
             lastErrorAt: verdict.lastErrorAt,
             retryIntervalMin,
             nextEligibleAt: verdict.nextEligibleAt,
+            // El reloj contra el que se calculo el veredicto, visible para el operador.
+            // D-04: se renderiza hora local del servidor con sufijo Z — leerla como hora de
+            // Mexico, no como UTC.
+            dbNow: dbNow ? new Date(dbNow).toISOString() : null,
         }]);
     }
 
