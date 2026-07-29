@@ -146,6 +146,10 @@ const resetProbeStubs = () => {
     mockRunQuery.mockReset();
     mockPortalPost.mockReset();
     mockPortalGet.mockReset();
+    // Mismo motivo D-10 que los cuatro de arriba: los casos de WR-02 le ponen una implementación
+    // que LANZA para simular una bitácora rota, y clearAllMocks() no la retira — sólo borra el
+    // registro de llamadas. Sin este reset, esa implementación se filtraría al siguiente caso.
+    mockLogGenerator.mockReset();
     mockValidatePO.mockReset();
     mockValidatePO.mockImplementation((po) => po);
 };
@@ -767,5 +771,75 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
 
         expect(mockPortalPost).not.toHaveBeenCalled();
         expect(insertsEmitted().length).toBe(0);
+    });
+
+    // ── WR-02: el catch tiene que decir la verdad sobre la etapa que falló ────────────────────
+    //
+    // El try abarca tres cosas —la sonda, la escritura de reconciliación y las llamadas de
+    // bitácora— y el catch afirmaba una sola causa (`reason=write-failed`) para las tres. En prod
+    // no hay SSMS ni depurador (HANDOFF §6): la bitácora es el único canal, y ahí mentía sobre la
+    // etapa. Que `logGenerator` pueda lanzar no es hipotético — su ruta de respaldo hace
+    // `fs.mkdirSync` fuera de todo try (LogGenerator.js:53-56) — y `console.*` sobre un stdout
+    // capturado por Servy puede dar EPIPE durante la rotación de servy-stdout.log.
+    //
+    // El daño mayor era en el tramo `absent`: ahí ya se había contado probeAbsent, así que el
+    // `probeUnknown++` del catch dejaba el resumen en `probed=1 absent=1 unknown=1` y rompía la
+    // invariante que el comentario de PortalOC_Creator.js:537-539 declara que debe cumplirse
+    // SIEMPRE. Un resumen que no cuadra es peor que ninguno: es el número con el que el operador
+    // decide si la sonda está sana.
+
+    // Lee el resumen y devuelve sus cinco campos como números.
+    const summaryCounters = () => {
+        const call = mockLogGenerator.mock.calls
+            .find((c) => /^\[PORTAL-CHECK-SUMMARY\]/.test(String(c[2] || '')));
+        expect(call).toBeDefined();
+        const msg = String(call[2]);
+        const read = (field) => Number((msg.match(new RegExp(`${field}=(\\d+)`)) || [])[1]);
+        return { msg, probed: read('probed'), found: read('found'), absent: read('absent'), skipped: read('skipped'), unknown: read('unknown') };
+    };
+
+    test('WR-02: si la bitácora del camino absent lanza, la invariante de contadores se sostiene', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalAbsent();
+        stubPostSuccess();
+        mockLogGenerator.mockImplementation((_file, _level, msg) => {
+            if (/^\[PORTAL-CHECK\] PO PO0084361 .*result=absent/.test(String(msg))) {
+                throw new Error('EPIPE: write EPIPE');
+            }
+        });
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1$/);
+
+        // Y la etapa se nombra: `write-failed` habría mandado al operador a revisar una escritura
+        // que nunca se intentó (esta OC ni siquiera tiene fila que escribir).
+        const failLine = mockLogGenerator.mock.calls
+            .find((c2) => /^\[PORTAL-CHECK\] PO PO0084361 tenant=COPDAT result=unknown /.test(String(c2[2] || '')));
+        expect(failLine).toBeDefined();
+        expect(String(failLine[2])).not.toContain('reason=write-failed');
+        expect(String(failLine[2])).toContain('reason=log-absent-failed');
+    });
+
+    test('WR-02 (control positivo): cuando SÍ falla el INSERT, el reason sigue siendo write-failed', async () => {
+        // Sin este control, el caso anterior pasaría igual si se hubiera borrado `write-failed` del
+        // todo. El diagnóstico verdadero tiene que sobrevivir intacto: es el que ya estaba bien.
+        stubSelect([gateOpenRow()]);
+        mockRunQuery.mockRejectedValueOnce(new Error('Timeout: Request failed to complete'));
+        stubPortalFound(VALID_ID, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        const failLine = mockLogGenerator.mock.calls
+            .find((c2) => /^\[PORTAL-CHECK\] PO PO0084361 tenant=COPDAT result=unknown /.test(String(c2[2] || '')));
+        expect(failLine).toBeDefined();
+        expect(String(failLine[2])).toContain('reason=write-failed');
+
+        const c = summaryCounters();
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1$/);
     });
 });
