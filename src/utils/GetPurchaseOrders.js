@@ -72,10 +72,17 @@ const ID_FOCALTEC_SHAPE = /^[0-9a-fA-F]{24}$/;
  */
 async function getPurchaseOrderByExternalId(index, externalId) {
     const logFileName = 'GetPurchaseOrders';
+    // Se declara fuera del try para que el catch pueda leerlo SIN repetir la operación que pudo
+    // lanzar: `(externalId || '').trim` es undefined para cualquier valor que no sea string, así
+    // que el try lanzaba, el catch lanzaba lo mismo y la excepción escapaba del helper — rompiendo
+    // el contrato «nunca lanza» del bloque de arriba. La ASIGNACIÓN va dentro del try a propósito:
+    // String() sobre un objeto con un toString hostil también lanza, y sacarla dejaría esa
+    // excepción fuera de la protección; el mismo fallo, un renglón más arriba.
+    let externalIdClean = '';
     // S-3: el cuerpo entero va dentro del try. Una excepción aquí abortaría el tick del cron a
     // media tanda en un servicio always-on; el contrato es devolver un valor, nunca lanzar.
     try {
-        const externalIdClean = (externalId || '').trim();
+        externalIdClean = String(externalId == null ? '' : externalId).trim();
         if (!externalIdClean) {
             console.warn('[WARN] Empty externalId provided');
             logGenerator(logFileName, 'warn', 'Empty externalId provided');
@@ -148,9 +155,10 @@ async function getPurchaseOrderByExternalId(index, externalId) {
             status: String(match.status == null ? '' : match.status).trim()
         };
     } catch (error) {
-        const externalIdClean = (externalId || '').trim();
-        // Defensa always-on: un rechazo con un valor sin `.message` haría estallar el propio catch
-        // y la excepción escaparía del helper, matando el tick.
+        // Defensa always-on: nada de este bloque puede lanzar. Por eso externalIdClean NO se
+        // recalcula aquí (ya lo trae normalizado el try) y el detalle del error no se lee a pelo:
+        // un rechazo con un valor sin `.message` haría estallar el propio catch y la excepción
+        // escaparía del helper, matando el tick.
         const detail = (error && error.message) ? error.message : String(error);
         console.error(`[ERROR] Error fetching purchase order by externalId ${externalIdClean}:`, detail);
         logGenerator(logFileName, 'error', `Error fetching purchase order by externalId ${externalIdClean}: ${detail}`);
