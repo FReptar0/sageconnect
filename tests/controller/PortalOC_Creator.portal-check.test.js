@@ -14,8 +14,18 @@
  * tests/services/CronScheduler.timeout-listener.test.js:297-303.
  *
  * Bloques de este archivo:
- *   1. Guardas estructurales (plan 20.3-03) — RETRY-D2, D6, D7, D8 leídas del TEXTO del fuente.
- *   2. Comportamiento (plan 20.3-04) — RETRY-D4, D6, D7: la compuerta y la tabla de seis filas.
+ *   1. «guardas estructurales» (plan 20.3-03) — RETRY-D2, D6, D7, D8 leídas del TEXTO del fuente:
+ *      sin UPDATE, cuatro sitios de INSERT con el literal FESA, la sonda antes de Joi, cero
+ *      primitivas always-on, la firma de runQuery intacta, un solo sitio de llamada, sin id_type,
+ *      un solo external id por petición, y exactamente dos etiquetas de bitácora.
+ *   2. «behaviour» (plan 20.3-04) — RETRY-D4, D6, D7: la compuerta de errorCount en ambos
+ *      sentidos, las seis filas de la tabla de despacho con su desenlace de POST y de escritura,
+ *      y los dos controles de orden contra la validación Joi.
+ *   3. «fail-closed, id guard and log vocabulary» (plan 20.3-04) — RETRY-D5, D8 y CONTEXT D-06:
+ *      tres formas distintas de fallo de la sonda que no escriben nada, seis idFocaltec
+ *      malformados que no llegan a ningún string SQL (más su control positivo), la ausencia de
+ *      UPDATE también en tiempo de ejecución, y el texto de las dos etiquetas con sus cinco
+ *      escenarios de contadores.
  *
  * D-07: los casos de comportamiento viven aquí y NO en `PortalOC_Creator.cron-where.test.js`, que
  * ancla con regex la FORMA del SQL emitido. Mantenerlos separados significa que un cambio de
@@ -461,5 +471,275 @@ describe('PortalOC_Creator portal existence probe — behaviour (Phase 20.3 / RE
         await createPurchaseOrders(0);
 
         expect(mockValidatePO).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('PortalOC_Creator portal existence probe — fail-closed, id guard and log vocabulary (Phase 20.3 / RETRY-D5, D8, D-06)', () => {
+
+    beforeEach(() => {
+        resetProbeStubs();
+    });
+
+    // ── RETRY-D5: la sonda que no puede contestar no escribe NADA ────────────────────────────
+    //
+    // Las tres formas de fallo de abajo comparten una sola postura, y el razonamiento es el que da
+    // el propio SPEC: escribir una fila ERROR aquí inflaría el errorCount por una falla del LADO
+    // DEL PORTAL y corrompería el historial de fallos que el operador usa para diagnosticar; y leer
+    // un 404 como "la OC no existe" produciría exactamente el POST duplicado que la fase previene.
+    // Por eso la aserción es doble: ni POST, ni NINGUNA fila — ni ERROR ni POSTED.
+
+    test('RETRY-D5 (aceptación #10): un rechazo con forma de 404 no postea y no escribe nada', async () => {
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockRejectedValueOnce(
+            Object.assign(new Error('Request failed with status code 404'), { response: { status: 404, data: {} } }));
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
+    });
+
+    test('RETRY-D5 (aceptación #10): un corte de red / expiración no postea y no escribe nada', async () => {
+        // Segunda forma de fallo, misma postura: un Error pelado sin `response`, que es lo que
+        // entrega axios cuando vence el techo de 30 s del singleton PortalClient.
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'));
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
+    });
+
+    test('RETRY-D5 (aceptación #10): un 500 del portal no postea y no escribe nada', async () => {
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockRejectedValueOnce(
+            Object.assign(new Error('Request failed with status code 500'), { response: { status: 500, data: {} } }));
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
+    });
+
+    // ── RETRY-D8 observado desde el borde del controlador ────────────────────────────────────
+
+    const MALFORMED_IDS = [
+        ['con forma de inyección SQL', "'; DROP TABLE--"],
+        ['vacío', ''],
+        ['nulo', null],
+        ['de 23 hexadecimales', '507f1f77bcf86cd79943901'],
+        ['de 25 hexadecimales', '507f1f77bcf86cd7994390111'],
+        ['de 24 caracteres no hexadecimales', 'zzzzzzzzzzzzzzzzzzzzzzzz'],
+    ];
+
+    test.each(MALFORMED_IDS)('RETRY-D8 (aceptación #11): un idFocaltec %s no llega a ningún string SQL', async (_label, badId) => {
+        // Ésta es la prueba OBSERVABLE de que la guarda del lado del helper (CONTEXT D-05) vuelve
+        // ESTRUCTURAL a RETRY-D8: no existe camino de código en el controlador por el que un id
+        // malformado pueda llegar a un string SQL, porque el controlador nunca llega a sostener uno.
+        // runQuery no parametriza (CLAUDE.md §6 #1) y su firma no se tocó (§6 #2), así que la
+        // defensa tenía que vivir en el valor, y vive aguas arriba del consumidor.
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(badId, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
+
+        // La mitad de "no aparece en ningún SQL" sólo tiene sentido para un valor buscable: `''`
+        // es subcadena de toda cadena (String.prototype.includes('') es siempre cierto) y `null`
+        // nunca fue texto. Para esos dos, la aserción portadora es la de arriba — cero INSERT, o
+        // sea cero SQL emitido después del SELECT en el que puedan aparecer.
+        const needle = badId == null ? '' : String(badId);
+        if (needle.length > 0) {
+            mockRunQuery.mock.calls.forEach((c) => {
+                expect(String(c[0] || '').includes(needle)).toBe(false);
+            });
+        }
+    });
+
+    test('RETRY-D8 (aceptación #11, control positivo): un id de 24 hexadecimales SÍ llega al INSERT', async () => {
+        // Sin este control, los seis casos de arriba pasarían igual si la sonda estuviera rota del
+        // todo y no devolviera nunca un `found`. "No se escribió nada" sólo prueba algo cuando se
+        // demuestra que el mismo camino SÍ escribe con una entrada válida.
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        const inserts = insertsEmitted();
+        expect(inserts.length).toBe(1);
+        expect(inserts[0][0]).toContain(VALID_ID);
+    });
+
+    test('RETRY-D6 (aceptación #12): ningún desenlace emite un UPDATE en tiempo de ejecución', async () => {
+        // Complementa la Guarda 1 del primer bloque: ausencia en el fuente MÁS ausencia en tiempo
+        // de ejecución. La primera detecta el código que alguien escriba; ésta detecta el SQL que
+        // el proceso realmente manda, incluido el que se armara por concatenación en una rama.
+        const scenarios = [
+            ['found', () => stubPortalFound(VALID_ID, 'OPEN')],
+            ['absent', () => { stubPortalAbsent(); stubPostSuccess(); }],
+            ['cancelled', () => stubPortalFound(VALID_ID, 'CANCELLED')],
+            ['unknown', () => mockPortalGet.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'))],
+        ];
+
+        for (const [, arm] of scenarios) {
+            resetProbeStubs();
+            stubSelect([gateOpenRow()]);
+            arm();
+
+            await createPurchaseOrders(0);
+
+            expect(mockRunQuery).toHaveBeenCalled();
+            mockRunQuery.mock.calls.forEach((c) => {
+                expect(String(c[0] || '')).not.toMatch(/UPDATE\s+fesa\.dbo\.fesaOCFocaltec/i);
+            });
+        }
+    });
+
+    // ── D-06: el vocabulario de bitácora ──────────────────────────────────────────────────────
+    //
+    // POLÍTICA DE ANCLAJE (PATTERNS Q5). La línea POR FILA se deja con la COLA ABIERTA justo
+    // después de `result=<valor>`, igual que `[RETRY-DEFER]` en cron-where.test.js:172, para que el
+    // renderizado de `id=` / `status=` / `reason=` siga siendo ajustable. La línea de RESUMEN sí se
+    // cierra con `$`, igual que `[RETRY]` y `[RETRY-CLOCK]`, porque su juego de campos es fijo y
+    // completo. Lo que se ancla aquí queda INAMOVIBLE: la fase 20.2 registró que las etiquetas
+    // `[RETRY*]` ya no se pudieron corregir ni cuando se descubrió que su semántica de zona horaria
+    // era engañosa. `^\[PORTAL-CHECK\]` no colisiona con la de resumen gracias al `\]`.
+
+    test('D-06: línea por fila de un found, a nivel info, con la cola abierta', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK\] PO PO0084361 tenant=COPDAT result=found /));
+    });
+
+    test('D-06: línea por fila de un cancelled, a nivel info', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, 'CANCELLED');
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK\] PO PO0084361 tenant=COPDAT result=cancelled /));
+    });
+
+    test('D-06: línea por fila de una sonda rechazada, a nivel WARN', async () => {
+        // El nivel es parte del contrato, no cosmética: el operador filtra la bitácora por nivel, y
+        // un desenlace que bloqueó una creación tiene que verse por encima del ruido informativo.
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'));
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'warn',
+            expect.stringMatching(/^\[PORTAL-CHECK\] PO PO0084361 tenant=COPDAT result=unknown /));
+    });
+
+    // Los cinco escenarios de contadores. Con los cinco, cada uno de los cuatro buckets queda
+    // fijado por una aserción cerrada propia y las dos reglas de plegado —cancelled→skipped y
+    // ambiguous→unknown— quedan PROBADAS en vez de supuestas. Eso es lo que convierte
+    // `probed === found + absent + skipped + unknown` en una invariante real y no en una
+    // afirmación aritmética que los tests nunca ejercitan.
+
+    test('D-06: resumen del escenario found — probed=1 found=1', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=1 absent=0 skipped=0 unknown=0$/));
+    });
+
+    test('D-06: resumen del escenario absent — probed=1 absent=1', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalAbsent();
+        stubPostSuccess();
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=1 skipped=0 unknown=0$/));
+    });
+
+    test('D-06: resumen del escenario cancelled — se pliega en skipped, no en unknown', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, 'CANCELLED');
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=1 unknown=0$/));
+    });
+
+    test('D-06: resumen del escenario ambiguous — se pliega en unknown, no en skipped', async () => {
+        stubSelect([gateOpenRow()]);
+        stubPortalAmbiguous();
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+    });
+
+    test('D-06: resumen de una sonda rechazada — probed=1 unknown=1', async () => {
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'));
+
+        await createPurchaseOrders(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+    });
+
+    test('D-06: con probed=0 no se emite resumen, y el vocabulario [RETRY*] queda intacto', async () => {
+        // El tick sin ninguna OC ya fallida es el abrumadoramente común: una línea de ceros cada
+        // 15 minutos vuelve ilegible la bitácora que el operador necesita leer. La segunda mitad
+        // del caso es la que importa igual — prueba que la etiqueta nueva no perturbó la anclada
+        // de la fase 20.1, que es exactamente el tipo de regresión que nadie nota hasta producción.
+        stubSelect([gateClosedRow()]);
+        stubPostSuccess();
+
+        await createPurchaseOrders(0);
+
+        const summaryCalls = mockLogGenerator.mock.calls
+            .filter((c) => /^\[PORTAL-CHECK-SUMMARY\]/.test(c[2] || ''));
+        expect(summaryCalls.length).toBe(0);
+        const perRowCalls = mockLogGenerator.mock.calls
+            .filter((c) => /^\[PORTAL-CHECK\]/.test(c[2] || ''));
+        expect(perRowCalls.length).toBe(0);
+
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[RETRY\] tenant=COPDAT candidates=1 deferred=0 processing=1$/));
+    });
+
+    test('T-20.3-15: un status hostil no puede forjar una segunda entrada de bitácora', async () => {
+        // Las bitácoras de winston son el rastro de auditoría que sobrevive al reinicio
+        // (CLAUDE.md §5), así que un salto de línea de origen portal metido en el status no debe
+        // poder inyectar una línea falsa que parezca emitida por el servicio. El saneador en línea
+        // del controlador elimina todo lo que no sea [A-Za-z0-9_-] y recorta a 32 caracteres.
+        // Además el status resultante queda fuera del enum, así que aplica la fila 5: sin POST.
+        const HOSTILE_STATUS = 'OPEN\n[PORTAL-CHECK] PO FORGED tenant=COPDAT result=absent\u0007';
+        stubSelect([gateOpenRow()]);
+        stubPortalFound(VALID_ID, HOSTILE_STATUS);
+
+        await createPurchaseOrders(0);
+
+        mockLogGenerator.mock.calls.forEach((c) => {
+            const msg = String(c[2] || '');
+            expect(msg).not.toContain('\n');
+            expect(msg).not.toContain('\u0007');
+            // La carga útil buscaba hacerse pasar por un desenlace `absent`, que es el ÚNICO que
+            // deja pasar el POST — o sea, la línea forjada más peligrosa que se podía intentar.
+            expect(msg).not.toMatch(/result=absent/);
+        });
+
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
     });
 });
