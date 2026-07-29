@@ -522,6 +522,32 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         expect(insertsEmitted().length).toBe(0);
     });
 
+    test('CR-01 (RETRY-D5, cuarta forma de fallo): un 200 con cuerpo malformado no postea y no escribe nada', async () => {
+        // La forma de fallo que ninguna prueba cubría, porque todos los stubs de esta suite y el
+        // factory `ok(items)` de la suite del helper construyen siempre un `items` bien formado.
+        // Un 200 sin arreglo `items` —una página de login tras un 302, un sobre de error servido
+        // con 200— NO prueba que la OC esté ausente, y postear ahí fabrica el 409 duplicado.
+        // D-09: la sonda REAL corre; lo que se mockea es PortalClient, una capa más abajo.
+        stubSelect([gateOpenRow()]);
+        mockPortalGet.mockResolvedValueOnce({ data: {} });
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalGet).toHaveBeenCalledTimes(1);
+        expect(mockPortalPost).not.toHaveBeenCalled();
+        expect(insertsEmitted().length).toBe(0);
+
+        // El `reason` viaja intacto del helper a la bitácora: sin él, el operador vería el mismo
+        // `result=unknown` que produce un portal caído y no podría distinguir las dos causas.
+        const checkLine = mockLogGenerator.mock.calls
+            .find((c) => /^\[PORTAL-CHECK\] PO PO0084361/.test(c[2] || ''));
+        expect(checkLine).toBeDefined();
+        expect(checkLine[1]).toBe('warn');
+        expect(String(checkLine[2])).toContain('reason=malformed-response');
+        expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+    });
+
     // ── RETRY-D8 observado desde el borde del controlador ────────────────────────────────────
 
     const MALFORMED_IDS = [

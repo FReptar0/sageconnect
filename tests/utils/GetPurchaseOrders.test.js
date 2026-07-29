@@ -255,4 +255,43 @@ describe('GetPurchaseOrders — portal existence probe (Phase 20.3 / RETRY-D1, D
         // presupuesto por OC contra el techo de 5 min de STEP_TIMEOUT_MS.
         expect(src.split('portalClient.get(').length - 1).toBe(1);
     });
+
+    // ── CR-01: un 200 con cuerpo inutilizable no prueba ausencia ──────────────────────────────
+    //
+    // El hueco que estos casos cierran: TODOS los de arriba construyen el cuerpo con `ok(items)`
+    // (L55-57), que siempre produce un `items` array bien formado, así que ninguno podía tocar la
+    // rama del `|| []`. Ahí «no sé» se colapsaba en 'absent' — el ÚNICO desenlace que autoriza el
+    // POST del controlador — y el resultado era el 409 duplicado que esta fase existe para cortar,
+    // en silencio y con una línea de bitácora diciendo que todo salió bien.
+    //
+    // Los cuerpos de abajo se construyen A MANO, sin `ok()`, precisamente por eso.
+
+    test.each([
+        ['sin la clave items', { data: {} }],
+        ['con items null y total 7', { data: { items: null, total: 7 } }],
+        ['con una página de login en HTML (302 seguido por axios)', { data: '<html><body>login</body></html>' }],
+        ['con un sobre de error servido con 200', { data: { code: 'X', description: 'Y' } }],
+    ])('Caso 14 (CR-01): 200 %s -> malformed-response, JAMÁS absent', async (_label, body) => {
+        // El segundo caso es el peor: el portal está AFIRMANDO siete coincidencias (`total: 7`) y
+        // la versión anterior contestaba 'absent'.
+        mockGet.mockResolvedValueOnce(body);
+        const { getPurchaseOrderByExternalId } = require('../../src/utils/GetPurchaseOrders');
+
+        const result = await getPurchaseOrderByExternalId(0, OC);
+
+        expect(result).toEqual({ outcome: 'unknown', reason: 'malformed-response' });
+        expect(result.outcome).not.toBe('absent');
+    });
+
+    test('Caso 15 (CR-01, control positivo): un 200 con items vacío SIGUE siendo absent', async () => {
+        // Sin este control, el caso 14 pasaría igual si la guarda nueva hubiera roto la detección
+        // de ausencia por completo — y una sonda que nunca dice 'absent' congela toda creación de
+        // OCs. El cuerpo va a mano (sin `ok()`) para que sea comparable con los cuatro de arriba.
+        mockGet.mockResolvedValueOnce({ data: { items: [], total: 0 } });
+        const { getPurchaseOrderByExternalId } = require('../../src/utils/GetPurchaseOrders');
+
+        const result = await getPurchaseOrderByExternalId(0, OC);
+
+        expect(result).toEqual({ outcome: 'absent' });
+    });
 });
