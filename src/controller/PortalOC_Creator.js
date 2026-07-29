@@ -312,6 +312,14 @@ order by A.PONUMBER, B.PORLREV;
       // realista de excepción es runQuery en la escritura de reconciliación.
       // Los tres sitios de escritura preexistentes se dejan con su postura actual a propósito:
       // retrofitearlos ensancha el diff y queda fuera del alcance de este plan.
+      //
+      // El try abarca TRES etapas —la sonda, la escritura de reconciliación y las llamadas de
+      // bitácora— y el catch tiene que poder distinguirlas: en prod no hay SSMS ni depurador
+      // (HANDOFF §6), la bitácora es el único canal, y afirmar siempre `write-failed` mandaba al
+      // operador a revisar una escritura que a veces ni se había intentado. `logGenerator` sí puede
+      // lanzar (su ruta de respaldo hace fs.mkdirSync fuera de todo try, LogGenerator.js:53-56) y
+      // console.* puede dar EPIPE mientras Servy rota servy-stdout.log.
+      let stage = 'probe';
       try {
         probed++;
         const probe = await getPurchaseOrderByExternalId(index, ocKey);
@@ -373,10 +381,12 @@ order by A.PONUMBER, B.PORLREV;
            '${databases[index]}'
           )
       `;
+            stage = 'write';
             await runQuery(sqlCheck, 'FESA');
             logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} reconciliada desde el portal en FESA como ${localStatus} con idFocaltec: ${probe.id}`);
           }
 
+          stage = 'log';
           if (result === 'found') {
             probeFound++;
           } else if (result === 'cancelled') {
@@ -405,19 +415,31 @@ order by A.PONUMBER, B.PORLREV;
         // 'absent': el portal contestó 200 y no tiene la OC. Único camino que sigue al bloque 4.2
         // y hace POST exactamente como antes de esta fase.
         probeAbsent++;
+        stage = 'log-absent';
         const absentMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=absent id=n/a status=n/a reason=n/a`;
         console.log(absentMsg);
         logGenerator(logFileName, 'info', absentMsg);
       } catch (probeErr) {
         // Fail-closed (RETRY-D5): si no se pudo completar, no se hace POST y no se escribe nada.
         // Nunca se relanza.
+        if (stage === 'log-absent') {
+          // El tramo absent ya había contado probeAbsent, y abajo se cuenta probeUnknown: sin este
+          // decremento el resumen imprimiría absent=1 unknown=1 con probed=1 y la invariante
+          // probed === found + absent + skipped + unknown (ver el cierre del bucle) dejaría de
+          // cumplirse. El desenlace efectivo de esta OC es unknown, no absent: no se posteó.
+          probeAbsent--;
+        }
         probeUnknown++;
         const detail = (probeErr && probeErr.message) ? probeErr.message : String(probeErr);
-        const failMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=unknown id=n/a status=n/a reason=write-failed`;
+        // La etapa se nombra en `reason=` en vez de afirmar siempre una escritura fallida: la
+        // bitácora es el único canal de diagnóstico en prod y decir `write-failed` de un fallo de
+        // la sonda o de la propia bitácora manda al operador al lugar equivocado.
+        const stageReason = stage === 'write' ? 'write-failed' : `${stage}-failed`;
+        const failMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=unknown id=n/a status=n/a reason=${stageReason}`;
         console.warn(failMsg);
         console.error(`   -> ${detail}`);
         logGenerator(logFileName, 'warn', failMsg);
-        logGenerator(logFileName, 'error', `[ERROR] Fallo escribiendo la reconciliación de PO ${po.external_id}: ${detail}`);
+        logGenerator(logFileName, 'error', `[ERROR] Fallo en la etapa ${stage} de la sonda de PO ${po.external_id}: ${detail}`);
         continue;
       }
     }
