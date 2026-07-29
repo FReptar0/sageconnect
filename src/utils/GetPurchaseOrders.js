@@ -42,17 +42,21 @@ const ID_FOCALTEC_SHAPE = /^[0-9a-fA-F]{24}$/;
  *                                       y SIN normalizar: el enum es OPEN | CANCELLED | GENERATED |
  *                                       CLOSED y RETRY-D7 exige que un valor no reconocido se
  *                                       maneje explícito en el controlador, no que se difumine aquí.
- *   { outcome: 'absent' }               200 con cero matches exactos. Sin ninguna otra clave.
- *   { outcome: 'unknown', reason }      todo lo demás. `reason` es una de cuatro constantes cortas:
+ *   { outcome: 'absent' }               200 con un arreglo `items` y cero matches exactos. Sin
+ *                                       ninguna otra clave.
+ *   { outcome: 'unknown', reason }      todo lo demás. `reason` es una de cinco constantes cortas:
  *                                         'empty-external-id'  externalId vacío — NO se emitió HTTP
  *                                         'ambiguous'          200 con más de un match exacto
  *                                         'invalid-id'         200, un match, id fuera de forma
+ *                                         'malformed-response' 200 cuyo cuerpo no trae un arreglo
+ *                                                              `items`: no prueba ausencia
  *                                         'request-failed'     el GET se rechazó: 4xx, 5xx, corte de
  *                                                              red, expiración — CUALQUIER no-200
  *
- * RETRY-D2: un GET rechazado JAMÁS produce 'absent'. Solo un 200 cuyos items no traen ningún match
- * exacto significa que la OC no está en el portal. `getProviderByExternalId` colapsa ambas cosas en
- * el mismo valor (GetProviders.js:87 y :101) — esa es precisamente la conflación prohibida aquí.
+ * RETRY-D2: un GET rechazado JAMÁS produce 'absent'. Solo un 200 cuyo arreglo `items` no traiga
+ * ningún match exacto significa que la OC no está en el portal; un cuerpo sin ese arreglo tampoco
+ * lo prueba. `getProviderByExternalId` colapsa todo eso en el mismo valor (GetProviders.js:87 y
+ * :101) — esa es precisamente la conflación prohibida aquí.
  *
  * RETRY-D8 / CONTEXT D-05: el id del portal se valida contra la forma de 24 hexadecimales ANTES de
  * salir de esta función, así que ningún consumidor puede recibir un valor capaz de llegar a un
@@ -88,11 +92,24 @@ async function getPurchaseOrderByExternalId(index, externalId) {
             }
         );
 
+        // RETRY-D2, segunda mitad: un 200 cuyo cuerpo no trae un arreglo `items` no prueba ausencia
+        // — no prueba nada. Colapsarlo con `|| []` lo convertía en 'absent', el ÚNICO desenlace que
+        // autoriza el POST del controlador, así que una página de login servida tras un 302, un
+        // sobre {code,description} con status 200 o un `items: null` junto a un `total: 7` producían
+        // el mismo POST duplicado que esta fase existe para cortar. Fail-closed: si el cuerpo no es
+        // legible, el desenlace es 'unknown'.
+        const body = response && response.data;
+        if (!body || !Array.isArray(body.items)) {
+            console.warn(`[WARN] Malformed portal body for externalId: ${externalIdClean}`);
+            logGenerator(logFileName, 'warn', `Malformed portal body for externalId: ${externalIdClean}`);
+            return { outcome: 'unknown', reason: 'malformed-response' };
+        }
+
         // Re-filtro exacto del lado del cliente: NO se lee response.data.total ni se confía en el
         // filtro del API (GetProviders.js:79-82 hace lo mismo deliberadamente, y RETRY-D2 lo exige).
         // Recortar AMBOS lados es load-bearing: ocSage es nchar rellenado con espacios y la consulta
         // del creador emite RTRIM(A.PONUMBER).
-        const items = response.data.items || [];
+        const items = body.items;
         const exactMatches = items.filter(item => {
             const currentExternalId = (item.external_id || '').toString().trim();
             return currentExternalId === externalIdClean;
