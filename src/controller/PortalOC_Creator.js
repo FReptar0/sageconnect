@@ -148,6 +148,10 @@ select
     (CASE WHEN A.TXEXCLUDE4>0 THEN 0 ELSE A.TXEXCLUDE4 END) +
     (CASE WHEN A.TXEXCLUDE5>0 THEN 0 ELSE A.TXEXCLUDE5 END)
   )                                            as [WITHHOLD_TAX_SUM],
+  -- RETRY-D3: se proyecta SOLO errorCount. lastErrorAt del OUTER APPLY sigue sin proyectarse:
+  -- es MAX(lastUpdate) sobre una columna date, bloqueado por CR-04 / D-ITEM-03. Alias en
+  -- camelCase adrede: row.errorCount se lee abajo (attempts=) y en 20.3-03 gatea el chequeo.
+  ef.errorCount                                AS errorCount,
   -- D-01: reloj único. Sale del MISMO SELECT que lastErrorAt, así que la reinterpretación de
   -- zona horaria del driver aplica a ambos operandos y se cancela en la resta. D-05: GETDATE()
   -- es constante de runtime por statement, así que todas las filas del tick comparten un dbNow.
