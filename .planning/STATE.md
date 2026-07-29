@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: planning
-stopped_at: Phase 20.2 plan 01 complete (3 task commits `a9d8d8c` / `6150d69` / `6aab1c2`)
-last_updated: "2026-07-28T17:46:55.058Z"
-last_activity: 2026-07-28
+status: executing
+stopped_at: Phase 20.3 planning complete -- 4 plans in 3 waves, plan-checker PASSED (0 blockers), 2 warnings applied
+last_updated: "2026-07-28T21:13:24.822Z"
+last_activity: 2026-07-28 -- Phase 20.3 planning complete
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 3
-  total_plans: 18
-  completed_plans: 18
-  percent: 100
+  total_plans: 22
+  completed_plans: 19
+  percent: 86
 ---
 
 # Project State
@@ -21,17 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Phase 20.2 — retry-code-vs-real-schema
+**Current focus:** Phase 20.3 — cross-system detection query (409 / portal existence)
 
 ## Current Position
 
-Phase: 21
-Plan: Not started
-Status: Executing Phase 20.2
+Phase: 20.3
+Plan: 4 plans ready (20.3-01..04), none executed
+Status: Ready to execute
 Total phases: 21 (Phases 20-21 active this milestone)
-Next: `/gsd-execute-phase 20.2` continues with plan 20.2-02. Plan 01 closed the `buildErrorStatsApply` half of RETRY-S1: the payments fragment no longer references `lastUpdate`, so the payment cron query is schema-valid and the "zero payments per tick, forever" failure mode is gone from that emitter. **The code is still NOT deploy-ready:** `src/background.js:495-497` hand-writes the same defect for the EOM payments query (plan 20.2-05), and the -360 min clock skew is untouched (plans 20.2-02..04). Per the 2026-07-22 todo-junto directive the push + deploy also still wait for Q3 (alerts) + the 409/detection query and the August window.
-Last activity: 2026-07-28
-Test suite after 20.2-01: **6 failed suites / 7 failed tests of 485** (477 passed, 1 skipped) — exactly the pre-existing CLAUDE.md §6 baseline (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes). Identical failing-suite set to the pre-plan baseline of 484; the +1/+1 delta is the new `timestampColumn` throw test.
+Next: /gsd-execute-phase 20.3
+Last activity: 2026-07-28 -- Phase 20.3 planning complete
+Test suite baseline for Phase 20.3 execution — **measured fresh 2026-07-28 by the plan-checker**: `npm test` reports **6 failed suites / 7 failed tests of 500** (492 passed). Same failing-suite set as always (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes) — the CLAUDE.md §6 baseline. **This is the pass bar for 20.3: the same set, no NEW failures.** (Prior reading after 20.2-01 was 6/7 of 485 with 477 passed; the totals grew with 20.2's added suites, the failing set did not.)
 
 ## Decisions
 
@@ -70,7 +70,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Ready to plan
+**Status:** Ready to execute
 
 ## Deferred Items
 
@@ -106,9 +106,15 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-07-28T16:33:54.654Z
+Last session: 2026-07-28T19:00:54.593Z
 Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
-Stopped at: Phase 20.2 plan 01 complete (3 task commits `a9d8d8c` / `6150d69` / `6aab1c2`)
+Stopped at: Phase 20.3 context gathered
 Resume next: `/gsd-execute-phase 20.2` — plan 20.2-02 onward. Plan 01 delivered RETRY-S1's `buildErrorStatsApply` half only: the selector is now required and closed-set, the payments fragment emits `CAST(NULL AS datetime) AS lastErrorAt`, and all 7 call sites (5 production + 2 test) were audited in the same run because the parameter is required from commit `a9d8d8c` onward. Full-suite gate held at the CLAUDE.md §6 baseline (6 failed suites / 7 failed tests, 477 passed of 485). Still open in this phase: the `background.js` EOM payments query (20.2-05), the -360 min two-clock comparison (20.2-02..04) and the repo-wide schema guard (20.2-06).
 Also queued for `/gsd-verify-work 20.1`. Two items: (a) the milestone `REQUIREMENTS.md` reconciliation flagged by 20.1-01 (RETRY-04 / RETRY-05 describe the geometric curve and backoff env vars this phase deliberately removed, and `RETRY-C*` IDs are not tracked there); (b) the out-of-scope RETRY-C7 third site logged in `.planning/phases/20.1-retry-policy-correction/deferred-items.md` (`po-cron-diagnostic.js` section-4 cron replica still dedupes on POSTED only). Post-deploy operator checks for the phase: run `node src/scripts/po-cron-diagnostic.js <PO>` and both `retry-month-*` dry-runs on `ZCL-RDS-02` — there is no local Sage DB, so live script output could not be observed here.
 Earlier context (Phase 20 execution notes): re-run `/gsd-execute-phase 20` in a session launched with `SAGECONNECT_HOOKS_BYPASS=1` exported. Nothing has executed yet (0 SUMMARY.md files) — execution will start fresh from Wave 1. Two hook issues were handled on 2026-05-15: (1) `pre-edit-gsd-guard.sh` had a real bug — its active-phase detection used literal filenames (`SPEC.md`) and missed numbered artifacts (`20-SPEC.md`); fixed in commit `0ceb4c4` to glob-match. (2) `pre-edit-critical.sh` is friction-by-design (guards 13 load-bearing files); Phase 20 edits 2 of them (`src/config.js` via 20-01, `src/background.js` via 20-07) — user chose to clear it via session-level `SAGECONNECT_HOOKS_BYPASS=1` (covers `pre-edit-critical.sh` + `pre-write-always-on.sh`; `pre-edit-gsd-guard.sh` now passes on its own). `workflow.use_worktrees` was set to `false` because the Agent worktree isolation forked stale at `origin/master` (11 commits behind) and could not see the plan files — the restarted run executes sequentially on the main checkout. To restore worktree parallelism later: push `master` to origin so worktrees fork current, then `gsd-sdk query config-set workflow.use_worktrees true`.
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- Phase 20.3 inserted after Phase 20.2: Cross-system detection query (409 / portal existence) — deferred pendiente of 20.1/20.2, item #5 of the todo-junto August release; endpoint confirmed in repo swagger, self-contained (no Q3/CR-03/CR-04 dependency) (URGENT)
