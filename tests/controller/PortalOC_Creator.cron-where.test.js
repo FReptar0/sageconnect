@@ -16,6 +16,9 @@
  * RETRY-C7: the NOT EXISTS dedupe must exclude status IN ('CLOSED', 'POSTED') — a closed OC
  * has no POSTED row left (PortalOC_Closer UPDATEs it to CLOSED), so a POSTED-only dedupe
  * re-selects it and the portal answers 409.
+ *
+ * Phase 20.3 / RETRY-D3 (SQL shape only): test 1 also pins that the SELECT list projects
+ * ef.errorCount with a camelCase alias and still does not project ef.lastErrorAt.
  */
 
 const { describe, test, expect, beforeEach } = require('@jest/globals');
@@ -105,6 +108,25 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
         // SPEC acceptance guard: fesaOCFocaltec DOES have lastUpdate, so the OC branch must keep
         // emitting MAX(lastUpdate). Proves the payments fix (plan 20.2-01) did not regress it.
         expect(sqlPassed).toMatch(/MAX\(lastUpdate\) AS lastErrorAt/);
+        // Phase 20.3 RETRY-D3: the SELECT list now projects errorCount — and ONLY errorCount.
+        // lastErrorAt stays unprojected because the apply computes it as MAX over a column typed
+        // `date`; projecting it today would anchor every OC's last failure at 00:00. Unblocking it
+        // needs CR-04's ALTER TABLE (D-ITEM-03), which this phase deliberately does not reopen.
+        // BOTH halves below are alias-prefixed, and that is load-bearing rather than stylistic:
+        // buildErrorStatsApply (RetryPolicy.js:204-206) already emits the bare substrings
+        // `errorCount` and `lastErrorAt` inside the OUTER APPLY, and the assertion directly above
+        // already requires one of them to be PRESENT. Unprefixed, the positive half would be a
+        // tautology that passed before this phase and the negative half would contradict L107.
+        expect(sqlPassed).toMatch(/ef\.errorCount/);
+        // Alias casing is the whole point (hazard H-4). The assertion above still passes against
+        // `ef.errorCount as [ERRORCOUNT]`, which is the SILENT failure shape — the SQL succeeds,
+        // row.errorCount stays undefined at PortalOC_Creator.js:241, the [RETRY-DEFER] line keeps
+        // printing attempts=0, and the portal-existence gate added in Phase 20.3-03 never opens.
+        // Case-sensitive on purpose: no `i` flag.
+        expect(sqlPassed).toMatch(/ef\.errorCount\s+AS\s+errorCount/);
+        // Standing guard so nobody reopens D-ITEM-03 / CR-04 by accident. Passes today; the point
+        // is that it must keep passing until the column type is fixed.
+        expect(sqlPassed).not.toMatch(/ef\.lastErrorAt/);
 
         expect(mockPortalPost).not.toHaveBeenCalled();
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
