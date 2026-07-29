@@ -19,6 +19,7 @@ const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
+const { getPurchaseOrderByExternalId } = require('../utils/GetPurchaseOrders');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -262,6 +263,32 @@ order by A.PONUMBER, B.PORLREV;
   logGenerator(logFileName, 'info',
     `[CRON] retry-scope=${config.retry.scope} window=${retryWindow}`);
 
+  // RETRY-D4 (D-02): lookup de errorCount por OC, construido desde el recordset YA post-filtrado
+  // (recordset se reasigna arriba), que es exactamente el conjunto que se vuelve ordersToSend.
+  // Por qué un Map y no pasar el valor por parámetro: errorCount se destruye dos veces aguas
+  // abajo — OC_GroupOrdersByNumber.js:20 minuscula toda clave de columna (errorCount pasa a ser
+  // errorcount) y parseExternPurchaseOrders.js:86-119 lo suelta por completo, porque devuelve un
+  // objeto literal de lista blanca donde ese campo no está. Editar cualquiera de esas dos
+  // utilerías compartidas es la trampa de radio de impacto de CLAUDE.md §6 #2 (PR #16 rompió 7
+  // llamadores así), y este Map evita tocarlas.
+  // Always-on (CLAUDE.md §3): el Map es const dentro de createPurchaseOrders() y queda inalcanzable
+  // en cuanto la función retorna. No es cache, no crece entre ticks y no hay nada que liberar.
+  // La consulta devuelve una fila por LÍNEA de OC, así que muchas filas comparten EXTERNAL_ID y
+  // traen el mismo COUNT(*): gana la última escritura y es correcto. Una OC ausente del Map cae en
+  // el default 0, es decir, se comporta exactamente como hoy (sin sonda).
+  const errorCounts = new Map();
+  recordset.forEach((row) => {
+    // S-5: || '' antes de .trim(). Un EXTERNAL_ID nulo lanzaría aquí y mataría el tick a media tanda.
+    errorCounts.set(String(row.EXTERNAL_ID || '').trim(), row.errorCount || 0);
+  });
+
+  // Contadores del tick para la línea de resumen. Function-scoped, igual que el Map.
+  let probed = 0;
+  let probeFound = 0;
+  let probeAbsent = 0;
+  let probeSkipped = 0;
+  let probeUnknown = 0;
+
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
@@ -269,6 +296,132 @@ order by A.PONUMBER, B.PORLREV;
   // 4) Procesar cada PO
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
+
+    // 4.1) [PORTAL-CHECK] — segunda opinión del portal antes de volver a hacer POST (RETRY-D4..D7).
+    // D-01: este bloque va PRIMERO en el cuerpo del bucle, por delante del bloque 4.3 de Joi. El
+    // camino de fallo de Joi inserta una fila ERROR, y correrlo para una OC que el portal YA tiene
+    // fabricaría exactamente el ruido que esta fase existe para eliminar.
+    // RETRY-D4: solo se pregunta por OCs que ya fallaron al menos una vez. Una OC con cero fallos
+    // llega al POST sin que se emita ningún GET, igual que hoy.
+    const ocKey = String(po.external_id || '').trim();
+    const priorErrors = errorCounts.get(ocKey) || 0;
+    if (priorErrors > 0) {
+      // S-3: nada de este bloque puede lanzar hacia afuera. En un servicio que no termina entre
+      // ticks, una excepción aquí aborta el tick completo a media tanda (CLAUDE.md §3;
+      // RetryPolicy.js documenta la misma doctrina). La sonda nunca lanza, así que la única fuente
+      // realista de excepción es runQuery en la escritura de reconciliación.
+      // Los tres sitios de escritura preexistentes se dejan con su postura actual a propósito:
+      // retrofitearlos ensancha el diff y queda fuera del alcance de este plan.
+      try {
+        probed++;
+        const probe = await getPurchaseOrderByExternalId(index, ocKey);
+
+        // RETRY-D7, garantía ESTRUCTURAL y no enumerativa: llegar al camino de creación exige
+        // acertar un valor concreto ('absent'), no fallar una lista. Por eso todo lo que no sea
+        // 'absent' — cualquier status encontrado, cualquier reason, y un probe indefinido, nulo o
+        // con un outcome no reconocido — termina en el `continue` único del final de este bloque.
+        // Un status que nadie anticipó no puede caer al POST.
+        if (!probe || probe.outcome !== 'absent') {
+          let result;
+          // localStatus es un literal LOCAL, nunca texto del portal: solo 'POSTED' o 'CLOSED'.
+          // Que siga siendo null es lo que decide que NO se escriba fila.
+          let localStatus = null;
+          let reason = 'n/a';
+
+          if (probe && probe.outcome === 'found') {
+            // Comparación estricta contra los cuatro literales del enum y SIN plegar mayúsculas:
+            // normalizar 'open' a 'OPEN' ascendería en silencio una variante no reconocida a
+            // reconocida, que es justo lo que RETRY-D7 prohíbe.
+            const portalStatus = probe.status;
+            if (portalStatus === 'OPEN' || portalStatus === 'GENERATED') {
+              result = 'found';
+              localStatus = 'POSTED';
+            } else if (portalStatus === 'CLOSED') {
+              result = 'found';
+              localStatus = 'CLOSED';
+            } else if (portalStatus === 'CANCELLED') {
+              result = 'cancelled';
+            } else {
+              result = 'unknown';
+              reason = 'unrecognised-status';
+            }
+          } else if (probe && probe.outcome === 'unknown' && probe.reason === 'ambiguous') {
+            result = 'ambiguous';
+            reason = 'ambiguous';
+          } else {
+            // 'unknown' con cualquier otro reason, y todo objeto malformado o inesperado.
+            result = 'unknown';
+            reason = (probe && probe.reason) ? probe.reason : 'unrecognised-outcome';
+          }
+
+          // RETRY-D6: cuando el portal confirma que ya tiene la OC se escribe UNA fila nueva de
+          // reconciliación. Las filas ERROR históricas se quedan intactas — no se emite ninguna
+          // sentencia de actualización contra la tabla de control por ningún camino de código.
+          // El único valor de origen portal que cruza a este template es probe.id, ya validado
+          // contra la forma de 24 hexadecimales dentro de la propia sonda (RETRY-D8 / D-05).
+          if (localStatus) {
+            const sqlCheck = `
+        INSERT INTO fesa.dbo.fesaOCFocaltec
+          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+        VALUES
+          ('${probe.id}',
+           '${po.external_id}',
+           '${localStatus}',
+           GETDATE(),
+           GETDATE(),
+           'PORTAL-CHECK',
+           '${databases[index]}'
+          )
+      `;
+            await runQuery(sqlCheck, 'FESA');
+            logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} reconciliada desde el portal en FESA como ${localStatus} con idFocaltec: ${probe.id}`);
+          }
+
+          if (result === 'found') {
+            probeFound++;
+          } else if (result === 'cancelled') {
+            probeSkipped++;
+          } else {
+            probeUnknown++;
+          }
+
+          const level = (result === 'unknown' || result === 'ambiguous') ? 'warn' : 'info';
+          const idField = (probe && probe.outcome === 'found') ? probe.id : 'n/a';
+          // El status viene del portal y va a parar a la bitácora de auditoría de winston: se
+          // saneta en línea para que un salto de línea hostil no pueda forjar una segunda entrada.
+          const statusField = (probe && probe.outcome === 'found')
+            ? (String(probe.status == null ? '' : probe.status).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || 'n/a')
+            : 'n/a';
+          const checkMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=${result} id=${idField} status=${statusField} reason=${reason}`;
+          if (level === 'warn') {
+            console.warn(checkMsg);
+          } else {
+            console.log(checkMsg);
+          }
+          logGenerator(logFileName, level, checkMsg);
+          continue;
+        }
+
+        // 'absent': el portal contestó 200 y no tiene la OC. Único camino que sigue al bloque 4.2
+        // y hace POST exactamente como antes de esta fase.
+        probeAbsent++;
+        const absentMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=absent id=n/a status=n/a reason=n/a`;
+        console.log(absentMsg);
+        logGenerator(logFileName, 'info', absentMsg);
+      } catch (probeErr) {
+        // Fail-closed (RETRY-D5): si no se pudo completar, no se hace POST y no se escribe nada.
+        // Nunca se relanza.
+        probeUnknown++;
+        const detail = (probeErr && probeErr.message) ? probeErr.message : String(probeErr);
+        const failMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=unknown id=n/a status=n/a reason=write-failed`;
+        console.warn(failMsg);
+        console.error(`   -> ${detail}`);
+        logGenerator(logFileName, 'warn', failMsg);
+        logGenerator(logFileName, 'error', `[ERROR] Fallo escribiendo la reconciliación de PO ${po.external_id}: ${detail}`);
+        continue;
+      }
+    }
+
     // Imprimir el PO que realmente se enviará al API (después de limpiar placeholders y validación)
     let poToSend = { ...po };
     if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
@@ -379,6 +532,15 @@ order by A.PONUMBER, B.PORLREV;
       await runQuery(sqlErr, 'FESA');
       logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
     }
+  }
+
+  // Resumen [PORTAL-CHECK-SUMMARY] por tick (D-06), nunca por fila. Invariante que debe cumplirse
+  // siempre: probed === found + absent + skipped + unknown. Se omite cuando probed es 0 — el tick
+  // silencioso es el abrumadoramente común y una línea vacía por tick vuelve ilegible la bitácora.
+  if (probed > 0) {
+    const summaryMsg = `[PORTAL-CHECK-SUMMARY] tenant=${databases[index]} probed=${probed} found=${probeFound} absent=${probeAbsent} skipped=${probeSkipped} unknown=${probeUnknown}`;
+    console.log(summaryMsg);
+    logGenerator(logFileName, 'info', summaryMsg);
   }
 }
 

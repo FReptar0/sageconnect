@@ -53,8 +53,15 @@ jest.mock('../../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerato
 const mockRunQuery = jest.fn();
 jest.mock('../../src/utils/SQLServerConnection', () => ({ runQuery: mockRunQuery }));
 
+// Phase 20.3 / CONTEXT D-07b — MOCK REPAIR, not a behaviour change. Before 20.3-03 this factory
+// returned `post` only. The wiring added there calls portalClient.get through the existence probe,
+// so `get` being undefined would throw a TypeError, the helper would swallow it as
+// {outcome:'unknown'}, fail-closed would suppress the POST, and test 3's assertion would fail for
+// a reason that has nothing to do with what test 3 is about. Declaring `get` restores the four
+// fixtures' pre-phase meaning. No fixture value, assertion or test name was changed.
+const mockPortalGet = jest.fn();
 const mockPortalPost = jest.fn();
-jest.mock('../../src/utils/PortalClient', () => ({ post: mockPortalPost }));
+jest.mock('../../src/utils/PortalClient', () => ({ get: mockPortalGet, post: mockPortalPost }));
 
 jest.mock('../../src/utils/TimezoneHelper', () => ({ getCurrentDateString: () => '2026-05-15' }));
 jest.mock('../../src/utils/OC_GroupOrdersByNumber', () => ({ groupOrdersByNumber: (rs) => rs }));
@@ -88,6 +95,7 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
         // wrong recordset. mockReset() drains the queue so each case is self-contained.
         mockRunQuery.mockReset();
         mockPortalPost.mockReset();
+        mockPortalGet.mockReset();
     });
 
     test('POSTED/CLOSED rows filtered by WHERE — recordset empty, no portal POST', async () => {
@@ -180,6 +188,13 @@ describe('PortalOC_Creator cron WHERE + fixed-interval retry (Phase 20.1)', () =
         });
         // Subsequent FESA INSERT calls (ERROR row after the forced POST failure).
         mockRunQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+        // Phase 20.3 / CONTEXT D-07b — MOCK REPAIR, not a behaviour change. This is the only one of
+        // the four cases whose row reaches the upload loop with errorCount > 0, so it is the only
+        // one that trips the existence gate. Stubbing an empty item list makes the probe answer
+        // `absent`, the POST proceeds, and toHaveBeenCalledTimes(1) below keeps the exact meaning it
+        // had before the phase: this row was eligible and the loop ran for it. The fixture's
+        // errorCount stays 1 — flipping it to 0 would silently gut what the test is here to prove.
+        mockPortalGet.mockResolvedValueOnce({ data: { items: [], total: 0 } });
         mockPortalPost.mockRejectedValueOnce(new Error('mock portal failure'));
 
         await createPurchaseOrders(0);
