@@ -294,4 +294,36 @@ describe('GetPurchaseOrders — portal existence probe (Phase 20.3 / RETRY-D1, D
 
         expect(result).toEqual({ outcome: 'absent' });
     });
+
+    // ── WR-01: el catch no puede repetir la operación que pudo lanzar ─────────────────────────
+    //
+    // El JSDoc declara «nunca lanza, nunca devuelve un valor nulo» y el comentario del catch razona
+    // explícitamente sobre no hacer estallar el propio catch — pero su primera línea repetía
+    // `(externalId || '').trim()`, exactamente la operación que pudo tirar el try. Con un valor que
+    // no sea string, el try lanza, el catch lanza lo mismo y la excepción ESCAPA del helper. En un
+    // servicio que no termina entre ticks eso aborta el tick a media tanda (CLAUDE.md §3).
+    //
+    // Hoy no es alcanzable desde el único call site (el controlador pasa un `String(...)`); el
+    // contrato del helper es lo que el próximo consumidor va a creer, y estos dos casos son los que
+    // lo hacen cierto.
+
+    test('Caso 16 (WR-01): un externalId que no es string no hace estallar el helper', async () => {
+        mockGet.mockResolvedValueOnce({ data: { items: [], total: 0 } });
+        const { getPurchaseOrderByExternalId } = require('../../src/utils/GetPurchaseOrders');
+
+        const result = await getPurchaseOrderByExternalId(0, 12345);
+
+        expect(result).toEqual({ outcome: 'absent' });
+        expect(mockGet.mock.calls[0][0]).toContain('external_ids=12345');
+    });
+
+    test('Caso 17 (WR-01): con un externalId no-string, un GET rechazado sigue siendo request-failed', async () => {
+        // Éste es el que apunta al catch: es el camino por el que la excepción se escapaba.
+        mockGet.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'));
+        const { getPurchaseOrderByExternalId } = require('../../src/utils/GetPurchaseOrders');
+
+        const result = await getPurchaseOrderByExternalId(0, 12345);
+
+        expect(result).toEqual({ outcome: 'unknown', reason: 'request-failed' });
+    });
 });
