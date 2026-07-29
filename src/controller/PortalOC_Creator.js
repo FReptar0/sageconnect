@@ -388,7 +388,7 @@ order by A.PONUMBER, B.PORLREV;
           const level = (result === 'unknown' || result === 'ambiguous') ? 'warn' : 'info';
           const idField = (probe && probe.outcome === 'found') ? probe.id : 'n/a';
           // El status viene del portal y va a parar a la bitácora de auditoría de winston: se
-          // saneta en línea para que un salto de línea hostil no pueda forjar una segunda entrada.
+          // sanea en línea para que un salto de línea hostil no pueda forjar una segunda entrada.
           const statusField = (probe && probe.outcome === 'found')
             ? (String(probe.status == null ? '' : probe.status).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || 'n/a')
             : 'n/a';
