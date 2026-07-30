@@ -144,6 +144,7 @@ app.get('/schedule.html', serveHtmlWithKey('schedule.html'));
 app.get('/payments.html', serveHtmlWithKey('payments.html'));
 app.get('/pos.html', serveHtmlWithKey('pos.html'));
 app.get('/logs.html', serveHtmlWithKey('logs.html'));
+app.get('/ejecucion.html', serveHtmlWithKey('ejecucion.html'));
 
 // ---------------------------------------------------------------------------
 // Routes
