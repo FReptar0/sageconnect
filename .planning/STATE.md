@@ -5,7 +5,7 @@ milestone_name: null
 status: idle
 stopped_at: "Milestone v2.3 Scheduler Lock Recovery COMPLETE — 3 phases, 10 plans, 14/14 REQs delivered, 89 commits, 17/17 STRIDE threats closed. Archive at .planning/milestones/v2.3-ROADMAP.md and v2.3-REQUIREMENTS.md. Git tag v2.3 created. Awaiting next milestone scope via /gsd-new-milestone."
 last_updated: "2026-04-29T20:30:00Z"
-last_activity: 2026-05-13 -- Quick task 260513-ket completed: drop PORHSTAT from po-cron-diagnostic POPORH1 lookup (closes GH issue #24 — PORHSTAT column does not exist in COPDAT schema; 3-line removal in src/scripts/po-cron-diagnostic.js, no tests, branch fix/po-cron-diagnostic-porhstat ready for PR)
+last_activity: 2026-07-30 -- Quick task 260730-gcz completed: página de ejecución manual simplificada para Memo (rama feat/boton-ejecucion desde prod, commit 58d5b41, baseline §6 intacto)
 progress:
   percent: 100
 ---
@@ -38,6 +38,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 |----------|-------------|------|---------|-------|
 | 260502-i7l | validate XML providers + error reports | 2026-05-02 | 7bb2f63, aaa733e, 43d4fde | path-b chosen — extracted sendAdminAlert + findLastOpenStep to src/utils/AdminEmailSender.js with callerLogFile param (closes PATTERNS.md §S-6 3rd-use trigger). Closed 2 blind spots in XML proveedores flow: (1) GetProviders re-throw on portal error, (2) buildProvidersXML try/catch + post-write validation. 9 new tests, 0 regressions. |
 | 260513-ket | drop PORHSTAT from po-cron-diagnostic POPORH1 lookup | 2026-05-13 | 14637bf | closes GH issue #24 — `PORHSTAT` no existe en COPDAT schema; prod run 2026-05-12 emitió `Invalid column name`; safeRun lo enmascaró pero `existsInPOPORH1` quedaba `null` en vez de `true`. Fix: 3 líneas removidas (verdict initializer, columna del SELECT, lectura) + ajuste de coma. Diff: `1 insertion, 4 deletions`. 0 tests tocados (no había cobertura del script). Branch: `fix/po-cron-diagnostic-porhstat`. |
+| 260730-gcz | página de ejecución manual simplificada para Memo | 2026-07-30 | 58d5b41 | rama `feat/boton-ejecucion` (desde prod). Nueva `public/ejecucion.html` (card última/próxima ejecución + botón "▶ Ejecutar proceso ahora") + 1 línea en `src/server.js` para servirla. Reutiliza el endpoint `/api/schedule/background-cycle/trigger` existente; sin logs/historial/force-release. `npm test` en baseline §6 (6 suites / 7 tests de 426, cero nuevas). Pendiente: merge a master + exponer vía Bastion (Jorge/Alan) para el operador Memo. |
 
 **Non-blocking follow-ups from v2.3 (recommendations, not REQs):**
 
