@@ -79,6 +79,19 @@ See `.planning/MILESTONES.md` for accomplishments.
 
 </details>
 
+### 📋 Phase 22: Botones de ejecucion por tarea (portal de ejecucion manual)
+
+**Milestone:** v2.4 (TBD) — rama `feat/boton-ejecucion`
+**Goal:** El portal de ejecucion manual ejecuta la tarea "Compras" (`buildProvidersXML` → `createPurchaseOrders`) sin correr el ciclo completo de 7 pasos, reusando el lock `background-cycle` para no cruzarse con el cron de 15 min. Se conserva el boton "Ejecutar proceso ahora" (todo).
+**Requirements:** [REQ-22-01, REQ-22-02, REQ-22-03, REQ-22-04, REQ-22-05, REQ-22-06]
+**Plans:** 4 plans (4 waves)
+
+Plans:
+- [ ] 22-01-PLAN.md — Orquestacion selectiva en background.js (STEP_REGISTRY + runSteps + forResponse=runSteps(ALL_STEP_KEYS) + TASK_STEPS/runTask) [wave 1]
+- [ ] 22-02-PLAN.md — Endpoint POST de tarea con lock FIJO 'background-cycle' + schema Joi (no cruce con el cron) [wave 2]
+- [ ] 22-03-PLAN.md — Boton "Compras" en ejecucion.html + applyButtonState generalizado a N botones [wave 3]
+- [ ] 22-04-PLAN.md — Verificacion: baseline tests §6 + invariantes always-on + checkpoint manual (cron/ciclo-todo intactos) [wave 4]
+
 ### 📋 v2.4 (TBD)
 
 Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-ups from v2.3 closure:
@@ -113,3 +126,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 17. Observability             | v2.3      | 4/4            | Complete | 2026-04-27 |
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
+| 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
