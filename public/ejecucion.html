@@ -109,26 +109,65 @@
         let lastKnownRunning = null;
 
         /* ====================================================================
-         * Estado / próxima ejecución
-         * Reutiliza el shape que expone GET /api/schedule:
-         *   res.data.tasks -> array; buscamos taskId === 'background-cycle'
-         *   task.lastRun / task.nextRun  (idéntico a schedule.html ~L391-441).
+         * Estado / última y próxima ejecución
+         *
+         * `nextRun` sale de GET /api/schedule — lo calcula node-cron y es el
+         * dato correcto para "cuándo vuelve a correr solo".
+         *
+         * `lastRun` de ESE MISMO endpoint sólo refleja corridas del cron: la
+         * variable se asigna dentro del callback de node-cron
+         * (CronScheduler.js:172) y el disparo manual entra por otro camino
+         * (schedule-routes.js llama forResponse() directo) sin tocarla. Para
+         * el operador eso es engañoso: pica el botón, el ciclo corre completo,
+         * y "Ultima ejecucion" se queda igual.
+         *
+         * Por eso la última ejecución se toma del HISTORIAL
+         * (GET /api/schedule/history), donde SÍ quedan registradas ambas
+         * fuentes: cron y disparo manual llaman los dos a addHistory().
+         * El historial es un ring buffer en memoria al que se hace push al
+         * TERMINAR cada ciclo, así que la última entrada es la más reciente.
+         *
+         * Fallback: si el historial viene vacío (es volátil — se pierde al
+         * reiniciar el servicio) se usa el lastRun del cron. Si tampoco hay,
+         * formatDateTime(null) rinde "No disponible" (shared.js:294).
          * ==================================================================== */
 
         async function loadStatus() {
+            let lastRunValue = null;
+            let nextRunValue = null;
+
             try {
                 const res = await apiCall('GET', '/api/schedule');
                 if (res && res.success && res.data && res.data.tasks) {
+                    // `tasks` SÍ es un array (a diferencia del mapa `operations`).
                     const task = res.data.tasks.find(t => t.taskId === 'background-cycle');
                     if (task) {
-                        document.getElementById('last-run').textContent = formatDateTime(task.lastRun);
-                        document.getElementById('next-run').textContent = formatDateTime(task.nextRun);
+                        nextRunValue = task.nextRun;
+                        lastRunValue = task.lastRun;    // respaldo; el historial manda
                     }
                 }
             } catch (err) {
-                // Estado no crítico: si falla, dejamos los placeholders.
+                // Estado no crítico: si falla, seguimos e intentamos el historial.
                 console.warn('No se pudo cargar el estado:', err.message);
             }
+
+            try {
+                const hist = await apiCall('GET', '/api/schedule/history');
+                if (hist && hist.success && hist.data && Array.isArray(hist.data.executions)) {
+                    const runs = hist.data.executions.filter(
+                        e => e && e.taskId === 'background-cycle' && e.finishedAt
+                    );
+                    if (runs.length > 0) {
+                        lastRunValue = runs[runs.length - 1].finishedAt;
+                    }
+                }
+            } catch (err) {
+                // El historial es complementario: si falla queda el lastRun del cron.
+                console.warn('No se pudo cargar el historial:', err.message);
+            }
+
+            document.getElementById('last-run').textContent = formatDateTime(lastRunValue);
+            document.getElementById('next-run').textContent = formatDateTime(nextRunValue);
         }
 
         /* ====================================================================
