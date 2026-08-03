@@ -1,7 +1,7 @@
 # Phase 22: Botones de ejecución por tarea — Specification
 
 **Created:** 2026-08-03
-**Ambiguity score:** 0.12 (gate: ≤ 0.20)
+**Ambiguity score:** 0.09 (gate: ≤ 0.20)
 **Requirements:** 6 locked
 **Branch:** feat/boton-ejecucion
 
@@ -86,23 +86,23 @@ El endpoint `POST /api/schedule/background-cycle/trigger` (`schedule-routes.js:1
 - [ ] `npm test` en baseline §6 (sin fallas nuevas).
 - [ ] Ningún `setInterval`/`setTimeout`/listener nuevo sin su limpieza; rangos de timeout intactos.
 
-## Preguntas abiertas (DECISIÓN DE NEGOCIO — SANTIAGO, no inventar)
+## Decisiones de negocio — CONFIRMADAS (Yahir, 2026-08-03)
 
-Estas NO bloquean el spec (se asume el default indicado) pero deben confirmarse con Santiago antes de execute:
+Santiago no respondió a tiempo; Yahir resolvió las tres con los defaults propuestos. Re-confirmar con Santiago sólo si objeta; NO bloquean:
 
-1. **¿Qué compone exactamente "Compras"?** Default asumido: `buildProvidersXML` + `createPurchaseOrders`. ¿Debe incluir también `processOrderChanges` (paso 6) y `closePurchaseOrders` (paso 7), es decir el ciclo completo de OC? — afecta Req. 2.
-2. **¿Los 4 botones ya, o solo "Compras" primero?** Default asumido: solo "Compras" en esta fase (punto crítico); los demás después. Santiago aceptó el 30-jul que compras es el objetivo inmediato.
-3. **¿Se conserva el botón "Ejecutar proceso ahora" (todo)?** Default asumido: sí, se conserva junto a los por-tarea.
+1. **Alcance de "Compras" = CONFIRMADO: sólo `buildProvidersXML` (proveedores) → `createPurchaseOrders` (crear OC).** NO incluye `processOrderChanges` (paso 6) ni `closePurchaseOrders` (paso 7); esos dos siguen únicamente en el ciclo-todo.
+2. **Sólo el botón "Compras" en esta fase = CONFIRMADO.** Pagos, facturas y solo-proveedores quedan para después (mismo mecanismo).
+3. **Conservar el botón "Ejecutar proceso ahora" (todo) = CONFIRMADO.** Se mantiene junto al botón "Compras".
 
 ## Ambiguity Report
 
 | Dimension          | Score | Min  | Status | Notes                                                        |
 |--------------------|-------|------|--------|--------------------------------------------------------------|
 | Goal Clarity       | 0.90  | 0.75 | ✓      | Objetivo concreto: botón Compras = proveedores→OC, sin cruzar cron |
-| Boundary Clarity   | 0.85  | 0.70 | ✓      | In/out scope explícito; única duda = alcance exacto de "compras" (pregunta a Santiago) |
+| Boundary Clarity   | 0.95  | 0.70 | ✓      | In/out scope explícito; alcance de "compras" CONFIRMADO (Yahir 03-ago) |
 | Constraint Clarity | 0.92  | 0.65 | ✓      | Requisito lock/cron muy claro y verificable                  |
 | Acceptance Criteria| 0.85  | 0.70 | ✓      | 8 criterios pass/fail                                         |
-| **Ambiguity**      | 0.12  | ≤0.20| ✓      | Ambigüedad residual es de negocio (alcance de "compras"), marcada como pregunta a Santiago con default |
+| **Ambiguity**      | 0.09  | ≤0.20| ✓      | Decisiones de negocio confirmadas por Yahir; sin ambigüedad residual bloqueante |
 
 Status: ✓ = met minimum
 
