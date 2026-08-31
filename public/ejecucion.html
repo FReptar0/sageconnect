@@ -176,22 +176,37 @@
          * Todo el innerHTML es STRING ESTÁTICO: nunca se interpola nada que
          * venga de la respuesta del API (T-LKI-01), por eso esta página no
          * necesita escapeHtml() como schedule.html.
+         *
+         * El estado 'importing' (D-11 de la Fase 23) NO relaja esa regla: el
+         * nombre del paso llega del API, así que nunca se interpola. Se COMPARA
+         * contra el literal 'startChildProcess' en pollCycleState() y aquí se
+         * pinta un texto fijo. Las tres ramas de abajo son literales estáticos.
          * ==================================================================== */
 
-        function applyButtonState(running) {
+        function applyButtonState(running, importing) {
             // D-04: mientras el POST de disparo esté en vuelo, ejecutar() manda.
             if (triggerInFlight) return;
 
             const btn = document.getElementById('btn-ejecutar');
             if (!btn) return;
 
-            const desired = running ? 'running' : 'idle';
+            // D-10 (Fase 23): tres estados en lugar de dos. `importing` es
+            // opcional — si llega undefined se comporta como false, así ninguna
+            // llamada previa cambia de significado. Sólo pesa cuando hay ciclo
+            // vivo: sin `running` el botón vuelve a 'idle' pase lo que pase.
+            let desired = 'idle';
+            if (running) {
+                desired = importing ? 'importing' : 'running';
+            }
 
             // D-06: escritura idempotente. Reescribir el innerHTML cada 3.5s
             // reiniciaría la animación del spinner y produciría un tironeo visible.
             if (btn.dataset.uiState === desired) return;
 
-            if (running) {
+            if (desired === 'importing') {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Importando comprobantes a Sage...';
+            } else if (desired === 'running') {
                 btn.disabled = true;
                 btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando...';
             } else {
