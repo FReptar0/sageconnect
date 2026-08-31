@@ -72,15 +72,35 @@ jest.mock('../../src/config', () => ({
 
 // ---------------------------------------------------------------------------
 // Mock OperationManager — extendido con startStep/endStep (Fase 23 REQ-23-02)
+//
+// Fase 23 plan 23-04 (REQ-23-10): el mock MODELA ahora la propiedad del slot.
+// Antes `acquireLock` devolvía true pero `getRunningOperations()` devolvía `{}`,
+// un estado imposible en el OperationManager real (candado tomado y ninguna
+// operación corriendo) que dejaba a la guarda de propiedad sin poder ejercitarse.
+// Cambia SOLO el andamiaje de los mocks; ninguna assertion de los 6 casos
+// originales se toca.
 // ---------------------------------------------------------------------------
+let mockHeldSlot = null;    // slot vigente de 'background-cycle' dentro del mock
+
+function mockAcquireLockImpl(_operationType, operationId) {
+    mockHeldSlot = { operationId, startedAt: new Date().toISOString(), stepProgress: [] };
+    return true;
+}
+function mockReleaseLockImpl() {
+    mockHeldSlot = null;
+}
+function mockRunningOperationsImpl() {
+    return mockHeldSlot ? { 'background-cycle': mockHeldSlot } : {};
+}
+
 const mockOperationManager = {
-    acquireLock: jest.fn().mockReturnValue(true),
-    releaseLock: jest.fn(),
+    acquireLock: jest.fn(mockAcquireLockImpl),
+    releaseLock: jest.fn(mockReleaseLockImpl),
     isLocked: jest.fn().mockReturnValue(false),
     emitProgress: jest.fn(),
     startStep: jest.fn(),
     endStep: jest.fn(),
-    getRunningOperations: jest.fn().mockReturnValue({}),
+    getRunningOperations: jest.fn(mockRunningOperationsImpl),
     getHistory: jest.fn().mockReturnValue([]),
     addHistory: jest.fn(),
     on: jest.fn(),
@@ -224,9 +244,11 @@ describe('POST /api/schedule/:taskId/trigger — invocación del importador (Fas
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockOperationManager.acquireLock.mockReturnValue(true);
+        mockHeldSlot = null;
+        mockOperationManager.acquireLock.mockImplementation(mockAcquireLockImpl);
+        mockOperationManager.releaseLock.mockImplementation(mockReleaseLockImpl);
         mockOperationManager.getHistory.mockReturnValue([]);
-        mockOperationManager.getRunningOperations.mockReturnValue({});
+        mockOperationManager.getRunningOperations.mockImplementation(mockRunningOperationsImpl);
         mockBackground.forResponse.mockResolvedValue(undefined);
         mockBackground.startChildProcess.mockResolvedValue(0);
         mockAdminEmailSender.sendAdminAlert.mockResolvedValue(undefined);
