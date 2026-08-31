@@ -98,6 +98,51 @@ describe('Timeout logging integration (Phase 19, ROOT-04)', () => {
             // Multi-line template literal split — match [\s\S] across newlines/backticks
             expect(/\[TIMEOUT\] step=startChildProcess[\s\S]*?action=admin-email-dispatched/.test(src)).toBe(true);
         });
+
+        // -------------------------------------------------------------------
+        // Fase 23 (D-08) — contraparte de los tres casos de arriba, para la RUTA MANUAL.
+        //
+        // POR QUÉ EXISTEN: el bloque del importador está duplicado A PROPÓSITO entre
+        // src/services/CronScheduler.js y src/routes/schedule-routes.js (ver
+        // .planning/phases/23-boton-invoca-importador/23-CONTEXT.md, D-01). No se extrajo
+        // a un helper compartido porque los cuatro casos que afirman sobre el FUENTE de
+        // CronScheduler.js —los de arriba y los de
+        // tests/services/CronScheduler.timeout-listener.test.js:288-303— se romperían, y
+        // REQ-23-06 prohíbe editar sus assertions. El contador de PATTERNS.md §S-6
+        // (extraer en el 3.er uso) queda en 2 de 3.
+        //
+        // Estas aserciones son lo que convierte esa duplicación en una COPIA VERIFICADA
+        // en vez de deuda que diverge en silencio: si alguien toca un lado y no el otro,
+        // aquí truena. Mismo mecanismo (file content matching) que el repo ya usa para
+        // fijar invariantes que cruzan archivos.
+        // -------------------------------------------------------------------
+        test('schedule-routes.js replica la detección del sentinel del cron (Fase 23 D-08)', () => {
+            const fs = require('fs');
+            const src = fs.readFileSync('src/routes/schedule-routes.js', 'utf8');
+            // Mismo regex de detección que CronScheduler.js
+            expect(/\/Child process timeout\//.test(src)).toBe(true);
+            // Mismo asunto literal, sin sufijos ni variantes (D-05) — los filtros del admin siguen sirviendo
+            expect(/\[SageConnect\] Child process timeout: ImportaFacturasFocaltec\.exe killed/.test(src)).toBe(true);
+            // Mismo despacho vía sendAdminAlert (NOT EmailSender.sendMail) — D-15 + S-8
+            expect(/sendAdminAlert\(subject/.test(src)).toBe(true);
+        });
+
+        test('schedule-routes.js loguea [TIMEOUT] action=admin-email-dispatched (ScheduleRoutes.log paridad, Fase 23 D-06)', () => {
+            const fs = require('fs');
+            const src = fs.readFileSync('src/routes/schedule-routes.js', 'utf8');
+            // Multi-line template literal split — match [\s\S] across newlines/backticks
+            expect(/\[TIMEOUT\] step=startChildProcess[\s\S]*?action=admin-email-dispatched/.test(src)).toBe(true);
+        });
+
+        test('schedule-routes.js instrumenta startStep/endStep del paso startChildProcess (Fase 23 D-04)', () => {
+            const fs = require('fs');
+            const src = fs.readFileSync('src/routes/schedule-routes.js', 'utf8');
+            // Literal 'background-cycle' (la clave del LOCK), no la variable taskId — paridad byte a byte con el cron
+            expect(/startStep\(\s*['"]background-cycle['"],\s*['"]startChildProcess['"]/.test(src)).toBe(true);
+            expect(/endStep\(\s*['"]background-cycle['"],\s*['"]startChildProcess['"]/.test(src)).toBe(true);
+            // El eslabón que cierra el hueco de la fase: la ruta manual invoca el importador
+            expect(/await startChildProcess\(\)/.test(src)).toBe(true);
+        });
     });
 
     describe('ROOT-03: step timeout → ForResponse log; NO email (D-15)', () => {
