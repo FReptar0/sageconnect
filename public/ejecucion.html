@@ -245,7 +245,7 @@
                 if (!res.ok) {
                     console.warn('Poll de estado: respuesta no OK (' + res.status + ')');
                     lastKnownRunning = null;
-                    applyButtonState(false);
+                    applyButtonState(false, false);
                     return;
                 }
 
@@ -254,23 +254,52 @@
                 if (!json || !json.success || !json.data || !json.data.operations) {
                     console.warn('Poll de estado: shape inesperado en la respuesta');
                     lastKnownRunning = null;
-                    applyButtonState(false);
+                    applyButtonState(false, false);
                     return;
                 }
 
                 // Bug D-04 de la Fase 17: `operations` es un MAPA con clave
                 // operationType, NO un array. Acceso directo; NUNCA .find(),
                 // que sobre un objeto plano siempre devuelve undefined en silencio.
-                const running = Boolean(json.data.operations['background-cycle']);
+                const cycleOp = json.data.operations['background-cycle'];
+                const running = Boolean(cycleOp);
+
+                // D-12 (Fase 23): el paso en curso es la ÚLTIMA entrada de
+                // stepProgress con finishedAt falsy. Misma semántica que
+                // findLastOpenStep() de src/utils/AdminEmailSender.js:73-79,
+                // reimplementada aquí porque el navegador no puede hacer
+                // require() de un módulo de Node.
+                //
+                // D-13, defensivo por defecto: si no hay operación, si
+                // stepProgress falta, no es un array o está todo cerrado,
+                // importing queda en false. Esta derivación nunca lanza — de ahí
+                // la guarda por entrada, que findLastOpenStep no necesita porque
+                // del lado del servidor el arreglo lo construye OperationManager.
+                let importing = false;
+                const steps = cycleOp && cycleOp.stepProgress;
+
+                if (Array.isArray(steps)) {
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                        if (steps[i] && !steps[i].finishedAt) {
+                            // D-11 / T-LKI-01: el nombre del paso viene del API,
+                            // así que se COMPARA contra el literal y nunca se
+                            // interpola. El texto que se pinta es fijo.
+                            importing = steps[i].step === 'startChildProcess';
+                            break;
+                        }
+                    }
+                }
 
                 // D-07: sólo en el flanco corriendo -> detenido, y sólo desde un
-                // poll exitoso, refrescamos Ultima/Proxima ejecucion.
+                // poll exitoso, refrescamos Ultima/Proxima ejecucion. Sigue
+                // dependiendo SÓLO de `running`: el paso de importación no
+                // fabrica flancos.
                 if (lastKnownRunning === true && running === false) {
                     loadStatus();
                 }
 
                 lastKnownRunning = running;
-                applyButtonState(running);
+                applyButtonState(running, importing);
             } catch (err) {
                 // D-03 fail-safe: sin toast y sin re-lanzar. Ante cualquier fallo
                 // tratamos el ciclo como detenido y dejamos el botón habilitado.
@@ -278,7 +307,7 @@
                 // para siempre deja al operador sin salida.
                 console.warn('Poll de estado fallido:', err && err.message ? err.message : err);
                 lastKnownRunning = null;
-                applyButtonState(false);
+                applyButtonState(false, false);
             }
         }
 
@@ -332,10 +361,12 @@
                     // 'running'; la guarda de idempotencia (D-06) haría que
                     // applyButtonState no escribiera nada y ese label quedaría congelado.
                     btn.dataset.uiState = 'idle';
-                    applyButtonState(true);
+                    // El ciclo acaba de arrancar: está en el primer paso, no
+                    // importando. El siguiente poll corrige si hiciera falta.
+                    applyButtonState(true, false);
                 } else {
                     btn.dataset.uiState = null;
-                    applyButtonState(false);
+                    applyButtonState(false, false);
                 }
 
                 loadStatus();
