@@ -2,7 +2,7 @@
 
 **Created:** 2026-08-31
 **Ambiguity score:** 0.09 (gate: ≤ 0.20)
-**Requirements:** 9 locked
+**Requirements:** 11 locked — 9 originales + 2 de la enmienda post-revisión de código (ver el final del archivo)
 **Branch:** feat/boton-ejecucion
 
 ## Goal
@@ -109,7 +109,8 @@ La invocación real vive en `src/background.js:362`: `spawn(config.app.importRou
 ## Constraints
 
 - **CLAUDE.md §3 (always-on):** el servicio no sale entre ticks. Todo recurso con estado declara cómo se libera.
-- **CLAUDE.md §9 (invariante):** `axios 30s < paso 5m < hijo 10m < candado 14m`. No se modifica ningún tramo. **Riesgo aceptado y trazado:** en producción `forResponse` tarda 12-13 min y el importador hasta 10 → ~23 min contra un candado de 14. El candado se auto-libera a media corrida. Esto **ya ocurre hoy en el cron**; esta fase lo hereda para la ruta manual sin agravarlo. Se documenta, no se resuelve aquí.
+- **CLAUDE.md §9 (invariante):** `axios 30s < paso 5m < hijo 10m < candado 14m`. No se modifica ningún tramo. **Riesgo trazado:** en producción `forResponse` tarda 12-13 min y el importador hasta 10 → ~23 min contra un candado de 14. El candado se auto-libera a media corrida.
+  > ⚠️ **CORRECCIÓN (2026-08-31, tras la revisión de código — hallazgo CR-01).** La redacción original de esta línea decía que la fase "hereda el riesgo sin agravarlo". **Esa evaluación era incompleta y es falsa en un punto que importa.** Razonaba sobre la duración contra el candado, pero no sobre *quién libera el candado de quién*. `releaseLock(operationType)` (`src/services/OperationManager.js:63`) borra el slot y cancela su watchdog **sin comparar el `operationId`**, así que una cadena que sobrevivió a su propio auto-release termina liberando el candado de **otra** operación. Antes de la fase la cadena manual duraba 12-13 min y casi nunca abría esa carrera; al encadenar el importador dura ~23 min y la abre **siempre**. El cruce cron↔manual es nuevo: cron↔cron ya estaba protegido por `noOverlap`. Se corrige en el plan **23-04** vía REQ-23-10.
 - **CLAUDE.md §6 (baseline):** `npm test` debe quedar en el baseline — 6 suites / 7 tests de 426. Una falla nueva es un bug del cambio.
 - **Sentinels load-bearing:** el texto `'Child process timeout'` (`src/background.js`) se detecta por regex para despachar el correo; el texto `'Step timeout'` (`src/utils/duration.js`) se detecta para el ruteo de logs. Ninguno se puede reformular.
 - **Convenciones del repo:** CommonJS, indentación de 4 espacios, `logGenerator(LOG_FILE, ...)`, `const config = require('./config')`.
@@ -160,3 +161,28 @@ Status: ✓ = met minimum
 *Phase: 23-boton-invoca-importador*
 *Spec created: 2026-08-31*
 *Next step: /gsd-discuss-phase 23 — decisiones de implementación (cómo construir lo especificado arriba)*
+
+---
+
+## Enmienda post-revisión de código (2026-08-31)
+
+La revisión de código (`23-REVIEW.md`, 1 blocker / 8 warnings / 2 info) invalidó una premisa del SPEC y destapó dos huecos. Se agregan dos requisitos, se ajusta el criterio de aceptación de REQ-23-06, y se corrige la constraint de §9 (ver la nota marcada arriba). Ejecutados por el plan **23-04**.
+
+10. **Guarda de propiedad del candado**: ninguna cadena libera ni instrumenta un candado que ya no es suyo.
+    - Current: `.finally(() => operationManager.releaseLock(taskId))` en `src/routes/schedule-routes.js` llama a `releaseLock` incondicionalmente, y `releaseLock(operationType)` borra el slot y cancela su watchdog sin comparar el `operationId`. Con la cadena manual durando ~23 min contra un candado de 14, la secuencia auto-release → tick del cron → `.finally()` tardío hace que la cadena vieja borre el slot del cron, le cancele el watchdog, deje el estado reportando idle (botón rehabilitado → posible tercer ciclo concurrente) y corrompa `stepProgress` vía el `endStep` tardío.
+    - Target: antes de `releaseLock`, `startStep` y `endStep`, la cadena comprueba que el slot vigente de `background-cycle` siga teniendo **su** `operationId`. Si no lo es, omite la operación y deja constancia en el log. Sin cambiar la firma de `releaseLock` ni de ninguna utilidad compartida (pitfall #2 de CLAUDE.md §6).
+    - Acceptance: test con el `OperationManager` **real** (no mockeado) que simula el reciclado del slot — adquirir con A, forzar el auto-release, adquirir con B, y correr la cadena de A hasta el final: el slot de B debe seguir vivo y su `timeoutHandle` sin cancelar. Log `[LOCK]` emitido en el camino omitido.
+
+11. **Las aserciones de paridad no deben pasar sobre código muerto**: la mitigación de la duplicación de D-01 tiene que detectar de verdad una divergencia.
+    - Current: los casos de paridad de `tests/integration/timeout-logging.test.js` hacen `expect(/regex/.test(src)).toBe(true)` sobre el texto crudo del archivo. Se demostró que **las 7 aserciones pasan con el bloque completamente comentado**, porque un comentario conserva el texto. Verifican presencia de subcadenas, no que el código esté vivo.
+    - Target: las aserciones se evalúan sobre el fuente con las líneas de comentario removidas, de modo que comentar el bloque las haga fallar.
+    - Acceptance: con el bloque del importador comentado en una copia temporal del archivo, las aserciones de paridad **fallan**; con el archivo real, pasan.
+
+**Ajuste a REQ-23-06:** el criterio "`git diff src/services/CronScheduler.js` vacío" se relaja a **"sin cambios de comportamiento; se permite editar comentarios"**. Motivo: `CronScheduler.js:102` afirma `startChildProcess is cron-only (manual trigger does NOT call it)`, que esta fase volvió falso. Dejar una afirmación falsa en el archivo que la fase contradice es peor que el diff vacío. La edición es **solo de comentario**; se verifica que las cuatro aserciones sobre el fuente sigan pasando y que ninguna línea ejecutable cambie.
+
+### Diferidos de la revisión (no entran en la fase 23)
+
+- **WR-04** — `public/ejecucion.html:350` interpola `err.message` en `innerHTML`. Línea **preexistente**, no de esta fase; el mensaje viene del `fetch` del propio navegador, no del servidor. Contradice T-LKI-01 y merece arreglo, pero como quick task aparte.
+- **WR-05** — `ejecucion.html` no tiene cobertura automatizada. Infraestructura de tests, fase propia.
+- **WR-08** — `drainChain(3)` es heurística de temporización, no espera de asentamiento. Mejora de calidad de tests.
+- **El mismo patrón de `releaseLock` sin guarda existe en `CronScheduler.js:164`.** Arreglarlo cambia el comportamiento del cron y viola REQ-23-06 tal como está escrito. cron↔cron ya está protegido por `noOverlap`, así que el riesgo residual es menor. Requiere decisión explícita de alcance; no se cuela aquí.
