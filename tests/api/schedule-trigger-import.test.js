@@ -44,6 +44,10 @@ jest.mock('../../src/config', () => ({
         cronExpression: '*/15 * * * *',
         operationDelayMs: 5000,
         childProcessTimeoutMs: 600000,
+        // Fase 23 plan 23-04: lo lee el OperationManager REAL del último describe
+        // para armar el watchdog de auto-release. Los casos que lo necesitan corto
+        // lo bajan en caliente (el valor se lee en cada acquireLock, no al cargar).
+        lockTimeoutMs: 5 * 60 * 1000,
     },
     app: {
         timezone: 'America/Mexico_City',
@@ -231,6 +235,25 @@ async function drainChain(times = 3) {
     }
 }
 
+/**
+ * Espera acotada por CONDICIÓN observable en vez de por un número fijo de ticks
+ * (WR-08 de 23-REVIEW.md). Se usa SOLO en el describe del OperationManager real,
+ * donde hay temporizadores de verdad de por medio: ahí `drainChain(3)` afirmaría
+ * antes de que la cadena se asiente. Los 6 casos de arriba conservan drainChain.
+ *
+ * @param {() => boolean} condition
+ * @param {{ timeoutMs?: number, label?: string }} [opts]
+ */
+async function waitFor(condition, { timeoutMs = 2000, label = 'la condición' } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (!condition()) {
+        if (Date.now() > deadline) {
+            throw new Error(`waitFor: ${label} no se cumplió en ${timeoutMs} ms`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -378,5 +401,222 @@ describe('POST /api/schedule/:taskId/trigger — invocación del importador (Fas
         expect(historyEntry.success).toBe(false);
         expect(historyEntry.errors).toContain('forResponse exploded');
         expect(mockOperationManager.releaseLock).toHaveBeenCalledTimes(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Reciclado del slot del candado — con el OperationManager REAL (Fase 23,
+// plan 23-04, REQ-23-10)
+//
+// POR QUÉ ESTE BLOQUE EXISTE: los 6 casos de arriba mockean OperationManager por
+// completo, así que la semántica real del candado nunca se ejercita — y por eso
+// CR-01 pasó desapercibido. Aquí se reconstruye la app con el módulo REAL
+// (jest.resetModules + jest.unmock) y se reproduce la carrera que describe
+// .planning/phases/23-boton-invoca-importador/23-REVIEW.md CR-01:
+//
+//   t=0   el operador pica el botón      → acquireLock('background-cycle', A)
+//   t=13  forResponse resuelve           → startStep + await startChildProcess()
+//   t=14  el watchdog auto-libera        → releaseLock (el candado queda libre)
+//   t=15  tick del cron                  → acquireLock('background-cycle', B)
+//   t=23  termina el importador de A     → .then/.finally de la cadena de A
+//
+// Sin la guarda de propiedad, ese último paso borra el slot de B y le cancela su
+// watchdog. Con la guarda, no lo toca y deja una entrada [LOCK] en el log.
+// ---------------------------------------------------------------------------
+describe('Reciclado del slot del candado — OperationManager REAL (Fase 23, REQ-23-10)', () => {
+    let realApp;
+    let operationManager;   // el REAL, no el mock
+    let logGenerator;       // el mock de LogGenerator de ESTA generación del registry
+    let appConfig;          // el mock de config de ESTA generación (para lockTimeoutMs)
+
+    const DEFAULT_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
+
+    beforeAll(() => {
+        jest.resetModules();
+        jest.unmock('../../src/services/OperationManager');
+
+        operationManager = require('../../src/services/OperationManager');
+        appConfig = require('../../src/config');
+        ({ logGenerator } = require('../../src/utils/LogGenerator'));
+
+        // express fresco de la misma generación que el router, para no mezclar
+        // dos copias del módulo en la misma app.
+        const expressFresh = require('express');
+        const { errorResult: errorResultFresh } = require('../../src/utils/ResultEnvelope');
+
+        realApp = expressFresh();
+        realApp.use(expressFresh.json());
+        realApp.use('/api/schedule', require('../../src/routes/schedule-routes'));
+        realApp.use((err, req, res, _next) => {
+            res.status(500).json(errorResultFresh([err.message], 'Internal server error'));
+        });
+    });
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockBackground.forResponse.mockResolvedValue(undefined);
+        mockBackground.startChildProcess.mockResolvedValue(0);
+        mockAdminEmailSender.sendAdminAlert.mockResolvedValue(undefined);
+        appConfig.schedule.lockTimeoutMs = DEFAULT_LOCK_TIMEOUT_MS;
+        operationManager._reset();
+    });
+
+    afterEach(() => {
+        // _reset() cancela los watchdog pendientes ANTES de borrar los slots: sin
+        // esto los timers de este bloque sobrevivirían al test y colgarían el runner.
+        operationManager._reset();
+        appConfig.schedule.lockTimeoutMs = DEFAULT_LOCK_TIMEOUT_MS;
+        jest.restoreAllMocks();
+    });
+
+    /** Deja startChildProcess pendiente; devuelve el disparador que lo resuelve. */
+    function deferImporter() {
+        let settle;
+        const pending = new Promise((resolve) => { settle = resolve; });
+        mockBackground.startChildProcess.mockImplementation(() => pending);
+        return () => settle(0);
+    }
+
+    /** Entradas [LOCK] warn emitidas por schedule-routes en el test actual. */
+    function lockOmitWarnings() {
+        return logGenerator.mock.calls.filter(
+            ([, level, message]) =>
+                level === 'warn' && typeof message === 'string' && message.includes('[LOCK]')
+        );
+    }
+
+    /** Dispara el botón y devuelve el operationId que generó el handler. */
+    async function triggerAndGetOperationId() {
+        const res = await request(realApp).post(TRIGGER_URL).set('x-api-key', TEST_API_KEY);
+        expect(res.status).toBe(200);
+        return res.body.data.operationId;
+    }
+
+    // (g) EL NÚCLEO DE REQ-23-10 — el test que no existía y que habría atrapado CR-01
+    test('(g) la cadena que perdió la propiedad NO borra el slot de la operación que lo tomó después', async () => {
+        const finishImporter = deferImporter();
+
+        const operationIdA = await triggerAndGetOperationId();
+        await waitFor(
+            () => mockBackground.startChildProcess.mock.calls.length === 1,
+            { label: 'la cadena llegó al await del importador' }
+        );
+
+        // t=14 — el watchdog auto-libera el candado de A (equivalente a _fireTimeout)
+        operationManager.releaseLock('background-cycle');
+        // t=15 — el tick del cron toma un candado NUEVO mientras el importador de A sigue vivo
+        expect(operationManager.acquireLock('background-cycle', 'cron-B')).toBe(true);
+
+        // t=23 — termina el importador de A y su cadena corre .then/.catch/.finally
+        finishImporter();
+        await waitFor(
+            () => operationManager.getHistory().length === 1,
+            { label: 'la cadena de A registró su historial' }
+        );
+        await drainChain();
+
+        const running = operationManager.getRunningOperations();
+        expect(operationIdA).not.toBe('cron-B');
+        expect(running['background-cycle']).toBeDefined();                   // el slot de B sigue vivo
+        expect(running['background-cycle'].operationId).toBe('cron-B');
+        // …y el endStep tardío de A tampoco ensució el stepProgress de B
+        expect(running['background-cycle'].stepProgress).toEqual([]);
+    });
+
+    // (h) el watchdog de B no fue cancelado
+    test('(h) el watchdog del slot de B sobrevive: lock:timeout de B sí se emite', async () => {
+        const finishImporter = deferImporter();
+
+        await triggerAndGetOperationId();
+        await waitFor(
+            () => mockBackground.startChildProcess.mock.calls.length === 1,
+            { label: 'la cadena llegó al await del importador' }
+        );
+
+        operationManager.releaseLock('background-cycle');
+
+        // El candado de B se arma con un plazo corto para observar su vencimiento
+        // sin timers falsos (el reloj real basta: 400 ms >> lo que tarda la cadena).
+        const timeouts = [];
+        const onTimeout = (snapshot) => timeouts.push(snapshot);
+        operationManager.on('lock:timeout', onTimeout);
+        appConfig.schedule.lockTimeoutMs = 400;
+        operationManager.acquireLock('background-cycle', 'cron-B');
+
+        finishImporter();
+        await waitFor(
+            () => operationManager.getHistory().length === 1,
+            { label: 'la cadena de A registró su historial' }
+        );
+        await drainChain();
+
+        // El slot de B sigue ahí justo después de que la cadena de A terminó…
+        expect(operationManager.getRunningOperations()['background-cycle']).toBeDefined();
+
+        // …y su watchdog sigue armado: si la cadena de A hubiera llamado a releaseLock,
+        // el clearTimeout de dentro habría matado este timer y el evento no llegaría nunca.
+        await waitFor(() => timeouts.length === 1, { timeoutMs: 3000, label: 'lock:timeout de B' });
+        expect(timeouts[0].operationId).toBe('cron-B');
+
+        operationManager.off('lock:timeout', onTimeout);
+    });
+
+    // (i) la señal operativa
+    test('(i) se emite una entrada [LOCK] warn cuando se omite la liberación', async () => {
+        const finishImporter = deferImporter();
+
+        const operationIdA = await triggerAndGetOperationId();
+        await waitFor(() => mockBackground.startChildProcess.mock.calls.length === 1);
+
+        operationManager.releaseLock('background-cycle');
+        operationManager.acquireLock('background-cycle', 'cron-B');
+
+        finishImporter();
+        await waitFor(() => operationManager.getHistory().length === 1);
+        await drainChain();
+
+        const warnings = lockOmitWarnings();
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0][0]).toBe('ScheduleRoutes');      // D-06: cae en ScheduleRoutes.log
+        expect(warnings[0][2]).toContain(operationIdA);     // dice de quién era el candado
+        expect(warnings[0][2]).toContain('omitido');
+    });
+
+    // (j) REGRESIÓN DEL CAMINO FELIZ (WR-07) — una guarda demasiado estricta trabaría
+    //     TODOS los candados y el servicio devolvería 409 hasta el próximo reinicio.
+    test('(j) cuando la cadena conserva la propiedad, releaseLock se llama exactamente 1 vez', async () => {
+        const releaseSpy = jest.spyOn(operationManager, 'releaseLock');
+
+        await triggerAndGetOperationId();
+        await waitFor(
+            () => releaseSpy.mock.calls.length > 0,
+            { label: 'la cadena liberó el candado' }
+        );
+
+        expect(releaseSpy).toHaveBeenCalledTimes(1);
+        expect(releaseSpy).toHaveBeenCalledWith('background-cycle');
+        // El candado queda REALMENTE libre: el siguiente clic no puede recibir 409
+        expect(operationManager.getRunningOperations()['background-cycle']).toBeUndefined();
+        expect(operationManager.isLocked('background-cycle')).toBe(false);
+
+        const [entry] = operationManager.getHistory();
+        expect(entry.success).toBe(true);
+        expect(entry.errors).toEqual([]);
+
+        // …y ninguna entrada [LOCK] de omisión: el camino normal no pasa por la rama else
+        expect(lockOmitWarnings()).toHaveLength(0);
+    });
+
+    // (k) ORDEN DE OPERACIONES (WR-07) — el corazón de REQ-23-01: un refactor que
+    //     soltara el candado antes del importador dejaría verdes a los demás casos.
+    test('(k) el candado se libera DESPUÉS de que startChildProcess terminó', async () => {
+        const releaseSpy = jest.spyOn(operationManager, 'releaseLock');
+
+        await triggerAndGetOperationId();
+        await waitFor(() => releaseSpy.mock.calls.length > 0);
+
+        expect(mockBackground.startChildProcess).toHaveBeenCalledTimes(1);
+        expect(mockBackground.startChildProcess.mock.invocationCallOrder[0])
+            .toBeLessThan(releaseSpy.mock.invocationCallOrder[0]);
     });
 });
