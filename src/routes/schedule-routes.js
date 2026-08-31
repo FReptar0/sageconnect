@@ -203,11 +203,16 @@ router.post(
                 const instrument = ownsLock();
                 try {
                     // Literal 'background-cycle' a propósito, NO la variable taskId: esa
-                    // clave es la del LOCK, que es invariante, no el parámetro de la
-                    // request. triggerSchema hoy fija taskId a ese mismo valor, así que
-                    // coinciden, pero el literal mantiene la paridad byte a byte con el
-                    // cron y sobrevive si un endpoint futuro acepta otros nombres de
-                    // tarea sobre el mismo lock compartido.
+                    // clave es la del LOCK, y el literal mantiene la paridad byte a byte
+                    // con src/services/CronScheduler.js (D-01/D-08), que es lo que hace
+                    // exactas las aserciones sobre el fuente.
+                    // OJO (WR-06 de 23-REVIEW.md): el literal NO "sobrevive" a otros
+                    // taskId. acquireLock, releaseLock y addHistory de este handler SÍ
+                    // usan la variable taskId; hoy coinciden porque triggerSchema
+                    // (src/routes/schemas/schedule-schemas.js) fija taskId a
+                    // 'background-cycle'. Si algún día se admitiera otro valor, este
+                    // literal dejaría de apuntar al slot correcto — habría que revisarlo
+                    // junto con el cron, no confiar en que aguanta.
                     if (instrument) {
                         operationManager.startStep('background-cycle', 'startChildProcess', null);
                     }

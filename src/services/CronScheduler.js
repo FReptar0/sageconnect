@@ -99,7 +99,21 @@ function initScheduler() {
                 logGenerator(LOG_FILE, 'info', `[START] Background cycle ${operationId} started`);
                 await forResponse({ operationId, emitter: operationManager });
 
-                // Phase 17 (D-12): startChildProcess is cron-only (manual trigger does NOT call it).
+                // Fase 17 (D-12) SUPERADA POR LA FASE 23: startChildProcess YA NO es cron-only.
+                // El disparo manual (POST /:taskId/trigger en src/routes/schedule-routes.js)
+                // también lo invoca desde el plan 23-01.
+                //
+                // RÉPLICA DELIBERADA: este bloque está duplicado byte a byte en
+                // src/routes/schedule-routes.js. QUIEN TOQUE UN LADO DEBE TOCAR EL OTRO.
+                // No se extrajo a un helper compartido porque cuatro aserciones afirman sobre
+                // el FUENTE de este archivo (tests/integration/timeout-logging.test.js y
+                // tests/services/CronScheduler.timeout-listener.test.js) y extraerlo las
+                // rompería; el contador de PATTERNS.md §S-6 (extraer en el 3.er uso) queda en
+                // 2 de 3. Motivo completo:
+                // .planning/phases/23-boton-invoca-importador/23-CONTEXT.md D-01.
+                // La red contra la divergencia son las aserciones de paridad sobre AMBOS
+                // fuentes, evaluadas sin comentarios desde el plan 23-04 (REQ-23-11).
+                //
                 // Instrument here so cron-tick stepProgress has 8 entries (7 per-tenant from forResponse + 1 global startChildProcess).
                 // Phase 19 (ROOT-02 / D-15): catch detects /Child process timeout/ wording sentinel
                 // emitted by background.js startChildProcess reject() and dispatches admin email.
