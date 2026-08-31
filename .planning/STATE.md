@@ -4,7 +4,7 @@ milestone: null
 milestone_name: null
 status: executing
 stopped_at: Phase 23 context gathered
-last_updated: "2026-08-31T20:26:47.670Z"
+last_updated: "2026-08-31T20:28:51.761Z"
 progress:
   total_phases: 4
   completed_phases: 0
@@ -20,11 +20,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Planning next milestone — v2.3 Scheduler Lock Recovery shipped 2026-04-29.
+**Current focus:** Phase 23 — boton-invoca-importador
 
 ## Current Position
 
-Status: Ready to execute
+Phase: 23 (boton-invoca-importador) — EXECUTING
+Plan: 1 of 3
+Status: Executing Phase 23
 
 ## Deferred Items
 
