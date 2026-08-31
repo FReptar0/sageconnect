@@ -92,6 +92,14 @@ Plans:
 - [ ] 22-03-PLAN.md — Boton "Compras" en ejecucion.html + applyButtonState generalizado a N botones [wave 3]
 - [ ] 22-04-PLAN.md — Verificacion: baseline tests §6 + invariantes always-on + checkpoint manual (cron/ciclo-todo intactos) [wave 4]
 
+### 📋 Phase 23: El boton de ejecucion invoca el importador de comprobantes
+
+**Milestone:** v2.4 (TBD) — rama `feat/boton-ejecucion`
+**Goal:** El disparo manual (`POST /api/schedule/:taskId/trigger`) encadena `startChildProcess()` despues de `forResponse()` dentro del MISMO lock `background-cycle`, con paridad exacta con el cron (`CronScheduler.js:100-109`), para que el boton "Ejecutar proceso ahora" complete la cadena Portal → XML → `ImportaFacturasFocaltec.exe COPDAT` → Sage. Hoy el boton corre los 7 pasos pero nunca invoca el importador, asi que la factura se descarga y se queda en `downloads\`.
+**Origen:** reunion 31-ago-2026 (Yahir + Hortensia + Santiago) — decision acordada: reusar la logica de llamada existente, incluyendo el parametro de base de datos.
+**Requirements:** pendientes de SPEC.md
+**Plans:** pendientes de /gsd-plan-phase
+
 ### 📋 v2.4 (TBD)
 
 Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-ups from v2.3 closure:
@@ -127,3 +135,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
+| 23. Boton invoca importador   | v2.4      | 0/?            | Spec     | —          |
