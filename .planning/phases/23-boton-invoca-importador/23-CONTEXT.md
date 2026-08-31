@@ -165,7 +165,7 @@ El usuario delegó explícitamente las decisiones técnicas ("tú toma las decis
 
 ### Reglas del proyecto (obligatorias)
 - `CLAUDE.md` §1 (política de seguridad en producción), §3 (always-on), §5 (convenciones), §6 (baseline de tests), §9 (invariante de timeouts).
-- `HANDOFF.md` §1 — **nunca escribir el nombre del integrador previo en ningún archivo del repo**, `.planning/` incluido. Hacer `git diff --cached | grep -in "tersoft\|prior employer\|integrator "` antes de cada commit.
+- `HANDOFF.md` §1 — **nunca escribir el nombre del integrador previo en ningún archivo del repo**, `.planning/` incluido. Antes de cada commit, correr el `git diff --cached | grep -in ...` que esa misma sección documenta (el patrón vive ahí; no se replica aquí para no disparar la propia alarma).
 
 ### Contexto de la fase adyacente
 - `.planning/phases/22-botones-ejecucion-por-tarea/22-CONTEXT.md` — decisiones de la fase 22 (planeada, no ejecutada). Relevante solo para D-20/D-21: no crear dependencia.
