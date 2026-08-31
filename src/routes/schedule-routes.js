@@ -22,7 +22,7 @@ const { successResult, errorResult } = require('../utils/ResultEnvelope');
 const operationManager = require('../services/OperationManager');
 const config = require('../config');
 const { triggerSchema, forceReleaseParamsSchema, forceReleaseBodySchema } = require('./schemas/schedule-schemas');
-const { forResponse } = require('../background');
+const { forResponse, startChildProcess } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
 const { formatDurationMin } = require('../utils/duration');
 const {
@@ -152,6 +152,80 @@ router.post(
         // Start background cycle without awaiting -- return immediately
         const startedAt = new Date().toISOString();
         forResponse({ operationId, emitter: operationManager })
+            .then(async () => {
+                // -------------------------------------------------------------------
+                // Fase 23 (REQ-23-01..REQ-23-04 / D-01, D-02, D-04): el disparo manual
+                // encadena el importador DESPUÉS de forResponse y DENTRO del lock
+                // 'background-cycle' que este handler ya tomó. Sin este eslabón el XML
+                // se descarga y se queda en la carpeta de descargas sin llegar a Sage.
+                //
+                // RÉPLICA DELIBERADA de src/services/CronScheduler.js:106-150.
+                // NO se extrajo a un helper compartido: cuatro tests afirman sobre el
+                // CÓDIGO FUENTE de CronScheduler.js
+                // (tests/integration/timeout-logging.test.js:84-99 y
+                // tests/services/CronScheduler.timeout-listener.test.js:288-303) y
+                // extraerlo los rompería. Contador de PATTERNS.md §S-6 (extraer en el
+                // 3.er uso, no en el 2.º) para este bloque: 2 de 3.
+                //
+                // Quien toque un lado DEBE tocar el otro. Los tests de paridad sobre el
+                // fuente de este archivo (timeout-logging.test.js, describe ROOT-02) son
+                // la red que convierte esta duplicación en copia verificada.
+                // -------------------------------------------------------------------
+                let __scpError = null;
+                try {
+                    // Literal 'background-cycle' a propósito, NO la variable taskId: esa
+                    // clave es la del LOCK, que es invariante, no el parámetro de la
+                    // request. triggerSchema hoy fija taskId a ese mismo valor, así que
+                    // coinciden, pero el literal mantiene la paridad byte a byte con el
+                    // cron y sobrevive si un endpoint futuro acepta otros nombres de
+                    // tarea sobre el mismo lock compartido.
+                    operationManager.startStep('background-cycle', 'startChildProcess', null);
+                    await startChildProcess();
+                } catch (scpErr) {
+                    __scpError = scpErr.message || String(scpErr);
+
+                    // ROOT-02 / D-15: detect child process timeout via wording sentinel and dispatch admin email.
+                    // Wording sentinel `'Child process timeout'` is set in src/background.js startChildProcess reject().
+                    // ROOT-04 / D-15 explicit: ONLY child timeouts dispatch email — axios/step timeouts do NOT.
+                    const isChildTimeout = /Child process timeout/.test(__scpError);
+                    if (isChildTimeout) {
+                        const childDurationMs = config.schedule.childProcessTimeoutMs;
+                        const childDurationLabel = formatDurationMin(childDurationMs);
+
+                        // Fase 23 D-06: esta entrada va a ScheduleRoutes.log (el wrapper local de
+                        // sendAdminAlert inyecta LOG_FILE), no a CronScheduler.log. Un operador que
+                        // hace grep de [TIMEOUT] sabe por el archivo si vino del botón o del cron.
+                        logGenerator(LOG_FILE, 'error',
+                            `[TIMEOUT] step=startChildProcess operationId=${operationId} ` +
+                            `durationMs=${childDurationMs} action=admin-email-dispatched`);
+
+                        // Fase 23 D-05: MISMO asunto que el cron, sin sufijos ni variantes — los
+                        // filtros de correo del admin siguen funcionando. Quién lo disparó se
+                        // distingue por el archivo de log de origen (D-06), no por el asunto.
+                        // fire-and-forget: sendAdminAlert envuelve su propio try/catch y nunca lanza;
+                        // el .catch() es belt-and-suspenders (Phase 18 PATTERNS S-6 pattern).
+                        const subject = `[SageConnect] Child process timeout: ImportaFacturasFocaltec.exe killed después de ${childDurationLabel}`;
+                        const html = (
+                            `<h2>Child process timeout en SageConnect</h2>` +
+                            `<p>El proceso hijo <code>ImportaFacturasFocaltec.exe</code> excedió el límite ` +
+                            `de <strong>${childDurationLabel}</strong> y fue forzosamente terminado.</p>` +
+                            `<table border="1" cellpadding="6" cellspacing="0">` +
+                            `<tr><th align="left">step</th><td>startChildProcess</td></tr>` +
+                            `<tr><th align="left">operationId</th><td><code>${operationId}</code></td></tr>` +
+                            `<tr><th align="left">duration</th><td>${childDurationLabel}</td></tr>` +
+                            `<tr><th align="left">importRoute</th><td><code>${config.app.importRoute}</code></td></tr>` +
+                            `<tr><th align="left">error</th><td>${__scpError}</td></tr>` +
+                            `</table>` +
+                            `<p><small>Company: ${config.app.company || 'Unknown'} | Time: ${new Date().toISOString()}</small></p>`
+                        );
+                        sendAdminAlert(subject, html).catch(() => { /* sendAdminAlert ya swallow internamente */ });
+                    }
+
+                    throw scpErr;       // re-throw — cae al .catch() de abajo: addHistory success:false + .finally releaseLock
+                } finally {
+                    operationManager.endStep('background-cycle', 'startChildProcess', null, { error: __scpError });
+                }
+            })
             .then(() => {
                 operationManager.addHistory({
                     taskId,
