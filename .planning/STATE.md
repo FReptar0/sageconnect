@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: null
 milestone_name: null
 status: executing
-stopped_at: Plan 23-01 completado (SUMMARY escrito)
-last_updated: "2026-08-31T20:50:37.173Z"
+stopped_at: Plan 23-02 completado (SUMMARY escrito)
+last_updated: "2026-08-31T20:58:34.201Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 7
-  completed_plans: 1
-  percent: 14
+  completed_plans: 2
+  percent: 28
 ---
 
 # Project State
@@ -25,7 +25,7 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 23 (boton-invoca-importador) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 
 ## Deferred Items
@@ -64,6 +64,9 @@ Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md
 | 2026-08-31 | 23-01 | **D-01 confirmada en ejecución** — el bloque del importador se duplica entre `CronScheduler.js` y `schedule-routes.js`; NO se extrae. Contador PATTERNS.md §S-6 queda en 2 de 3. La duplicación quedó blindada con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. |
 | 2026-08-31 | 23-01 | **Literal `'background-cycle'` en `startStep`/`endStep`**, no la variable `taskId` — esa clave es la del LOCK (invariante), no el parámetro de la request. Mantiene paridad byte a byte con el cron y sobrevive si un endpoint futuro acepta otros nombres de tarea sobre el mismo lock. |
 | 2026-08-31 | 23-01 | **Cero recursos always-on nuevos** (CLAUDE.md §3): sin `setInterval`, `setTimeout`, listener, `Map`/`Set` de módulo ni `spawn` propio. Invariante de timeouts §9 intacta. |
+| 2026-08-31 | 23-02 | **La derivación del paso abierto lleva una guarda por entrada que `findLastOpenStep` no tiene** — `src/utils/AdminEmailSender.js:73-79` lanzaría ante una entrada `null` porque del lado del servidor el arreglo lo construye `OperationManager` y siempre está bien formado. En el navegador el arreglo llega por la red, así que la reimplementación agrega `steps[i] &&`. D-13 ("nunca se lanza") pesa más que la paridad literal con el helper. |
+| 2026-08-31 | 23-02 | **El estado se calcula una sola vez en `desired` y las tres ramas de innerHTML ramifican sobre él**, en vez de ramificar sobre `running`/`importing` por separado. La guarda de idempotencia (D-06) y el pintado quedan leyendo la MISMA variable: es imposible que diverjan y que el `dataset.uiState` diga una cosa y el botón muestre otra. |
+| 2026-08-31 | 23-02 | **El optimista de `ejecutar()` pasa `applyButtonState(true, false)`** — un ciclo recién disparado está en el primer paso, nunca importando. Si por lo que fuera lo estuviera, el siguiente tick del poll (≤3.5s) corrige. Nunca se adivina `importing` desde el cliente. |
 
 ## Blockers/Concerns
 
@@ -73,7 +76,9 @@ Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md
 
 ## Session Continuity
 
-Last session: 2026-08-31T20:49:43.953Z
-Session result: Plan 23-01 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `185e8f2` feat, `75e7140` test, `c0e99e7` test). El disparo manual (`POST /api/schedule/background-cycle/trigger`) ya encadena `startChildProcess()` después de `forResponse()` dentro del lock `background-cycle` existente, con instrumentación `startStep`/`endStep`, detección del sentinel `/Child process timeout/` y `sendAdminAlert` con el mismo asunto que el cron (log ruteado a `ScheduleRoutes.log`, D-06). Bloque duplicado a propósito (D-01) y blindado con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. Archivo de test nuevo `tests/api/schedule-trigger-import.test.js` con los 6 casos de D-17 (D-16 revisada: archivo propio en vez de editar `schedule-routes.test.js`, para dejar REQ-23-06 cierto por construcción). `npm test` idéntico al baseline §6 — 6 suites / 7 tests fallando, cero nuevas; 427 pasan de 435 (+9 nuevos). `src/services/CronScheduler.js`, `src/background.js` y `src/config.js` sin tocar. Sesión corrida con `SAGECONNECT_HOOKS_BYPASS=1`; los 5 hooks apagados se sustituyeron por chequeos manuales documentados en el SUMMARY (grep de redacción HANDOFF §1 antes de cada commit — limpio en los 3).
-Stopped at: Plan 23-01 completado (SUMMARY escrito)
-Resume next: `/gsd-execute-phase 23` — sigue el plan 23-02 (tercer estado del botón en `public/ejecucion.html`, wave 1, independiente). Después el 23-03 (wave 2): leer `IMPORT_CFDIS_ROUTE` en `zcl-rds-test` y prod + prueba end-to-end con evidencia en los tres puntos del REQ-23-09.
+Last session: 2026-08-31T20:58:34.198Z
+Session result (23-02): Plan 23-02 ejecutado completo en `feat/boton-ejecucion` (2 tareas, 2 commits atómicos: `e746211` feat, `2b4ae1f` feat). `public/ejecucion.html` — único archivo tocado — pasa de dos estados de botón a tres: `applyButtonState(running, importing)` y un `'importing'` en `btn.dataset.uiState` que pinta "Importando comprobantes a Sage..." mientras la última entrada abierta de `stepProgress` sea `startChildProcess`. El dato ya viajaba en el poll de `GET /api/operations/status`; el plan 23-01 es el que hace que esa entrada exista en la ruta manual. Cero backend, cero endpoints, cero recursos always-on nuevos (se reusa el `setInterval` que ya se libera en `beforeunload`). T-LKI-01 preservada: el nombre del paso se COMPARA contra el literal, nunca se interpola. Los cuatro caminos de fail-safe pasan `applyButtonState(false, false)` — el botón nunca queda trabado. Verificación: simulación en Node que extrae el código VERBATIM del archivo y lo corre contra 12 shapes (incluidos los degradados: `stepProgress` ausente, vacío, no-array, `null`, objeto, todo cerrado, entrada `null`, entrada sin `step`) — 12/12 OK, ninguno lanza; `node --check` del script; `npm test` idéntico al baseline §6 (6 suites / 7 tests, 427 de 435). Sesión con `SAGECONNECT_HOOKS_BYPASS=1`, chequeos manuales sustitutos documentados en el SUMMARY.
+
+Session result (23-01): Plan 23-01 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `185e8f2` feat, `75e7140` test, `c0e99e7` test). El disparo manual (`POST /api/schedule/background-cycle/trigger`) ya encadena `startChildProcess()` después de `forResponse()` dentro del lock `background-cycle` existente, con instrumentación `startStep`/`endStep`, detección del sentinel `/Child process timeout/` y `sendAdminAlert` con el mismo asunto que el cron (log ruteado a `ScheduleRoutes.log`, D-06). Bloque duplicado a propósito (D-01) y blindado con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. Archivo de test nuevo `tests/api/schedule-trigger-import.test.js` con los 6 casos de D-17 (D-16 revisada: archivo propio en vez de editar `schedule-routes.test.js`, para dejar REQ-23-06 cierto por construcción). `npm test` idéntico al baseline §6 — 6 suites / 7 tests fallando, cero nuevas; 427 pasan de 435 (+9 nuevos). `src/services/CronScheduler.js`, `src/background.js` y `src/config.js` sin tocar. Sesión corrida con `SAGECONNECT_HOOKS_BYPASS=1`; los 5 hooks apagados se sustituyeron por chequeos manuales documentados en el SUMMARY (grep de redacción HANDOFF §1 antes de cada commit — limpio en los 3).
+Stopped at: Plan 23-02 completado (SUMMARY escrito)
+Resume next: `/gsd-execute-phase 23` — sigue el plan 23-03 (wave 2, el único pendiente): leer el valor literal de `IMPORT_CFDIS_ROUTE` en el `.env` de `zcl-rds-test` y en el de producción (REQ-23-08; **si apunta a un `.bat`, detenerse y abrir desviación** — Node 22 rechaza `spawn` de `.bat`/`.cmd` sin `shell: true`, mitigación de CVE-2024-27980) y correr la prueba end-to-end con evidencia en los tres puntos del REQ-23-09: el XML sale de la carpeta de descargas, `ChildProcess.log` con `[INFO] Iniciando proceso de importación` y `[CLOSE] ... código 0`, y la factura visible en Sage. Candidata: la factura A1189, que quedó descargada sin importar el 28-ago; **CPI3700 está reservada para la sesión en vivo con el operador, no consumirla**. Los planes 23-01 y 23-02 corrieron con mocks en la Mac: no son evidencia operativa de nada.
