@@ -67,7 +67,7 @@ Downstream agents MUST read `23-SPEC.md` before planning or implementing. Requir
   - Si el importador rechaza → cae al `.catch` existente → `addHistory` con `success:false` y el mensaje del error. **REQ-4 se cumple sin escribir código nuevo de manejo de error.**
   - `releaseLock` sigue en el `.finally` → se ejecuta pase lo que pase. El candado nunca queda trabado.
 
-- **D-03 — Cero imports nuevos salvo uno.** `schedule-routes.js` **ya importa** todo lo que el bloque necesita: `config` (L22), `operationManager` (L21), `logGenerator` (L25), `formatDurationMin` (L26), y un wrapper local `sendAdminAlert(subject, html)` en L74-76 que inyecta `LOG_FILE`. El único cambio de imports es agregar `startChildProcess` al destructure existente `const { forResponse } = require('../background')`.
+- **D-03 — Cero imports nuevos salvo uno.** `schedule-routes.js` **ya importa** todo lo que el bloque necesita: `operationManager` (L22), `config` (L23), `logGenerator` (L26), `formatDurationMin` (L27), `LOG_FILE = 'ScheduleRoutes'` (L33), y un wrapper local `sendAdminAlert(subject, html)` en L74-76 que inyecta ese `LOG_FILE`. El único cambio de imports es agregar `startChildProcess` al destructure existente `const { forResponse } = require('../background')`, que está en **L25**.
 
 - **D-04 — El bloque replica el del cron (`CronScheduler.js:100-150`) campo por campo:** `startStep('background-cycle','startChildProcess', null)` antes del `await`; `catch` que captura `__scpError`, evalúa `/Child process timeout/.test(__scpError)`, escribe el log `[TIMEOUT] step=startChildProcess operationId=… durationMs=… action=admin-email-dispatched`, despacha `sendAdminAlert(subject, html).catch(() => {})` fire-and-forget y hace `throw scpErr`; `finally` con `endStep('background-cycle','startChildProcess', null, { error: __scpError })`. Único campo que cambia: el `operationId` del disparo manual.
 
@@ -101,7 +101,7 @@ Downstream agents MUST read `23-SPEC.md` before planning or implementing. Requir
 
 ### Tests
 
-- **D-16 — `tests/api/schedule-routes.test.js` es el archivo anfitrión** de los casos de REQ-1 a REQ-4. Ya construye una app de prueba con todas las dependencias mockeadas. El mock de background (`jest.mock('../../src/background', () => ({ forResponse: … }))`) se extiende con `startChildProcess: jest.fn().mockResolvedValue(0)` — una línea.
+- **D-16 (revisada al planificar) — los casos de REQ-1 a REQ-4 viven en un archivo NUEVO, `tests/api/schedule-trigger-import.test.js`.** La versión original de esta decisión nombraba `tests/api/schedule-routes.test.js` como anfitrión, porque ya construye una app de prueba con todas las dependencias mockeadas. Se cambió al escribir el plan 23-01: editar ese archivo obliga a agregarle mocks a nivel de módulo (`AdminEmailSender`, `childProcessTimeoutMs`, `startStep`/`endStep`) que afectarían también a sus 4 tests actuales del trigger, mientras que un archivo propio deja REQ-23-06 ("ningún test existente cambia sus assertions") cierto **por construcción** y sigue el precedente del repo de un archivo de test por endpoint (la fase 22 hizo lo mismo con `schedule-task-trigger.test.js`). El archivo nuevo copia el preámbulo de mocks de `schedule-routes.test.js:1-120` y lo amplía; el mock de background pasa a `{ forResponse: …, startChildProcess: jest.fn().mockResolvedValue(0) }`. Los 6 casos de D-17 se conservan 1:1.
 
 - **D-17 — Casos a cubrir:**
   (a) `startChildProcess` llamado **exactamente 1 vez** por POST, y **después** de `forResponse`;
