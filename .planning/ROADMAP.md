@@ -101,7 +101,7 @@ Plans:
 **Plans:** 3 plans (2 waves)
 
 Plans:
-- [ ] 23-01-PLAN.md — Encadenar startChildProcess al disparo manual + tests de comportamiento + asercion de paridad sobre el fuente [wave 1]
+- [x] 23-01-PLAN.md — Encadenar startChildProcess al disparo manual + tests de comportamiento + asercion de paridad sobre el fuente [wave 1]
 - [ ] 23-02-PLAN.md — Tercer estado del boton en ejecucion.html (Importando comprobantes a Sage) [wave 1]
 - [ ] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2]
 
@@ -140,4 +140,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
-| 23. Boton invoca importador   | v2.4      | 0/3            | Planned  | —          |
+| 23. Boton invoca importador   | v2.4      | 1/3            | In Progress | —        |

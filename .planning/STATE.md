@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: null
 milestone_name: null
 status: executing
-stopped_at: Phase 23 context gathered
-last_updated: "2026-08-31T20:28:51.761Z"
+stopped_at: Plan 23-01 completado (SUMMARY escrito)
+last_updated: "2026-08-31T20:50:37.173Z"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 7
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 14
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 23 (boton-invoca-importador) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 23
+Plan: 2 of 3
+Status: Ready to execute
 
 ## Deferred Items
 
@@ -54,6 +54,17 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 - `scripts/obfuscate.js` allowlist → blocklist refactor (PR #20 retrospective)
 - ~~`sendAdminAlert` + `findLastOpenStep` extraction a `src/utils/AdminEmailSender.js`~~ ✓ resolved 2026-05-02 via quick-260502-i7l (3rd-use trigger fired; both helpers extracted with callerLogFile param preserving log routing)
 
+## Decisions
+
+Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md`; aquí solo las que cambiaron o se fijaron al ejecutar):
+
+| Fecha | Plan | Decisión |
+|-------|------|----------|
+| 2026-08-31 | 23-01 | **D-16 revisada** — los casos de REQ-23-01..04 viven en el archivo NUEVO `tests/api/schedule-trigger-import.test.js`, no dentro de `tests/api/schedule-routes.test.js`. Los mocks nuevos (`AdminEmailSender`, `childProcessTimeoutMs`, `startStep`/`endStep`) son hoisted y aplican a todo el archivo, así que habrían cambiado el entorno de sus 4 tests actuales del trigger. Archivo propio ⇒ REQ-23-06 cierto por construcción. |
+| 2026-08-31 | 23-01 | **D-01 confirmada en ejecución** — el bloque del importador se duplica entre `CronScheduler.js` y `schedule-routes.js`; NO se extrae. Contador PATTERNS.md §S-6 queda en 2 de 3. La duplicación quedó blindada con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. |
+| 2026-08-31 | 23-01 | **Literal `'background-cycle'` en `startStep`/`endStep`**, no la variable `taskId` — esa clave es la del LOCK (invariante), no el parámetro de la request. Mantiene paridad byte a byte con el cron y sobrevive si un endpoint futuro acepta otros nombres de tarea sobre el mismo lock. |
+| 2026-08-31 | 23-01 | **Cero recursos always-on nuevos** (CLAUDE.md §3): sin `setInterval`, `setTimeout`, listener, `Map`/`Set` de módulo ni `spawn` propio. Invariante de timeouts §9 intacta. |
+
 ## Blockers/Concerns
 
 - No Sage DB access locally: SQL query changes can only be validated structurally
@@ -62,7 +73,7 @@ Items acknowledged and deferred at milestone close on 2026-04-29:
 
 ## Session Continuity
 
-Last session: 2026-08-31T19:45:16.518Z
-Session result: `/gsd-complete-milestone v2.3` workflow completed. Pre-close audit found 2 unrelated payment-upload todos → user chose **Acknowledge & defer** (recorded under Deferred Items). Archive files created: `.planning/milestones/v2.3-ROADMAP.md` (full phase details + 17 key decisions + accomplishments + boundary lifting summary) and `.planning/milestones/v2.3-REQUIREMENTS.md` (14/14 REQs marked complete with traceability). MILESTONES.md entry added with stats (3 phases, 10 plans, 89 commits, 6 days, 14 REQs, 17/17 threats). ROADMAP.md reorganized with milestone groupings (collapsible `<details>` sections per milestone). PROJECT.md evolved: 9 v2.3 requirements moved to Validated, "Current Milestone" section replaced with "Recently Shipped" outcome summary, 17 new Key Decisions appended, footer updated. RETROSPECTIVE.md appended with v2.3 milestone section (what worked, what was inefficient, patterns established, key lessons), Cross-Milestone Trends tables updated, Top Lessons extended (3 → 7). STATE.md cleared and reset (decisions log moved to PROJECT.md). Safety commit `9651348 chore: archive v2.3 milestone files`. REQUIREMENTS.md removed via `git rm` (history preserved, fresh for next milestone). Git tag v2.3 created. Branching strategy "none" per init — no branch operations.
-Stopped at: Phase 23 context gathered
-Resume next: `/gsd-new-milestone` — questioning → research → requirements → roadmap. Pending non-blocking follow-ups available (see Deferred Items above) for inclusion in v2.4 scope conversation.
+Last session: 2026-08-31T20:49:43.953Z
+Session result: Plan 23-01 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `185e8f2` feat, `75e7140` test, `c0e99e7` test). El disparo manual (`POST /api/schedule/background-cycle/trigger`) ya encadena `startChildProcess()` después de `forResponse()` dentro del lock `background-cycle` existente, con instrumentación `startStep`/`endStep`, detección del sentinel `/Child process timeout/` y `sendAdminAlert` con el mismo asunto que el cron (log ruteado a `ScheduleRoutes.log`, D-06). Bloque duplicado a propósito (D-01) y blindado con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. Archivo de test nuevo `tests/api/schedule-trigger-import.test.js` con los 6 casos de D-17 (D-16 revisada: archivo propio en vez de editar `schedule-routes.test.js`, para dejar REQ-23-06 cierto por construcción). `npm test` idéntico al baseline §6 — 6 suites / 7 tests fallando, cero nuevas; 427 pasan de 435 (+9 nuevos). `src/services/CronScheduler.js`, `src/background.js` y `src/config.js` sin tocar. Sesión corrida con `SAGECONNECT_HOOKS_BYPASS=1`; los 5 hooks apagados se sustituyeron por chequeos manuales documentados en el SUMMARY (grep de redacción HANDOFF §1 antes de cada commit — limpio en los 3).
+Stopped at: Plan 23-01 completado (SUMMARY escrito)
+Resume next: `/gsd-execute-phase 23` — sigue el plan 23-02 (tercer estado del botón en `public/ejecucion.html`, wave 1, independiente). Después el 23-03 (wave 2): leer `IMPORT_CFDIS_ROUTE` en `zcl-rds-test` y prod + prueba end-to-end con evidencia en los tres puntos del REQ-23-09.
