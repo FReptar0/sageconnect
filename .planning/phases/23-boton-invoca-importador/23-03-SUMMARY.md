@@ -27,6 +27,8 @@ Clic manual en `/ejecucion.html` a las 12:42 del 2026-09-01. `ChildProcess.log` 
 
 El importador escribio su propio log `C:\Logs\ImportaFactAPXML_Focaltec_20260901_124236.log`. **El cron solo corre a las 03:01**, asi que un log con marca 12:42:36 solo pudo generarlo el boton. Evidencia inequivoca.
 
+**Reproducido una segunda vez a las 16:01**, con resultado identico: `16:01:43` arranque (PID 13636) → `16:01:44` `[CLOSE] ... codigo 0`, y `ImportaFactAPXML_Focaltec_20260901_160144.log` con el mismo error de `[CORREOAP]`. Dos reproducciones independientes separadas por 3.5 horas: no es un caso aislado.
+
 ## REQ-23-08 — VERIFICADO: no hay ningun `.bat`
 
 `IMPORT_CFDIS_ROUTE` en zcl-rds-test apunta al `.exe` directo (visible en el propio `ChildProcess.log`), con `ARG: COPDAT`. **No hay wrapper `.bat`**, asi que la trampa de `EINVAL` en Node 22 no aplica. Cierra el pendiente de la reunion del 31-ago.
