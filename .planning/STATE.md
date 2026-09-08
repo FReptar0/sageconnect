@@ -4,10 +4,10 @@ milestone: v2.4
 milestone_name: Retry policies
 status: executing
 stopped_at: Phase 20.4 context gathered
-last_updated: "2026-09-08T17:01:43.514Z"
+last_updated: "2026-09-08T17:15:21.124Z"
 last_activity: 2026-07-29 -- Phase 20.3 plan 04 complete (41/41 in portal-check; three negative-control mutations executed and reverted)
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 4
   total_plans: 22
   completed_plans: 23
@@ -156,3 +156,4 @@ Earlier context (Phase 20 execution notes): re-run `/gsd-execute-phase 20` in a 
 ### Roadmap Evolution
 
 - Phase 20.3 inserted after Phase 20.2: Cross-system detection query (409 / portal existence) — deferred pendiente of 20.1/20.2, item #5 of the todo-junto August release; endpoint confirmed in repo swagger, self-contained (no Q3/CR-03/CR-04 dependency) (URGENT)
+- Phase 20.5 inserted after Phase 20: Q3 differentiated alerts (2026-05-20 client meeting): immediate PO failure alert + biweekly payment pending report (URGENT)
