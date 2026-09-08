@@ -4,14 +4,14 @@ milestone: v2.4
 milestone_name: Retry policies
 status: executing
 stopped_at: Phase 20.4 context gathered
-last_updated: "2026-09-08T17:15:21.124Z"
-last_activity: 2026-07-29 -- Phase 20.3 plan 04 complete (41/41 in portal-check; three negative-control mutations executed and reverted)
+last_updated: "2026-09-08T18:02:58.059Z"
+last_activity: 2026-09-08 -- Phase 20.4 planning complete
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 22
+  total_plans: 26
   completed_plans: 23
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 Phase: 20.3
 Plan: 4 of 4 executed (20.3-01, 20.3-02, 20.3-03, 20.3-04 complete — all four plans landed)
-Status: Executing (all plans done; phase closes at verification)
+Status: Ready to execute
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: /gsd-verify-work 20.3 — the 20.3-04 SUMMARY carries a SPEC-acceptance mapping table written for exactly that command to read
-Last activity: 2026-07-29 -- Phase 20.3 plan 04 complete (41/41 in portal-check; three negative-control mutations executed and reverted)
+Last activity: 2026-09-08 -- Phase 20.4 planning complete
 Test suite baseline for Phase 20.3 execution — **measured fresh 2026-07-28 by the plan-checker**: `npm test` reports **6 failed suites / 7 failed tests of 500** (492 passed). Same failing-suite set as always (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes) — the CLAUDE.md §6 baseline. **This is the pass bar for 20.3: the same set, no NEW failures.** (Prior reading after 20.2-01 was 6/7 of 485 with 477 passed; the totals grew with 20.2's added suites, the failing set did not.)
 **Reading after 20.3-01 (2026-07-29): 6 failed suites / 7 failed tests of 522** (514 passed, 1 skipped) — same failing set, verified by name; **35 passed suites vs 34**, i.e. one new green suite and +22 tests. This is the new comparison point for 20.3-02.
 **Reading after 20.3-02 (2026-07-29): identical — 6 failed suites / 35 passed / 41 total, 7 failed / 1 skipped / 514 passed / 522 total.** By design: that plan added assertions, not tests. Failing set re-verified by name (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` worker crashes). Still the comparison point for 20.3-03 — but note that 20.3-03 legitimately CHANGES it, since it lands the D-07b mock repair and a new structural-guard suite.
