@@ -213,7 +213,7 @@ Plans:
   6. `npm test` holds at the CLAUDE.md §6 baseline with no NEW failures.
 **Plans**: 4 plans en 4 olas (secuenciales — cada ola depende de la anterior)
 -ancladas de la suite 20.3 en el mismo cambio [RETRY-E1, RETRY-E3, RETRY-E4]
-- [ ] 20.4-03-PLAN.md (wave 3) — `tests/controller/PortalOC_Creator.probe-budget.test.js`: reloj virtual con `jest.spyOn(Date, 'now')` y un único sitio de avance, ambos topes probados **alcanzables por separado** (D-16), y la ruta diferida probada inerte en las cuatro superficies (GET, POST, Joi, INSERT) para los dos topes [RETRY-E1, RETRY-E3]
+- [x] 20.4-03-PLAN.md (wave 3) — `tests/controller/PortalOC_Creator.probe-budget.test.js`: reloj virtual con `jest.spyOn(Date, 'now')` y un único sitio de avance, ambos topes probados **alcanzables por separado** (D-16), y la ruta diferida probada inerte en las cuatro superficies (GET, POST, Joi, INSERT) para los dos topes [RETRY-E1, RETRY-E3]
 - [ ] 20.4-04-PLAN.md (wave 4) — invariante `probed === found + absent + skipped + unknown` como igualdad explícita en cinco escenarios, cobertura del punto ciego D-07 (`probed=0` con `deferred>0` sí imprime resumen) más su control, ancla de orden de los seis campos, ocho guardas estructurales (incl. SHA-256 de `GetPurchaseOrders.js` y prohibición del `&&`) y el gate de baseline de `npm test` [RETRY-E4, RETRY-E1]
 
 
@@ -272,5 +272,5 @@ Plans:
 | 20.1 Retry policy correction  | v2.4      | 3/3            | Complete | 2026-07-27 |
 | 20.2 Retry code vs. schema    | v2.4      | 6/6 | Complete    | 2026-07-28 |
 | 20.3 Cross-system 409 detect  | v2.4      | 4/4 | Complete   | 2026-07-29 |
-| 20.4 Portal probe per-tick    | v2.4      | 2/4 | In Progress|  |
+| 20.4 Portal probe per-tick    | v2.4      | 3/4 | In Progress|  |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
