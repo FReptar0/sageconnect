@@ -553,7 +553,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         expect(checkLine[1]).toBe('warn');
         expect(String(checkLine[2])).toContain('reason=malformed-response');
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1 deferred=0$/));
     });
 
     // ── RETRY-D8 observado desde el borde del controlador ────────────────────────────────────
@@ -679,6 +679,13 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
     // ambiguous→unknown— quedan PROBADAS en vez de supuestas. Eso es lo que convierte
     // `probed === found + absent + skipped + unknown` en una invariante real y no en una
     // afirmación aritmética que los tests nunca ejercitan.
+    //
+    // Fase 20.4 (RETRY-E4): estas anclas llevan ahora un SEXTO campo, ` deferred=0`. Se agregó
+    // porque el SPEC de la 20.4 fija el campo en la línea de resumen, y en los cinco escenarios no
+    // se difiere nada, así que cero es el valor correcto en todos. Lo que NO se hizo, a propósito,
+    // fue aflojar el `$` de cierre para "acomodar" el campo nuevo: ese ancla es el valor entero de
+    // la aserción — es lo que prueba que ningún campo extra puede colarse sin que nadie lo note.
+    // Se conserva, y ahora prohíbe un séptimo campo igual que antes prohibía un sexto.
 
     test('D-06: resumen del escenario found — probed=1 found=1', async () => {
         stubSelect([gateOpenRow()]);
@@ -687,7 +694,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         await createPurchaseOrders(0);
 
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=1 absent=0 skipped=0 unknown=0$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=1 absent=0 skipped=0 unknown=0 deferred=0$/));
     });
 
     test('D-06: resumen del escenario absent — probed=1 absent=1', async () => {
@@ -698,7 +705,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         await createPurchaseOrders(0);
 
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=1 skipped=0 unknown=0$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=1 skipped=0 unknown=0 deferred=0$/));
     });
 
     test('D-06: resumen del escenario cancelled — se pliega en skipped, no en unknown', async () => {
@@ -708,7 +715,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         await createPurchaseOrders(0);
 
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=1 unknown=0$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=1 unknown=0 deferred=0$/));
     });
 
     test('D-06: resumen del escenario ambiguous — se pliega en unknown, no en skipped', async () => {
@@ -718,7 +725,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         await createPurchaseOrders(0);
 
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1 deferred=0$/));
     });
 
     test('D-06: resumen de una sonda rechazada — probed=1 unknown=1', async () => {
@@ -728,7 +735,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
         await createPurchaseOrders(0);
 
         expect(mockLogGenerator).toHaveBeenCalledWith('PortalOC_Creator', 'info',
-            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1$/));
+            expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=1 found=0 absent=0 skipped=0 unknown=1 deferred=0$/));
     });
 
     test('D-06: con probed=0 no se emite resumen, y el vocabulario [RETRY*] queda intacto', async () => {
@@ -816,7 +823,7 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
 
         const c = summaryCounters();
         expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
-        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1$/);
+        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1 deferred=0$/);
 
         // Y la etapa se nombra: `write-failed` habría mandado al operador a revisar una escritura
         // que nunca se intentó (esta OC ni siquiera tiene fila que escribir).
@@ -844,6 +851,6 @@ describe('PortalOC_Creator portal existence probe — fail-closed, id guard and 
 
         const c = summaryCounters();
         expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
-        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1$/);
+        expect(c.msg).toMatch(/probed=1 found=0 absent=0 skipped=0 unknown=1 deferred=0$/);
     });
 });

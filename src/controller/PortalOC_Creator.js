@@ -622,8 +622,32 @@ order by A.PONUMBER, B.PORLREV;
   // Resumen [PORTAL-CHECK-SUMMARY] por tick (D-06), nunca por fila. Invariante que debe cumplirse
   // siempre: probed === found + absent + skipped + unknown. Se omite cuando probed es 0 — el tick
   // silencioso es el abrumadoramente común y una línea vacía por tick vuelve ilegible la bitácora.
-  if (probed > 0) {
-    const summaryMsg = `[PORTAL-CHECK-SUMMARY] tenant=${databases[index]} probed=${probed} found=${probeFound} absent=${probeAbsent} skipped=${probeSkipped} unknown=${probeUnknown}`;
+  //
+  // 20.4 D-07: la condición se ensancha con probeDeferred. Con el origen del reloj en la entrada de
+  // la función (D-01), el estado `probed === 0 && probeDeferred > 0` es ALCANZABLE: un SELECT que
+  // se come el presupuesto difiere la primera OC elegible sin haber sondeado ni una. Bajo la
+  // condición vieja ese tick no imprimía nada, así que el ÚNICO escenario verdaderamente malo era
+  // también el único mudo, y RETRY-E4 ("el rezago se vuelve visible") quedaba incumplido justo
+  // donde importa. Esto no contradice el razonamiento de la 20.3 para la omisión ("el tick
+  // silencioso es el abrumadoramente común"): un tick con deferred > 0 no es un tick silencioso, y
+  // un tick con ambos contadores en cero sigue sin imprimir nada.
+  //
+  // D-09: los cinco campos preexistentes conservan nombre, orden y ortografía; deferred= se agrega
+  // AL FINAL y no se reordena nada. Las aserciones de la 20.3 anclan el fin de línea con $, así que
+  // ese anclaje sigue prohibiendo un séptimo campo.
+  //
+  // D-08: la línea se queda en nivel info y NO se agrega una hermana en warn. El SPEC ya fija el
+  // criterio de escalamiento en su sección de riesgo aceptado — un deferred= que se mantenga
+  // distinto de cero en ticks consecutivos se vuelve un hallazgo propio con su propia fase — y un
+  // warn ahora se adelantaría a ese criterio con otro distinto.
+  //
+  // OJO al homónimo: deferred= también es un campo de la línea [RETRY] de más arriba, donde
+  // significa "retenida por el intervalo de reintento", no "retenida por el presupuesto de sondeo
+  // del tick". Son dos métricas distintas que comparten nombre de campo; lo que las desambigua es
+  // la ETIQUETA. Ni se renombran ni se fusionan, y cualquier cosa que parsee estas líneas debe
+  // anclar en la etiqueta, nunca en el nombre del campo suelto.
+  if (probed > 0 || probeDeferred > 0) {
+    const summaryMsg = `[PORTAL-CHECK-SUMMARY] tenant=${databases[index]} probed=${probed} found=${probeFound} absent=${probeAbsent} skipped=${probeSkipped} unknown=${probeUnknown} deferred=${probeDeferred}`;
     console.log(summaryMsg);
     logGenerator(logFileName, 'info', summaryMsg);
   }
