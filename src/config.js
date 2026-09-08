@@ -316,9 +316,41 @@ if (!Number.isInteger(config.portal.probeMaxPerTick) || config.portal.probeMaxPe
 }
 
 // RETRY-E2: guarda RELACIONAL, la primera de su tipo en este archivo -- las cuatro de arriba miden
-// un piso en aislamiento y ninguna mide la relación entre tiers. El techo es 50% del step porque
-// 120 s de sondeo + 180 s de POSTs restantes = los 300 s del step; esa aritmética sólo cierra
-// porque D-01 mide el presupuesto desde el mismo origen que el step (entrada a createPurchaseOrders).
+// un piso en aislamiento y ninguna mide la relación entre tiers.
+//
+// QUÉ ACOTA ESTE TECHO, EXACTAMENTE (WR-01 / WR-02). Acota CUÁNTO SONDEO hace un tick. NO acota el
+// step, y la versión anterior de este comentario decía que sí — decía "120 s de sondeo + 180 s de
+// POSTs restantes = los 300 s del step", que trata el presupuesto como un techo duro y no lo es.
+// La condición del bound se evalúa en el BORDE DE ITERACIÓN, sólo antes de admitir cada OC, así que
+// una OC admitida con el transcurrido a 1 ms del presupuesto corre DESPUÉS su ciclo completo por
+// encima de él. Con los valores que este repo ya trae, esa cola de UNA sola iteración vale:
+//
+//     GET de la sonda      hasta config.portal.httpTimeoutMs          =  30 s
+//   + POST de creación     hasta config.portal.httpTimeoutMs          =  30 s
+//   + INSERT de la fila    hasta el requestTimeout de mssql           = 180 s
+//                                          (src/utils/SQLServerConnection.js:18)
+//   ------------------------------------------------------------------------
+//   = hasta 240 s POR ENCIMA del presupuesto, en el peor caso de una iteración.
+//
+// O sea que el techo real del sondeo es `probeBudgetMs + ~240 s`, y quien sigue acotando el step
+// es STEP_TIMEOUT_MS con su withStepTimeout (src/background.js:237). Este 50 % no lo sustituye.
+//
+// POR QUÉ EL TECHO SE QUEDA EN 50 % Y NO EN `stepTimeoutMs - 240 s` — no lo "corrijas" en la otra
+// dirección: reservar la cola completa dejaría el presupuesto en 60 000 ms con el step por default,
+// lo que estrangula al portal SANO a ~2 sondas por tick, peor que el problema que esta fase
+// resuelve. El término dominante de esa cola es el requestTimeout de 180 s de mssql, que es
+// preexistente y queda fuera del alcance de esta fase. La decisión es deliberada: se acota el
+// sondeo, no la cola de una iteración ya admitida.
+//
+// Y EL PRESUPUESTO TAMBIÉN MIDE EL POST Y EL INSERT de cada OC sondeada-y-ausente, porque ese
+// trabajo vive dentro del mismo bucle y se mide desde el mismo origen (D-01). No es un reparto
+// "media para sondear, media para POSTear": los POSTs de las OCs sondeadas salen del MISMO
+// presupuesto. La otra mitad del step es para las OCs con errorCount = 0, que nunca pasan por la
+// compuerta de la sonda ni por la cota. Consecuencia práctica al leer la bitácora: el tope de 50
+// sólo gobierna si el ciclo COMPLETO por OC promedia menos de ~2.4 s; con el portal degradado
+// gobierna el presupuesto, así que un `deferred=` alto apunta a latencia del portal y NO a que
+// haga falta subir el cap.
+//
 // El mensaje nombra AMBOS valores para que el operador vea cuál de los dos mover.
 if (config.portal.probeBudgetMs > config.schedule.stepTimeoutMs * 0.5) {
     console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS (' + config.portal.probeBudgetMs + ') must be <= 50% of STEP_TIMEOUT_MS (' + config.schedule.stepTimeoutMs + '). Lower PORTAL_PROBE_BUDGET_MS or raise STEP_TIMEOUT_MS.');

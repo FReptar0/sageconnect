@@ -1060,12 +1060,19 @@ describe('PortalOC_Creator — guardas estructurales del tope por tick (fase 20.
         // del cron. Un const function-scoped es inalcanzable en cuanto la función retorna.
         expect(originAt).toBeGreaterThan(fnAt);
 
-        // Segunda mitad — D-01, y es una propiedad distinta de la anterior. El techo que se protege
-        // es el del STEP, no el de la sonda. Un origen puesto DESPUÉS del SELECT gastaría los 120 s
-        // de presupuesto encima de lo que ese SELECT ya consumió, y el step podría seguir reventando
-        // sus 300 s con la cota plenamente instalada. La guarda relacional de config.js topa el
-        // presupuesto al 50 % del STEP_TIMEOUT_MS sobre la aritmética "120 s de sondeo + 180 s de
-        // POSTs = 300 s", y esa suma sólo cierra si ambos lados comparten origen.
+        // Segunda mitad — D-01, y es una propiedad distinta de la anterior. El presupuesto tiene
+        // que ser una REBANADA del step y no un tiempo que se gaste encima de él: con el origen
+        // puesto DESPUÉS del SELECT, los 120 s se sumarían a lo que ese SELECT ya consumió y el
+        // step se iría todavía más lejos de sus 300 s con la cota plenamente instalada. Medir desde
+        // la entrada de la función es lo que hace que el presupuesto acote el sondeo dentro del
+        // step en vez de acotarlo aparte.
+        //
+        // Ojo con lo que esta guarda NO afirma (WR-01 / WR-02): el techo del 50 % de config.js no
+        // acota el step. La cota se lee en el borde de iteración, así que una OC ya admitida corre
+        // su ciclo completo por encima del presupuesto —hasta 30 s de GET + 30 s de POST + 180 s
+        // del requestTimeout de mssql— y quien acota el step sigue siendo STEP_TIMEOUT_MS. El
+        // razonamiento completo está en el comentario de esa guarda; aquí no se repite la
+        // aritmética para que exista UN solo sitio donde mantenerla.
         expect(originAt).toBeLessThan(todayAt);
     });
 

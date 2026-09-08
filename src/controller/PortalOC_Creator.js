@@ -36,11 +36,18 @@ async function createPurchaseOrders(index) {
   // del STEP, no el de la sonda: un origen puesto antes del bucle gastaría los 120 s de presupuesto
   // ENCIMA de lo que ya consumió el SELECT con OUTER APPLY sobre una tabla de control de 9,032
   // filas, y el step podría seguir reventando sus 300 s con el tope plenamente instalado. Medir
-  // desde la entrada vuelve al presupuesto una REBANADA del step, que es exactamente la aritmética
-  // que asume la guarda relacional de config.js: 120 s de sondeo + 180 s de POSTs restantes = los
-  // 300 s del step, y esa suma solo cierra si ambos lados comparten origen. Costo aceptado: un
-  // SELECT anormalmente lento puede dejar el tick en cero sondas — fail-closed y correcto, y
-  // visible para el operador en el campo deferred= de la línea de resumen.
+  // desde la entrada vuelve al presupuesto una REBANADA del step en vez de un tiempo que se gasta
+  // aparte. Costo aceptado: un SELECT anormalmente lento puede dejar el tick en cero sondas —
+  // fail-closed y correcto, y visible para el operador en el campo deferred= de la línea de resumen.
+  //
+  // WR-01 / WR-02, y hay que leerlo antes de razonar sobre este presupuesto: lo que acota es CUÁNTO
+  // SONDEO hace un tick, NO el step. La condición se evalúa en el borde de iteración, sólo antes de
+  // admitir cada OC, así que una OC ya admitida corre después su ciclo completo por encima del
+  // presupuesto — hasta 30 s de GET + 30 s de POST + 180 s del requestTimeout de mssql. Y el
+  // presupuesto se cobra ese POST y ese INSERT, porque viven en el mismo bucle y se miden desde
+  // este mismo origen. Quien acota el step sigue siendo STEP_TIMEOUT_MS vía withStepTimeout
+  // (background.js:237). La aritmética completa está en el comentario de la guarda relacional de
+  // config.js y NO se repite aquí, para que exista un solo sitio donde mantenerla.
   // D-02: Date.now() y no process.hrtime.bigint(). Un reloj monótono sería más correcto ante un
   // salto de NTP a media tanda, pero no hay precedente de hrtime en este codebase, es bastante más
   // difícil de fijar de forma determinista en Jest, y una corrección de NTP cayendo justo dentro de
