@@ -137,6 +137,15 @@ const config = {
         // ROOT-01 (D-03): timeout para todas las llamadas axios al portal de proveedores.
         // Env override: PORTAL_HTTP_TIMEOUT_MS. Default 30s (texto literal de REQ ROOT-01).
         httpTimeoutMs: parseInt(process.env.PORTAL_HTTP_TIMEOUT_MS, 10) || 30000,
+        // RETRY-E2 (D-11): tope por tick de la sonda de existencia en el portal (fase 20.4).
+        // Presupuesto de tiempo (default 2 min) y tope de conteo (default 50), lo que ocurra primero.
+        // Ambas son OPCIONALES y nunca REQUIRED: el servidor de octubre arranca con un .env nuevo y
+        // una REQUIRED faltante haría fail-fast del servicio entero (decisión 20.1-01, la forma del
+        // corte de fin de mes de abril).
+        // Se parsean con parseEnvNumber y NO con el idiom `parseInt(...) || default` justamente para
+        // que un '0' explícito llegue a su range guard en vez de ser tragado por ser falsy.
+        probeBudgetMs: parseEnvNumber(process.env.PORTAL_PROBE_BUDGET_MS, (v) => parseInt(v, 10), 120000),
+        probeMaxPerTick: parseEnvNumber(process.env.PORTAL_PROBE_MAX_PER_TICK, (v) => parseInt(v, 10), 50),
     },
 
     mailing: buildMailing(),
@@ -240,6 +249,37 @@ if (config.schedule.childProcessTimeoutMs < 60000) {
 // Un step típico tiene 1-3 axios calls + DB roundtrips; <30s es trivial y produce falsos positivos.
 if (config.schedule.stepTimeoutMs < 30000) {
     console.error('[CONFIG ERROR] STEP_TIMEOUT_MS must be >= 30000 (30 sec). Got: ' + config.schedule.stepTimeoutMs);
+    process.exit(1);
+}
+
+// RETRY-E2 (D-12): las tres guardas de la sonda van DESPUÉS de la guarda de STEP_TIMEOUT_MS.
+// El orden es correctitud, no estilo: la guarda relacional de abajo compara contra
+// config.schedule.stepTimeoutMs, y ponerla antes del piso de ese valor la haría comparar contra un
+// valor ya conocido como inválido y nombrar la variable equivocada en el error.
+//
+// El término Number.isInteger de las dos guardas de piso es load-bearing y NO debe quitarse para
+// igualar la forma más corta de las cuatro guardas de timeout de arriba: parseEnvNumber pasa 'abc'
+// verbatim a parseInt, que devuelve NaN, y toda comparación `>=` contra NaN es false. Sin él un
+// valor no numérico pasaría el startup Y dejaría en false para siempre las comparaciones del bound
+// en PortalOC_Creator — el bound quedaría silenciosamente desactivado (fail-open), que es
+// exactamente la falla que esta fase existe para quitar. Forma copiada de RETRY_LOOKBACK_DAYS.
+if (!Number.isInteger(config.portal.probeBudgetMs) || config.portal.probeBudgetMs < 10000) {
+    console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS must be integer >= 10000 (10 sec). Got: ' + config.portal.probeBudgetMs);
+    process.exit(1);
+}
+
+if (!Number.isInteger(config.portal.probeMaxPerTick) || config.portal.probeMaxPerTick < 1) {
+    console.error('[CONFIG ERROR] PORTAL_PROBE_MAX_PER_TICK must be integer >= 1. Got: ' + config.portal.probeMaxPerTick);
+    process.exit(1);
+}
+
+// RETRY-E2: guarda RELACIONAL, la primera de su tipo en este archivo -- las cuatro de arriba miden
+// un piso en aislamiento y ninguna mide la relación entre tiers. El techo es 50% del step porque
+// 120 s de sondeo + 180 s de POSTs restantes = los 300 s del step; esa aritmética sólo cierra
+// porque D-01 mide el presupuesto desde el mismo origen que el step (entrada a createPurchaseOrders).
+// El mensaje nombra AMBOS valores para que el operador vea cuál de los dos mover.
+if (config.portal.probeBudgetMs > config.schedule.stepTimeoutMs * 0.5) {
+    console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS (' + config.portal.probeBudgetMs + ') must be <= 50% of STEP_TIMEOUT_MS (' + config.schedule.stepTimeoutMs + '). Lower PORTAL_PROBE_BUDGET_MS or raise STEP_TIMEOUT_MS.');
     process.exit(1);
 }
 
