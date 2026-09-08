@@ -160,8 +160,14 @@ let virtualNow;
 // implementación agregara o quitara una lectura de reloj, y a partir de ahí estaría midiendo el
 // número de LECTURAS en vez del número de SONDAS. Aquí sólo gasta presupuesto el trabajo declarado
 // explícitamente como costoso, que es exactamente la propiedad que afirma RETRY-E1.
-// El plan 20.4-04 agrega un segundo sitio de costo (un SELECT lento) y debe enrutarlo por aquí: esta
-// propiedad de sitio-único tiene que seguir siendo cierta en el archivo terminado.
+//
+// CUATRO sitios declaran costo y los cuatro pasan por aquí: el GET (`stubPortalCostly`), el POST
+// (`stubPostCostly`), el INSERT (el parámetro `insertCostMs` de `stubSelect`) y el SELECT previo al
+// bucle (el caso del punto ciego de D-07). La propiedad de sitio-único de AVANCE sigue siendo
+// cierta y tiene que seguir siéndolo; lo que WR-08 corrigió no fue esa propiedad sino que sólo UNO
+// de los cuatro existiera. El presupuesto se evalúa en el BORDE DE ITERACIÓN, así que el POST y el
+// INSERT se cobran contra él igual que el GET, y un archivo que sólo cobrara el GET estaría
+// modelando un mecanismo distinto del que dice probar. Cualquier costo nuevo se enruta por aquí.
 const advanceClock = (ms) => { virtualNow += ms; };
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -205,9 +211,17 @@ const resetProbeStubs = () => {
 };
 
 // La llamada 0 de runQuery es SIEMPRE el SELECT por tenant; los INSERT empiezan en la 1.
-const stubSelect = (rows) => {
+//
+// `insertCostMs` es la mitad de la corrección de WR-08 que le toca al INSERT: en producción el
+// techo de una escritura no es el de axios sino el `requestTimeout` de mssql —180 000 ms,
+// `SQLServerConnection.js:18`—, y ése es el término DOMINANTE de la cola de una iteración. Default
+// 0 para que los call sites previos conserven su significado exacto.
+const stubSelect = (rows, insertCostMs = 0) => {
     mockRunQuery.mockResolvedValueOnce({ recordset: rows });
-    mockRunQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+    mockRunQuery.mockImplementation(() => {
+        advanceClock(insertCostMs);
+        return Promise.resolve({ recordset: [], rowsAffected: [1] });
+    });
 };
 
 // La sonda con costo: cada GET adelanta el reloj virtual `costMs` y luego contesta `response`. El
@@ -225,9 +239,26 @@ const stubPortalCostly = (costMs, response) => {
 // vivo todo el camino de escritura para que "no se escribió nada" signifique algo.
 const PORTAL_ABSENT_BODY = { data: { items: [], total: 0 } };
 
-const stubPostAlwaysSuccess = () => {
-    mockPortalPost.mockResolvedValue({ status: 201, statusText: 'Created', data: { id: VALID_ID } });
+// El POST con costo declarado, y la otra mitad de la corrección de WR-08.
+//
+// Por qué hacía falta: el presupuesto se evalúa en el BORDE DE ITERACIÓN, no de forma continua, así
+// que TODO lo que el bucle hace entre dos evaluaciones —el GET, Joi, el POST y el INSERT— se cobra
+// contra él. Cuando el único sitio con costo era el stub del GET, este archivo modelaba un
+// mecanismo distinto del que dice probar: el tiempo atribuible al POST y al INSERT era invisible, y
+// la casilla 2 del SPEC quedaba apoyada en un supuesto NO DECLARADO —"el POST es gratis"— en vez de
+// en el mecanismo. Con un POST de sólo 2.5 s, aquellas 50 sondas serían ~48 y la cota que dispara
+// dejaría de ser el cap.
+const stubPostCostly = (costMs) => {
+    mockPortalPost.mockImplementation(() => {
+        advanceClock(costMs);
+        return Promise.resolve({ status: 201, statusText: 'Created', data: { id: VALID_ID } });
+    });
 };
+
+// Azúcar para los casos en que el POST es gratis. Se define EN TÉRMINOS de `stubPostCostly` y no al
+// revés, y eso es el punto: así el costo cero queda escrito como un valor ELEGIDO y no como una
+// propiedad tácita del doble. Todos los call sites previos conservan su significado exacto.
+const stubPostAlwaysSuccess = () => stubPostCostly(0);
 
 const loggedMessages = () => mockLogGenerator.mock.calls.map((c) => String(c[2] == null ? '' : c[2]));
 
@@ -348,7 +379,13 @@ describe('PortalOC_Creator — ambos topes, cada uno alcanzable por separado (RE
         stubSelect(rows);
         // Costo cero: el portal SANO. El reloj no avanza ni un milisegundo en todo el tick.
         stubPortalCostly(0, PORTAL_ABSENT_BODY);
-        stubPostAlwaysSuccess();
+        // WR-08: el costo cero del POST es un valor ELEGIDO y declarado, no un supuesto tácito.
+        // Importa decirlo porque este caso deriva su conclusión de `elapsed === 0`, y esa igualdad
+        // es cierta del fixture, no del sistema: el presupuesto se evalúa en el borde de iteración,
+        // así que en producción el POST y el INSERT también se cobran contra él. Los dos casos que
+        // siguen a éste son los que ejercitan ese cobro; aquí se declara la elección para que la
+        // casilla 2 no descanse sobre un supuesto que nadie escribió.
+        stubPostCostly(0);
 
         await createPurchaseOrders(0);
 
@@ -369,6 +406,80 @@ describe('PortalOC_Creator — ambos topes, cada uno alcanzable por separado (RE
         // reloj sólo avanza. Falso ahí ⇒ falso en toda evaluación previa. El presupuesto no pudo ser
         // el término verdadero del `||`, así que lo que detuvo el bucle fue el cap, sin ambigüedad.
         expect(elapsed >= mockConfig.portal.probeBudgetMs).toBe(false);
+    });
+
+    // ── WR-08: el presupuesto se agota por trabajo del bucle DISTINTO del GET ────────────────
+    //
+    // Hasta aquí, todo caso que agotaba el presupuesto lo hacía con un GET lento, y el único que
+    // movía el reloj fuera del GET (el punto ciego de D-07) lo movía en el SELECT, o sea ANTES del
+    // bucle. Faltaba la afirmación central del mecanismo: la cota se evalúa en el BORDE DE
+    // ITERACIÓN, así que el POST y el INSERT de cada OC sondeada-y-ausente se cobran contra el
+    // mismo presupuesto de sondeo. D-01 lo pide —origen único en la entrada de la función— pero
+    // ningún caso lo ejercitaba, y de ahí salía el dimensionamiento equivocado: el tope de 50 sólo
+    // es alcanzable si el ciclo COMPLETO por OC promedia menos de ~2.4 s.
+    //
+    // Los dos casos van en este bloque y no en otro porque son exactamente la pregunta del bloque
+    // —cuál de las dos cotas disparó— resuelta a favor del presupuesto por un camino nuevo.
+
+    test('WR-08: GET instantáneo y POST al techo de axios ⇒ detiene el PRESUPUESTO, no el cap, con el cap a 46 de distancia', async () => {
+        const rows = manyGateOpenRows(60);
+        stubSelect(rows);
+        // El portal que contesta rápido la consulta pero se arrastra en la escritura. No es un caso
+        // de laboratorio: GET y POST van por el mismo singleton de axios y comparten su techo de
+        // 30 s (`PortalClient.js`), así que este perfil está dentro de lo que el cliente ya tiene.
+        stubPortalCostly(0, PORTAL_ABSENT_BODY);
+        stubPostCostly(30000);
+
+        await createPurchaseOrders(0);
+
+        // Aritmética re-derivable sin ejecutar nada, y es la misma forma que la casilla 1 salvo que
+        // aquí el costo lo pone el POST: la sonda 1 se evalúa con 0 transcurridos y su POST cuesta
+        // 30 000; las sondas 2, 3 y 4 se evalúan con 30 000, 60 000 y 90 000; la quinta evaluación
+        // ve exactamente 120 000 y el operador es `>=`, así que difiere.
+        expect(mockPortalGet).toHaveBeenCalledTimes(4);
+        expect(mockPortalPost).toHaveBeenCalledTimes(4);
+        expect(summaryField('probed')).toBe(4);
+        expect(summaryField('deferred')).toBe(56);
+        expect(summaryField('probed') + summaryField('deferred')).toBe(rows.length);
+
+        // Cuatro sondas de un cap de 50: no fue el conteo. Mismo refuerzo mecánico que los casos de
+        // arriba — `probed` es monótono no decreciente, así que si su término es falso con el valor
+        // FINAL, fue falso en cada evaluación previa.
+        const probed = summaryField('probed');
+        expect(probed >= mockConfig.portal.probeMaxPerTick).toBe(false);
+        expect(mockConfig.portal.probeMaxPerTick - probed).toBe(46);
+
+        // Y todo el transcurrido vino de fuera del GET. Ésta es la aserción que da nombre al caso:
+        // con el GET a costo cero, los 120 000 ms sólo pueden haberlos puesto los POSTs.
+        expect(virtualNow - VIRTUAL_START).toBe(120000);
+    });
+
+    test('WR-08: el INSERT también se cobra — con el requestTimeout de mssql, una sola OC agota el presupuesto', async () => {
+        const rows = manyGateOpenRows(60);
+        // 180 000 ms es el `requestTimeout` real del pool (`SQLServerConnection.js:18`), y es el
+        // término DOMINANTE de la cola de una iteración: más grande que el GET y el POST juntos.
+        stubSelect(rows, 180000);
+        stubPortalCostly(0, PORTAL_ABSENT_BODY);
+        stubPostCostly(0);
+
+        await createPurchaseOrders(0);
+
+        // Una sola OC completa su ciclo y el presupuesto de 120 000 ya quedó atrás: la segunda
+        // evaluación ve 180 000. El tick entero se va en una OC, con 59 diferidas y el cap —50— sin
+        // haber tenido nada que ver.
+        expect(mockPortalGet).toHaveBeenCalledTimes(1);
+        expect(insertsEmitted()).toHaveLength(1);
+        expect(summaryField('probed')).toBe(1);
+        expect(summaryField('deferred')).toBe(59);
+        expect(summaryField('probed') + summaryField('deferred')).toBe(rows.length);
+        expect(summaryField('probed') >= mockConfig.portal.probeMaxPerTick).toBe(false);
+
+        // El transcurrido REBASA el presupuesto y por bastante, y eso no es un fallo del mecanismo
+        // sino su propiedad: la cota se lee en el borde de iteración, así que una OC ya admitida
+        // corre su ciclo completo por encima del presupuesto. Es la cola que el comentario de la
+        // guarda relacional en config.js cuantifica.
+        expect(virtualNow - VIRTUAL_START).toBe(180000);
+        expect(virtualNow - VIRTUAL_START).toBeGreaterThan(mockConfig.portal.probeBudgetMs);
     });
 });
 
