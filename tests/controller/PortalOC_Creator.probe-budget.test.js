@@ -795,3 +795,208 @@ describe('PortalOC_Creator — invariante de contadores y visibilidad del rezago
         );
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Guardas estructurales de la fase 20.4.
+//
+// Éstas NO son casos de comportamiento: son aserciones sobre el TEXTO LITERAL del fuente, y ese
+// cambio de método es deliberado. Todo lo que se guarda aquí es una AUSENCIA —ninguna primitiva
+// always-on retenida, ninguna conjunción sobre la compuerta, ninguna etiqueta nueva, ninguna
+// edición a una utilería compartida— y una ausencia no se puede probar ejercitando un doble: un
+// doble que jamás recibe la llamada prohibida pasa por construcción, diga lo que diga el código.
+// La suite de la fase 20.3 estableció el idioma (`PortalOC_Creator.portal-check.test.js:188-290`,
+// nueve guardas) y aquí se reusa tal cual.
+//
+// La otra mitad de por qué existen: la cota son cuatro líneas de aritmética dentro de un bucle de
+// 300. La regresión más barata que puede sufrir no es un bug, es una "simplificación" bienintencionada
+// —y este código va a un servidor donde no hay staging ni rollback (HANDOFF §6). Cada guarda nombra
+// en su mensaje la decisión que protege, para que al ponerse roja le enseñe al que la rompió por qué
+// estaba escrita así.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const CONTROLLER_SRC = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'controller', 'PortalOC_Creator.js'), 'utf8');
+const SQLCONN_SRC = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'utils', 'SQLServerConnection.js'), 'utf8');
+const PROBE_BYTES = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'utils', 'GetPurchaseOrders.js'));
+// El fuente de este mismo archivo, para las dos prohibiciones que se auto-impone (Guarda 9).
+const SELF_SRC = fs.readFileSync(__filename, 'utf8');
+
+const countOf = (src, re) => (src.match(re) || []).length;
+
+// SHA-256 del helper de sonda medido en esta rama ANTES de cualquier edición de la fase 20.4, con
+// el árbol de trabajo idéntico a HEAD. Se reproduce con:  shasum -a 256 src/utils/GetPurchaseOrders.js
+const PROBE_SHA256_PRE_PHASE = 'b45569c06e12a16f951859d296b6977bb057d9dd5b2e1bb23fc3d38c5c4504b0';
+
+describe('PortalOC_Creator — guardas estructurales del tope por tick (fase 20.4)', () => {
+
+    test('Guarda 1 (casilla 11 y 12 del SPEC, CLAUDE.md §3): el origen del reloj se declara DENTRO de la función y antes del SELECT', () => {
+        expect(countOf(CONTROLLER_SRC, /const tickStart/g)).toBe(1);
+
+        const fnAt = CONTROLLER_SRC.indexOf('async function createPurchaseOrders');
+        const originAt = CONTROLLER_SRC.indexOf('const tickStart');
+        const todayAt = CONTROLLER_SRC.indexOf('const today = getCurrentDateString()');
+        expect(fnAt).toBeGreaterThan(-1);
+        expect(originAt).toBeGreaterThan(-1);
+        expect(todayAt).toBeGreaterThan(-1);
+
+        // Primera mitad — CLAUDE.md §3. Un origen en scope de módulo haría que el presupuesto del
+        // tick N dependiera del tick N−1 y jamás se recuperaría: el servicio no termina entre ticks
+        // del cron. Un const function-scoped es inalcanzable en cuanto la función retorna.
+        expect(originAt).toBeGreaterThan(fnAt);
+
+        // Segunda mitad — D-01, y es una propiedad distinta de la anterior. El techo que se protege
+        // es el del STEP, no el de la sonda. Un origen puesto DESPUÉS del SELECT gastaría los 120 s
+        // de presupuesto encima de lo que ese SELECT ya consumió, y el step podría seguir reventando
+        // sus 300 s con la cota plenamente instalada. La guarda relacional de config.js topa el
+        // presupuesto al 50 % del STEP_TIMEOUT_MS sobre la aritmética "120 s de sondeo + 180 s de
+        // POSTs = 300 s", y esa suma sólo cierra si ambos lados comparten origen.
+        expect(originAt).toBeLessThan(todayAt);
+    });
+
+    test('Guarda 2 (CLAUDE.md §3): esta fase no añadió ninguna primitiva always-on', () => {
+        // Repite la Guarda 4 de la suite de la 20.3, pero contra el fuente POST-20.4. Que la
+        // propiedad la afirme también el archivo que introdujo el cambio no es redundancia: la
+        // guarda de la 20.3 vigila su propio diff, y quien edite esta cota va a correr esta suite.
+        // Un temporizador, un listener o una colección en scope de módulo crecen sin cota para
+        // siempre en un proceso que no termina entre ticks.
+        expect(CONTROLLER_SRC).not.toMatch(/setInterval/);
+        expect(CONTROLLER_SRC).not.toMatch(/setTimeout/);
+        expect(CONTROLLER_SRC).not.toMatch(/new Set\(/);
+        expect(CONTROLLER_SRC).not.toMatch(/\.addListener\(/);
+    });
+
+    test('Guarda 3 (D-04): la compuerta sigue siendo una sola condición — la reescritura por conjunción es imposible', () => {
+        // LA guarda de esta fase. La redacción de RETRY-E1 —"la compuerta exige ADEMÁS que quede
+        // presupuesto y quede conteo"— se lee con toda naturalidad como extender la compuerta
+        // existente con dos términos más en vez de anidar. Esa forma es un BUG, y uno grave: hoy,
+        // cuando la compuerta se vuelve falsa, el control NO termina el turno — cae al bloque de Joi
+        // y de ahí al POST. Con la conjunción, cada OC diferida acabaría POSTeada, refabricando
+        // exactamente el POST duplicado / 409 que la fase 20.3 existe para eliminar, y refabricado
+        // por el mecanismo que venía a protegerlo.
+        //
+        // La mitad CONDUCTUAL de esta guarda es la aserción de conteo de POST del segundo bloque
+        // (ola 3): bajo esa reescritura los POST pasan de 4 a 20. Ésta es la mitad ESTRUCTURAL, y su
+        // valor propio es que NOMBRA la forma prohibida, así que el mensaje de fallo le enseña al
+        // que la escribió por qué no puede escribirla. Ninguna de las dos mitades sola cubre a la
+        // otra: la conductual detecta el bug ya cometido, la estructural lo detecta aunque alguien
+        // lo escriba en una rama sin ejecutar los casos de POST.
+        expect(countOf(CONTROLLER_SRC, /if \(priorErrors > 0\) \{/g)).toBe(1);
+        expect(CONTROLLER_SRC).not.toMatch(/priorErrors > 0\s*&&/);
+    });
+
+    test('Guarda 4 (D-10): el contador de diferidas se incrementa FUERA del try de la sonda', () => {
+        expect(countOf(CONTROLLER_SRC, /probeDeferred\+\+/g)).toBe(1);
+
+        const gateAt = CONTROLLER_SRC.indexOf('if (priorErrors > 0)');
+        const deferredAt = CONTROLLER_SRC.indexOf('probeDeferred++');
+        const tryAt = CONTROLLER_SRC.indexOf("let stage = 'probe'");
+        expect(gateAt).toBeGreaterThan(-1);
+        expect(deferredAt).toBeGreaterThan(-1);
+        expect(tryAt).toBeGreaterThan(-1);
+
+        // Dentro de la compuerta (si no, se contaría como diferida una OC que ni siquiera era
+        // elegible para sondeo) y antes del try (si no, se rompe la invariante).
+        expect(deferredAt).toBeGreaterThan(gateAt);
+        expect(deferredAt).toBeLessThan(tryAt);
+
+        // Incrementar dentro del try es LITERALMENTE cómo WR-02 rompió
+        // `probed === found + absent + skipped + unknown` la primera vez: un desenlace contado en el
+        // camino feliz y recontado en el catch. Y esa invariante no es interna — verificarla contra
+        // respuestas reales del portal sigue siendo el punto 2 del UAT humano pendiente de la 20.3,
+        // así que romperla aquí invalidaría una verificación que ya está agendada.
+    });
+
+    test('Guarda 5 (D-05): el conteo se compara ANTES de leer el reloj, y los une un ||', () => {
+        // Un solo patrón anclado prueba las tres cosas a la vez: que ambos términos viven en la
+        // MISMA condición, que el de conteo va primero, y que el operador que los une es la
+        // disyunción y no la conjunción — con una conjunción harían falta las dos cotas agotadas
+        // para diferir, que es un mecanismo distinto y roto.
+        expect(countOf(
+            CONTROLLER_SRC,
+            /if \(probed >= config\.portal\.probeMaxPerTick\s*\|\|\s*\(Date\.now\(\) - tickStart\) >= config\.portal\.probeBudgetMs\) \{/g
+        )).toBe(1);
+
+        // No hay diferencia de comportamiento entre un orden y el otro: la comparación de conteo es
+        // gratis, la lectura del reloj no lo es, y el || corta el segundo término cuando el primero
+        // ya es verdadero. La guarda existe para que reordenarlo sea un acto deliberado y no un
+        // accidente de una refactorización.
+    });
+
+    test('Guarda 6 (D-06 y D-08): el camino diferido no estrenó ninguna etiqueta de bitácora', () => {
+        expect(CONTROLLER_SRC).toMatch(/\[PORTAL-CHECK\]/);
+        expect(CONTROLLER_SRC).toMatch(/\[PORTAL-CHECK-SUMMARY\]/);
+
+        // La aserción negativa es la que trabaja: prohíbe cualquier etiqueta hermana, dejando pasar
+        // sólo la de resumen. El rezago se reporta por el AGREGADO y nunca por línea por fila —el
+        // conjunto diferido está acotado sólo por el tamaño de ordersToSend, que es precisamente el
+        // caso para el que existe esta fase, y una línea por fila escupiría miles de renglones en el
+        // único tick que el operador de verdad necesita poder leer.
+        expect(CONTROLLER_SRC).not.toMatch(/\[PORTAL-CHECK-(?!SUMMARY)[A-Z-]+\]/);
+
+        // D-08: tampoco nació una línea hermana en nivel warn. El SPEC ya fija el criterio de
+        // escalamiento en su sección de riesgo aceptado —un deferred= distinto de cero en ticks
+        // consecutivos se vuelve un hallazgo con su propia fase— y un warn ahora se adelantaría a
+        // ese criterio con otro distinto.
+        expect(CONTROLLER_SRC).not.toMatch(/logGenerator\([A-Za-z]+, 'warn', summaryMsg/);
+    });
+
+    test('Guarda 7 (casilla 13 del SPEC): el helper de sonda es BYTE-IDÉNTICO a su contenido pre-fase', () => {
+        // Se usa un hash y no un patrón de texto porque el requisito literal es "sin cambios", y
+        // sólo un hash expresa eso exactamente: un patrón prueba que algo sigue estando, un hash
+        // prueba que nada se movió — ni un espacio en blanco.
+        const actual = crypto.createHash('sha256').update(PROBE_BYTES).digest('hex');
+        expect(actual).toBe(PROBE_SHA256_PRE_PHASE);
+
+        // Por qué esta fase se prohíbe tocarlo: la cota pertenece al LLAMADOR que es dueño del
+        // bucle, no a un helper que emite una sola petición. Meter estado por-llamada en una función
+        // pura rompería además la guarda de la 20.3 que afirma que su objeto de opciones lleva
+        // únicamente headers, y arrastraría al diff una utilería compartida por otros call sites —
+        // la trampa de radio de impacto de CLAUDE.md §6 #2, la misma en la que cayó el PR #16 al
+        // cambiar un valor por defecto y romper siete llamadores.
+    });
+
+    test('Guarda 8 (CLAUDE.md §6 #1 y #2): la firma de runQuery sigue intacta y no nació ningún sitio de SQL nuevo', () => {
+        // §6 #2: runQuery lo comparte todo el codebase y cambiar su valor por defecto implícito es
+        // la trampa documentada que rompió siete llamadores en el PR #16. Esta fase no lo toca.
+        expect(SQLCONN_SRC).toMatch(/async function runQuery\(query, database = config\.database\.database\)/);
+
+        // §6 #1: los mismos cuatro sitios de escritura que dejó la fase 20.3 —fallo de Joi, POST
+        // exitoso, POST fallido y reconciliación—, ni uno más. Se afirma la IGUALDAD y no una cota
+        // porque el camino diferido no agrega SQL de ningún tipo: su cuerpo entero son dos
+        // sentencias, contar y saltar. Un quinto sitio significaría que alguien le dio al rezago una
+        // escritura propia, que es justo lo que fail-closed quiere decir que no pasa.
+        expect(countOf(CONTROLLER_SRC, /INSERT INTO fesa\.dbo\.fesaOCFocaltec/g)).toBe(4);
+    });
+
+    test('Guarda 9 (D-14 y T-20.4-17): este archivo cumple las dos prohibiciones que se auto-impone', () => {
+        // El bloque de cabecera de este archivo (L44-51) afirma que existe una aserción que cuenta
+        // estas dos subcadenas y exige cero. Ésta es esa aserción: sin ella, esa afirmación sería
+        // falsa y las dos decisiones quedarían apoyadas únicamente en un comentario — justo lo que
+        // el criterio de éxito de este plan prohíbe.
+        //
+        // Los dos patrones se ARMAN POR CONCATENACIÓN, y eso es load-bearing, no estilo: escribir la
+        // subcadena entera en el literal la metería en este mismo fuente y la guarda se detectaría a
+        // sí misma, quedando ciega para siempre — incapaz de distinguir el uso prohibido de la cita
+        // del uso prohibido. Es el mismo desenlace que el hazard de D-04 en
+        // `PortalOC_Creator.js:347-360`. No las "simplifiques" juntando los trozos.
+
+        // (1) D-14: la API de temporizadores falsos de Jest no se usa. Instalarla cambiaría el
+        // entorno de ejecución de TODOS los casos de este archivo a cambio de nada: la única fuente
+        // de tiempo que lee el código bajo prueba es Date.now(), y un espía sobre Date.now es
+        // determinista, quirúrgico y deja el bucle de eventos en paz.
+        expect(countOf(SELF_SRC, new RegExp('use' + 'FakeTimers', 'g'))).toBe(0);
+
+        // (2) T-20.4-17: la etiqueta del post-filtro de reintentos no se menciona en ninguna
+        // aserción. Su línea de resumen lleva un campo `deferred=` que significa "retenida por el
+        // intervalo de reintento" y no "retenida por el presupuesto de sondeo del tick". Todo campo
+        // de este archivo se lee a través de summaryLine(), que ancla en la ETIQUETA; un parser que
+        // buscara el nombre del campo suelto leería el número equivocado y pasaría en verde.
+        expect(countOf(SELF_SRC, new RegExp('\\[' + 'RETRY' + '\\]', 'g'))).toBe(0);
+    });
+});
