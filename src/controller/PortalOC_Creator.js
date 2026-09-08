@@ -31,6 +31,31 @@ const externalId = config.portal.tenants.map(t => t.externalId);
 const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
+  // 20.4 D-01: origen del reloj para el presupuesto de sondeo del tick. Va aquí, como PRIMERA
+  // sentencia de la función, y NO justo antes del for de más abajo. El techo que se protege es el
+  // del STEP, no el de la sonda: un origen puesto antes del bucle gastaría los 120 s de presupuesto
+  // ENCIMA de lo que ya consumió el SELECT con OUTER APPLY sobre una tabla de control de 9,032
+  // filas, y el step podría seguir reventando sus 300 s con el tope plenamente instalado. Medir
+  // desde la entrada vuelve al presupuesto una REBANADA del step, que es exactamente la aritmética
+  // que asume la guarda relacional de config.js: 120 s de sondeo + 180 s de POSTs restantes = los
+  // 300 s del step, y esa suma solo cierra si ambos lados comparten origen. Costo aceptado: un
+  // SELECT anormalmente lento puede dejar el tick en cero sondas — fail-closed y correcto, y
+  // visible para el operador en el campo deferred= de la línea de resumen.
+  // D-02: Date.now() y no process.hrtime.bigint(). Un reloj monótono sería más correcto ante un
+  // salto de NTP a media tanda, pero no hay precedente de hrtime en este codebase, es bastante más
+  // difícil de fijar de forma determinista en Jest, y una corrección de NTP cayendo justo dentro de
+  // una ventana de cinco minutos en un Windows Server sincronizado por dominio es teórica. El trade
+  // fue deliberado: no lo "mejores" sin volver a pasar por ese razonamiento.
+  // D-03: esto NO es el caso dbNow de la fase 20.2. Allá se lee el reloj de SQL Server porque se
+  // compara contra timestamps que el propio SQL Server escribió, y mezclar relojes produjo el sesgo
+  // de -360 min que impedía que [RETRY-DEFER] disparara. Aquí los dos extremos de la medición salen
+  // del MISMO reloj de proceso, así que no existe comparación entre relojes y dbNow no aplica. Sin
+  // esta nota, un lector futuro siguiendo la doctrina de la 20.2 convertiría esto en un round-trip
+  // a SQL por iteración del bucle únicamente para medir tiempo transcurrido.
+  // Always-on (CLAUDE.md §3): tickStart es un const function-scoped, inalcanzable en cuanto
+  // createPurchaseOrders() retorna. No es cache, no crece entre ticks y no hay nada que liberar. Un
+  // origen en scope de módulo haría que el presupuesto del tick N dependiera del tick N−1.
+  const tickStart = Date.now();
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
   const logFileName = 'PortalOC_Creator';
   
@@ -283,11 +308,18 @@ order by A.PONUMBER, B.PORLREV;
   });
 
   // Contadores del tick para la línea de resumen. Function-scoped, igual que el Map.
+  // 20.4 D-10: probeDeferred se cuenta FUERA de probed y se incrementa únicamente en el camino
+  // fail-closed del tope, nunca dentro del try de la sonda. Esa colocación es justamente lo que
+  // mantiene `probed === probeFound + probeAbsent + probeSkipped + probeUnknown` cierto byte a
+  // byte, y eso importa porque verificar esa invariante contra respuestas reales del portal sigue
+  // siendo el punto 2 del UAT humano pendiente de la fase 20.3. Incrementar dentro del try es
+  // exactamente como WR-02 rompió la invariante la primera vez.
   let probed = 0;
   let probeFound = 0;
   let probeAbsent = 0;
   let probeSkipped = 0;
   let probeUnknown = 0;
+  let probeDeferred = 0;
 
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
@@ -306,6 +338,37 @@ order by A.PONUMBER, B.PORLREV;
     const ocKey = String(po.external_id || '').trim();
     const priorErrors = errorCounts.get(ocKey) || 0;
     if (priorErrors > 0) {
+      // 20.4 D-04 — el tope por tick. Este `if` anidado es la PRIMERA sentencia dentro de la
+      // compuerta y su cuerpo son exactamente dos sentencias: contar y saltar.
+      //
+      // HAZARD DE LECTURA, lo más importante de esta fase: la redacción de RETRY-E1 ("la compuerta
+      // exige además que quede presupuesto y quede conteo") se lee con toda naturalidad como
+      // extender la compuerta de arriba con `&& quedaPresupuesto && quedaConteo` en vez de anidar.
+      // ESA FORMA ES UN BUG. Cuando la compuerta se vuelve falsa hoy, el control NO termina el
+      // turno: cae al bloque 4.3 de Joi y de ahí al POST. Con la conjunción sobre la compuerta, una
+      // OC diferida acabaría POSTeada — literalmente el POST duplicado / 409 que la fase 20.3
+      // existe para eliminar, refabricado por el mecanismo que venía a protegerlo. Solo la forma
+      // ANIDADA satisface RETRY-E1 y RETRY-E3 a la vez. No "simplifiques" esto juntando ambas
+      // condiciones en la compuerta.
+      // (La forma prohibida NO se escribe literal en este comentario a propósito: hay una aserción
+      // estructural que cuenta esa subcadena en este archivo y debe dar cero. Documentarla textual
+      // dejaría a esa guarda ciega para siempre — no podría distinguir el bug escrito del bug
+      // citado. Se describe, no se transcribe.)
+      //
+      // D-05: el conteo se compara PRIMERO porque es gratis y la lectura del reloj no lo es, y el
+      // || corta el segundo término cuando el primero ya es verdadero. Es legibilidad, no
+      // comportamiento: el resultado es el mismo en cualquier orden.
+      //
+      // D-06: el camino diferido NO emite línea por fila, solo el agregado. Las líneas por fila de
+      // la 20.3 están acotadas por lo que efectivamente se sondeó; el conjunto diferido está
+      // acotado solo por el tamaño de ordersToSend, que es precisamente el caso para el que existe
+      // esta fase. Una línea por fila escupiría miles de renglones en el peor tick — el único tick
+      // que el operador de verdad necesita poder leer. El conteo va en el resumen.
+      if (probed >= config.portal.probeMaxPerTick
+          || (Date.now() - tickStart) >= config.portal.probeBudgetMs) {
+        probeDeferred++;
+        continue;
+      }
       // S-3: nada de este bloque puede lanzar hacia afuera. En un servicio que no termina entre
       // ticks, una excepción aquí aborta el tick completo a media tanda (CLAUDE.md §3;
       // RetryPolicy.js documenta la misma doctrina). La sonda nunca lanza, así que la única fuente

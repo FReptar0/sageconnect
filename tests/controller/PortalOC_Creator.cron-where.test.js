@@ -28,6 +28,11 @@ jest.mock('../../src/config', () => ({
         url: 'http://test',
         tenants: [{ id: 'T1', key: 'k1', secret: 's1', database: 'COPDAT', externalId: 'ext1' }],
         httpTimeoutMs: 30000,
+        // Fase 20.4: los defaults de producción. Omitirlos deja `probed >= undefined` en false y
+        // desactiva en silencio el tope de la sonda, y este archivo sí ejecuta el
+        // createPurchaseOrders real con fixtures cuyo errorCount abre la compuerta de la sonda.
+        probeBudgetMs: 120000,
+        probeMaxPerTick: 50,
     },
     paths: { downloads: '/tmp/downloads', logs: '/tmp/logs', providers: '/tmp/p' },
     database: { user: 'test', password: 'test', server: 'localhost', database: 'TEST' },
