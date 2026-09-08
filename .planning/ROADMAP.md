@@ -92,7 +92,7 @@ Plans:
 - [ ] 22-03-PLAN.md — Boton "Compras" en ejecucion.html + applyButtonState generalizado a N botones [wave 3]
 - [ ] 22-04-PLAN.md — Verificacion: baseline tests §6 + invariantes always-on + checkpoint manual (cron/ciclo-todo intactos) [wave 4]
 
-### 📋 Phase 23: El boton de ejecucion invoca el importador de comprobantes
+### ✅ Phase 23: El boton de ejecucion invoca el importador de comprobantes — COMPLETA 2026-09-07
 
 **Milestone:** v2.4 (TBD) — rama `feat/boton-ejecucion`
 **Goal:** El disparo manual (`POST /api/schedule/:taskId/trigger`) encadena `startChildProcess()` despues de `forResponse()` dentro del MISMO lock `background-cycle`, con paridad exacta con el cron (`CronScheduler.js:100-109`), para que el boton "Ejecutar proceso ahora" complete la cadena Portal → XML → `ImportaFacturasFocaltec.exe COPDAT` → Sage. Hoy el boton corre los 7 pasos pero nunca invoca el importador, asi que la factura se descarga y se queda en `downloads\`.
@@ -104,7 +104,7 @@ Plans:
 - [x] 23-01-PLAN.md — Encadenar startChildProcess al disparo manual + tests de comportamiento + asercion de paridad sobre el fuente [wave 1]
 - [x] 23-02-PLAN.md — Tercer estado del boton en ejecucion.html (Importando comprobantes a Sage) [wave 1]
 - [x] 23-04-PLAN.md — Guarda de propiedad del candado (CR-01) + paridad que no pasa sobre codigo comentado [wave 2]
-- [ ] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2, despues de 23-04]
+- [x] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2, despues de 23-04]
 
 ### 📋 v2.4 (TBD)
 
@@ -141,4 +141,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 18. Auto-release + override   | v2.3      | 3/3            | Complete | 2026-04-28 |
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
-| 23. Boton invoca importador   | v2.4      | 3/4 | In Progress|  |
+| 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
