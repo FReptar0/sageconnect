@@ -252,10 +252,12 @@ if (config.schedule.stepTimeoutMs < 30000) {
     process.exit(1);
 }
 
-// RETRY-E2 (D-12): las tres guardas de la sonda van DESPUÉS de la guarda de STEP_TIMEOUT_MS.
-// El orden es correctitud, no estilo: la guarda relacional de abajo compara contra
-// config.schedule.stepTimeoutMs, y ponerla antes del piso de ese valor la haría comparar contra un
-// valor ya conocido como inválido y nombrar la variable equivocada en el error.
+// RETRY-E2 (D-12): las cuatro guardas de la sonda van DESPUÉS de las guardas de piso de
+// PORTAL_HTTP_TIMEOUT_MS y de STEP_TIMEOUT_MS.
+// El orden es correctitud, no estilo: las dos guardas relacionales de abajo comparan contra
+// config.schedule.stepTimeoutMs y contra config.portal.httpTimeoutMs, y ponerlas antes del piso de
+// esos valores las haría comparar contra un valor ya conocido como inválido y nombrar la variable
+// equivocada en el error.
 //
 // El término Number.isInteger de las dos guardas de piso es load-bearing y NO debe quitarse para
 // igualar la forma más corta de las cuatro guardas de timeout de arriba: parseEnvNumber pasa 'abc'
@@ -280,6 +282,32 @@ if (!Number.isInteger(config.portal.probeMaxPerTick) || config.portal.probeMaxPe
 // El mensaje nombra AMBOS valores para que el operador vea cuál de los dos mover.
 if (config.portal.probeBudgetMs > config.schedule.stepTimeoutMs * 0.5) {
     console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS (' + config.portal.probeBudgetMs + ') must be <= 50% of STEP_TIMEOUT_MS (' + config.schedule.stepTimeoutMs + '). Lower PORTAL_PROBE_BUDGET_MS or raise STEP_TIMEOUT_MS.');
+    process.exit(1);
+}
+
+// RETRY-E2 / WR-03: la SEGUNDA guarda relacional, y la que le faltaba al tier que esta fase
+// estrenó. El invariante de defensa en profundidad gana su tier más interno —
+// PORTAL_HTTP_TIMEOUT_MS < PORTAL_PROBE_BUDGET_MS < STEP_TIMEOUT_MS < CHILD_PROCESS_TIMEOUT_MS <
+// LOCK_TIMEOUT_MS — y hasta aquí ese tier estaba escrito en .env.example como si estuviera
+// guardado, tres líneas debajo de "Range guards fail-fast", sin que nada lo hiciera cumplir.
+//
+// Qué pasaba sin ella: un presupuesto por debajo del techo de UNA sola petición admite exactamente
+// una sonda por tick, para siempre. La primera sonda puede gastar hasta httpTimeoutMs, así que la
+// evaluación de la segunda ya ve el presupuesto agotado. PORTAL_PROBE_BUDGET_MS=10000 junto al
+// default de 30000 arrancaba con exit 0 y colapsaba el sondeo de 50 OCs a 1 cada 15 minutos, sin
+// ninguna señal que lo distinguiera de un rezago legítimo. Es la misma forma del hueco que el SPEC
+// § Background le reprocha a las cuatro guardas de piso, reproducida en el tier nuevo — y un tope
+// que en silencio no hace nada es peor que no tener tope, porque parece protegido.
+//
+// Va DESPUÉS del piso de PORTAL_HTTP_TIMEOUT_MS por la misma regla de orden de D-12: compara contra
+// un valor ya validado. El mensaje nombra AMBOS valores, igual que la relacional de arriba.
+//
+// Efecto lateral deliberado y correcto: STEP_TIMEOUT_MS=30000 queda sin ningún presupuesto válido
+// junto al PORTAL_HTTP_TIMEOUT_MS por default, porque la relacional pide <= 15000 y ésta pide
+// > 30000. Ese par ya violaba CLAUDE.md §9 antes de esta fase; ahora no arranca en vez de arrancar
+// callado.
+if (config.portal.probeBudgetMs <= config.portal.httpTimeoutMs) {
+    console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS (' + config.portal.probeBudgetMs + ') must be > PORTAL_HTTP_TIMEOUT_MS (' + config.portal.httpTimeoutMs + '). Raise PORTAL_PROBE_BUDGET_MS or lower PORTAL_HTTP_TIMEOUT_MS.');
     process.exit(1);
 }
 

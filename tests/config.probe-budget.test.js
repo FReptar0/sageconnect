@@ -200,6 +200,62 @@ describe('RETRY-E2 — guardas de configuracion del tope de la sonda', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Guarda relacional 2: el tier interno `axios < presupuesto` (WR-03)
+    // -----------------------------------------------------------------------
+
+    test('WR-03: presupuesto por debajo del techo de axios sale con exit 1 nombrando AMBOS valores', () => {
+        // El tier `PORTAL_HTTP_TIMEOUT_MS < PORTAL_PROBE_BUDGET_MS` estaba documentado en
+        // .env.example como si estuviera guardado, y no lo estaba. Sin esta guarda, este par
+        // arrancaba con exit 0 y colapsaba el sondeo a UNA sonda por tick para siempre: la primera
+        // sonda puede gastar hasta httpTimeoutMs, asi que la evaluacion de la segunda ya ve el
+        // presupuesto agotado. No hay senal que distinga eso de un rezago legitimo.
+        const { status, stderr } = runConfig({ PORTAL_PROBE_BUDGET_MS: '10000' });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('[CONFIG ERROR]');
+        // Separadas a proposito, igual que en la casilla 8: "nombra ambos valores" es el requisito,
+        // y un mensaje que nombrara solo uno seguiria conteniendo [CONFIG ERROR].
+        expect(stderr).toContain('10000');
+        expect(stderr).toContain('30000');
+    });
+
+    test('WR-03: el par que el SPEC criticaba de las cuatro guardas viejas ya no arranca', () => {
+        // STEP_TIMEOUT_MS=30000 junto al PORTAL_HTTP_TIMEOUT_MS por default es literalmente la
+        // forma del hueco que el SPEC § Background le reprocha a las cuatro guardas de piso: pasa
+        // las cuatro y viola CLAUDE.md §9. Con budget=15000 tambien pasaba la relacional del 50%
+        // (15000 <= 15000). Ahora no arranca — que es el resultado correcto, porque ese par ya
+        // violaba §9 antes de esta fase.
+        const { status, stderr } = runConfig({
+            STEP_TIMEOUT_MS: '30000',
+            PORTAL_PROBE_BUDGET_MS: '15000',
+        });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('PORTAL_PROBE_BUDGET_MS');
+        expect(stderr).toContain('PORTAL_HTTP_TIMEOUT_MS');
+    });
+
+    test('WR-03: la comparacion es estricta — presupuesto IGUAL al techo de axios tampoco arranca', () => {
+        // El control de frontera. Con budget === httpTimeoutMs la primera sonda todavia puede
+        // consumir el presupuesto entero ella sola, asi que el desenlace es el mismo que el del
+        // caso de arriba y el operador `<=` es el correcto. Sin este caso, un `<` colado en la
+        // guarda pasaria los dos anteriores.
+        const { status, stderr } = runConfig({ PORTAL_PROBE_BUDGET_MS: '30000' });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('PORTAL_PROBE_BUDGET_MS');
+    });
+
+    test('WR-03 (control positivo): un presupuesto por encima del techo de axios arranca', () => {
+        // La otra mitad de la pinza: la guarda muerde solo donde debe. 30001 es el minimo valor
+        // que la satisface con el axios por default, y sigue por debajo del 50% del step.
+        const { status, stdout } = runConfig({ PORTAL_PROBE_BUDGET_MS: '30001' });
+
+        expect(status).toBe(0);
+        expect(JSON.parse(stdout).budget).toBe(30001);
+    });
+
+    // -----------------------------------------------------------------------
     // Fail-open: el termino Number.isInteger de las dos guardas de piso
     // -----------------------------------------------------------------------
 
@@ -253,5 +309,21 @@ describe('RETRY-E2 — guardas de configuracion del tope de la sonda', () => {
         expect(stepFloor).toBeGreaterThan(-1);
         expect(relational).toBeGreaterThan(stepFloor);
         expect(retryScope).toBeGreaterThan(relational);
+    });
+
+    test('WR-03 (D-12, misma regla de orden): la guarda de axios va DESPUES del piso de PORTAL_HTTP_TIMEOUT_MS', () => {
+        // Misma logica que el caso anterior y por el mismo motivo: esta guarda lee
+        // config.portal.httpTimeoutMs, asi que arriba del piso de ese valor compararia contra un
+        // valor ya conocido como invalido y nombraria la variable equivocada en el error. El orden
+        // es correctitud, no estilo.
+        const source = fs.readFileSync(CONFIG_PATH, 'utf8');
+
+        const httpFloor = source.indexOf('PORTAL_HTTP_TIMEOUT_MS must be >= 1000');
+        const axiosRelational = source.indexOf('must be > PORTAL_HTTP_TIMEOUT_MS');
+        const retryScope = source.indexOf('RETRY_SCOPE inválido');
+
+        expect(httpFloor).toBeGreaterThan(-1);
+        expect(axiosRelational).toBeGreaterThan(httpFloor);
+        expect(retryScope).toBeGreaterThan(axiosRelational);
     });
 });
