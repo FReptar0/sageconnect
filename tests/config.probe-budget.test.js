@@ -278,6 +278,78 @@ describe('RETRY-E2 — guardas de configuracion del tope de la sonda', () => {
     });
 
     // -----------------------------------------------------------------------
+    // Fail-open por PREFIJO: lo que Number.isInteger NO atajaba (WR-09)
+    // -----------------------------------------------------------------------
+    //
+    // Number.isInteger cubre 'abc' (parseInt -> NaN) pero no la familia de valores donde parseInt
+    // devuelve el entero de un PREFIJO y descarta el resto. Ese entero es un entero de verdad, asi
+    // que la guarda lo aprobaba. El caso que duele es '1e5': el operador quiere SUBIR el tope a
+    // 100000 y se queda con 1 —el minimo permitido, un tick de una sola sonda— sin un solo mensaje.
+    // Es el mismo desenlace fail-open que la guarda existe para evitar, por una puerta que el
+    // comentario de las guardas prometia cubrir y no cubria.
+
+    test('WR-09: notacion cientifica en el cap NO arranca con el tope silenciosamente en 1', () => {
+        // El caso peligroso del hallazgo, y la razon de ser de parseStrictInt. Antes: exit 0 con
+        // cap=1. El operador pedia 100000 y recibia el minimo, sin aviso.
+        const { status, stderr } = runConfig({ PORTAL_PROBE_MAX_PER_TICK: '1e5' });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('PORTAL_PROBE_MAX_PER_TICK');
+    });
+
+    test('WR-09: sufijo basura tras un entero valido NO arranca truncado', () => {
+        // Antes: '50abc' -> exit 0 con cap=50, y '20000abc' -> exit 0 con budget=20000. El valor
+        // colado se parece lo bastante al pedido como para que nadie lo note en una revision.
+        const cap = runConfig({ PORTAL_PROBE_MAX_PER_TICK: '50abc' });
+        expect(cap.status).toBe(1);
+        expect(cap.stderr).toContain('PORTAL_PROBE_MAX_PER_TICK');
+
+        const budget = runConfig({ PORTAL_PROBE_BUDGET_MS: '20000abc' });
+        expect(budget.status).toBe(1);
+        expect(budget.stderr).toContain('PORTAL_PROBE_BUDGET_MS');
+    });
+
+    test('WR-09: un decimal NO arranca truncado hacia abajo', () => {
+        // Antes: '12.5' -> exit 0 con cap=12. Silencioso y a la baja, como todos los de esta
+        // familia: el fail-open siempre cae del lado de sondear MENOS.
+        const { status, stderr } = runConfig({ PORTAL_PROBE_MAX_PER_TICK: '12.5' });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('PORTAL_PROBE_MAX_PER_TICK');
+    });
+
+    test('WR-09 (documentado, no accidental): "+50" y "050" tambien se rechazan', () => {
+        // parseStrictInt compara contra la representacion entera PURA, asi que estas dos formas
+        // —que un lector podria creer validas— no pasan. Es deliberado y esta escrito en el
+        // comentario del parser: fail-closed y en voz alta, con el nombre de la variable en el
+        // error, es la postura correcta para un tope que si queda desactivado no se nota. Este caso
+        // existe para que el comportamiento quede FIJADO y nadie lo "arregle" sin darse cuenta de
+        // que era una decision.
+        expect(runConfig({ PORTAL_PROBE_MAX_PER_TICK: '+50' }).status).toBe(1);
+        expect(runConfig({ PORTAL_PROBE_MAX_PER_TICK: '050' }).status).toBe(1);
+    });
+
+    test('WR-09 (control positivo): el trim sigue siendo parte del contrato', () => {
+        // parseStrictInt recorta antes de comparar, asi que un valor con espacios alrededor —lo
+        // mas facil de dejar en un .env editado a mano— sigue siendo valido. Sin esta asercion, un
+        // parser mas estricto de la cuenta rompería un caso legitimo y nadie se enteraria.
+        const { status, stdout } = runConfig({ PORTAL_PROBE_MAX_PER_TICK: ' 50 ' });
+
+        expect(status).toBe(0);
+        expect(JSON.parse(stdout).cap).toBe(50);
+    });
+
+    test('WR-09 (control positivo): un negativo sigue llegando al piso con su propio mensaje', () => {
+        // '-5' SI es una representacion entera pura, asi que parseStrictInt lo deja pasar y quien
+        // lo rechaza es el piso, que puede decir el valor real en vez de un NaN generico. Es mejor
+        // diagnostico y hay que conservarlo: la asercion es sobre el texto del valor.
+        const { status, stderr } = runConfig({ PORTAL_PROBE_MAX_PER_TICK: '-5' });
+
+        expect(status).toBe(1);
+        expect(stderr).toContain('Got: -5');
+    });
+
+    // -----------------------------------------------------------------------
     // El canal de correccion del operador
     // -----------------------------------------------------------------------
 

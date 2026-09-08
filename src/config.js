@@ -96,6 +96,36 @@ function parseEnvNumber(raw, parser, def) {
     return parser(raw);
 }
 
+/**
+ * RETRY-E2 / WR-09: parser ESTRICTO de entero. Se usa SOLO en las dos vars de la sonda.
+ *
+ * Por qué existe: parseInt devuelve el entero de un PREFIJO y descarta el resto en silencio, y
+ * ese entero es un entero de verdad, así que Number.isInteger lo acepta encantado. El caso
+ * peligroso no es 'abc' — ése ya fallaba cerrado — sino '1e5': un operador que quiere SUBIR el
+ * tope a 100000 escribe notación científica y obtiene 1, el mínimo permitido, un tick de una sola
+ * sonda, sin un solo mensaje. Es el mismo desenlace fail-open que la guarda existe para evitar,
+ * por una puerta que el comentario de las guardas no contemplaba.
+ *
+ * Devolver NaN es lo que hace que la guarda de piso lo rechace: toda comparación >= contra NaN es
+ * false, y el término Number.isInteger la convierte en exit 1.
+ *
+ * QUÉ RECHAZA, y conviene saberlo antes de escribir el .env: '1e5', '50abc', '20000abc', '12.5',
+ * '0x10' y 'abc'. También rechaza dos formas que un lector podría creer válidas — '+50' y '050' —
+ * y eso es DELIBERADO, no un descuido: la comparación es contra la representación entera pura. Es
+ * fail-closed y en voz alta, el error nombra la variable, corregirlo cuesta segundos, y ésa es la
+ * postura correcta para un tope que si queda desactivado no se nota. ACEPTA '50', ' 50 ' (el trim
+ * es parte del contrato) y '-5', que cae después en el piso con su propio mensaje.
+ *
+ * Deliberadamente NO se aplica a las demás vars numéricas del archivo: cambiar el idiom
+ * compartido tiene su propio radio de impacto (CLAUDE.md §6 #2) y ninguna otra alimenta una
+ * comparación que se apague en silencio si el valor sale mal.
+ */
+function parseStrictInt(raw) {
+    const text = String(raw).trim();
+    const parsed = parseInt(text, 10);
+    return text === String(parsed) ? parsed : NaN;
+}
+
 /** Build mailing config -- fully optional. Only populated if MAIL_TRANSPORT is set. */
 function buildMailing() {
     const transport = (process.env.MAIL_TRANSPORT || '').trim();
@@ -144,8 +174,8 @@ const config = {
         // corte de fin de mes de abril).
         // Se parsean con parseEnvNumber y NO con el idiom `parseInt(...) || default` justamente para
         // que un '0' explícito llegue a su range guard en vez de ser tragado por ser falsy.
-        probeBudgetMs: parseEnvNumber(process.env.PORTAL_PROBE_BUDGET_MS, (v) => parseInt(v, 10), 120000),
-        probeMaxPerTick: parseEnvNumber(process.env.PORTAL_PROBE_MAX_PER_TICK, (v) => parseInt(v, 10), 50),
+        probeBudgetMs: parseEnvNumber(process.env.PORTAL_PROBE_BUDGET_MS, parseStrictInt, 120000),
+        probeMaxPerTick: parseEnvNumber(process.env.PORTAL_PROBE_MAX_PER_TICK, parseStrictInt, 50),
     },
 
     mailing: buildMailing(),
@@ -259,12 +289,22 @@ if (config.schedule.stepTimeoutMs < 30000) {
 // esos valores las haría comparar contra un valor ya conocido como inválido y nombrar la variable
 // equivocada en el error.
 //
-// El término Number.isInteger de las dos guardas de piso es load-bearing y NO debe quitarse para
-// igualar la forma más corta de las cuatro guardas de timeout de arriba: parseEnvNumber pasa 'abc'
-// verbatim a parseInt, que devuelve NaN, y toda comparación `>=` contra NaN es false. Sin él un
-// valor no numérico pasaría el startup Y dejaría en false para siempre las comparaciones del bound
-// en PortalOC_Creator — el bound quedaría silenciosamente desactivado (fail-open), que es
-// exactamente la falla que esta fase existe para quitar. Forma copiada de RETRY_LOOKBACK_DAYS.
+// La entrada no numérica se ataja en DOS mitades y hacen falta las dos. Reparto exacto, escrito
+// para que nadie quite la que crea redundante:
+//
+//   1. parseStrictInt (ver arriba) devuelve NaN para todo lo que no sea una representación entera
+//      pura. Es la mitad que WR-09 tuvo que agregar: sin ella, parseInt aceptaba el entero de un
+//      PREFIJO y '1e5' entraba como 1 — un entero de verdad, que Number.isInteger aprobaba. El
+//      operador que quería subir el tope a 100000 se quedaba con un tick de UNA sonda y sin un
+//      solo mensaje.
+//   2. El término Number.isInteger de estas dos guardas de piso convierte ese NaN en exit 1, y por
+//      eso es load-bearing y NO debe quitarse para igualar la forma más corta de las cuatro
+//      guardas de timeout de arriba: toda comparación `>=` contra NaN es false, así que sin él el
+//      valor pasaría el startup Y dejaría en false para siempre las comparaciones del bound en
+//      PortalOC_Creator. El bound quedaría silenciosamente desactivado (fail-open), que es
+//      exactamente la falla que esta fase existe para quitar.
+//
+// Ninguna de las dos sola cierra el hueco. Forma copiada de RETRY_LOOKBACK_DAYS.
 if (!Number.isInteger(config.portal.probeBudgetMs) || config.portal.probeBudgetMs < 10000) {
     console.error('[CONFIG ERROR] PORTAL_PROBE_BUDGET_MS must be integer >= 10000 (10 sec). Got: ' + config.portal.probeBudgetMs);
     process.exit(1);
