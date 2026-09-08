@@ -114,17 +114,20 @@ Slash commands: `/test`, `/env-check`, `/diagnose`, `/deploy-checklist` (defined
 ## 9. Defense-in-depth invariant (do not break)
 
 ```
-axios (30s)  <  step (5m)  <  child (10m)  <  lock (14m)
+axios (30s)  <  probe budget (2m)  <  step (5m)  <  child (10m)  <  lock (14m)
 ```
 
 - `PORTAL_HTTP_TIMEOUT_MS` (default 30s) — aborts individual HTTP requests.
+- `PORTAL_PROBE_BUDGET_MS` (default 2m) — per-tick elapsed-time budget for the portal existence probe in `createPurchaseOrders`; paired with `PORTAL_PROBE_MAX_PER_TICK` (default 50). Added in Phase 20.4.
 - `STEP_TIMEOUT_MS` (default 5m) — wraps each of the 7 forResponse steps in `Promise.race`.
 - `CHILD_PROCESS_TIMEOUT_MS` (default 10m) — triggers SIGTERM → 30s grace → `taskkill /F /T` on `ImportaFacturasFocaltec.exe`.
 - `LOCK_TIMEOUT_MS` (default 14m = ~93% of 15-min cron cadence) — auto-release on `OperationManager` lock, emits `lock:timeout`.
 
-Each tier has a range-guard at startup (`src/config.js:186-208`) — values below the minimum exit 1.
+Every tier has a **floor** guard at startup — values below the minimum exit 1. The probe budget additionally has two **relational** guards, the only ones in the file: it must be `> PORTAL_HTTP_TIMEOUT_MS` (below one axios timeout the probe collapses to a single OC per tick) and `<= 50% of STEP_TIMEOUT_MS`. They live in the guard block that runs from the `LOCK_TIMEOUT_MS` check to the end of `src/config.js` — deliberately not cited by line number, because the block grows and a stale range is how this section came to omit an entire tier.
 
-If you change any tier, verify the others still bound it strictly. Phase 19 RETROSPECTIVE has the rationale.
+**What the budget does and does not promise** (corrected in Phase 20.4 after the code review): it bounds how much *probing* one tick performs. It does **not** bound the step — `STEP_TIMEOUT_MS` remains the outer bound. An OC already admitted past the budget check can still overshoot by its own tail: GET 30s + POST 30s + the 180s `requestTimeout` at `src/utils/SQLServerConnection.js:18`. Reserving that tail would force the budget to ≤ 60s, which throttles a healthy portal to ~2 probes per tick — worse than the problem it solves. The arithmetic lives in exactly one place, the relational guard's comment in `src/config.js`; do not restate it elsewhere.
+
+If you change any tier, verify the others still bound it strictly. Phase 19 RETROSPECTIVE has the rationale; Phase 20.4's `20.4-REVIEW.md` has the worked failure cases.
 
 ## 10. Workflow & deploy
 
