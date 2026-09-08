@@ -368,6 +368,33 @@ describe('PortalOC_Creator portal existence probe — behaviour (Phase 20.3 / RE
         expect(inserts[0][1]).toBe('FESA');
     });
 
+    // IN-04 de la revisión de la 20.3. NO era un fallo vivo: `groupOrdersByNumber` recorta los
+    // strings (OC_GroupOrdersByNumber.js:21), así que en producción los dos valores coinciden, y
+    // aunque no coincidieran el dedupe aguantaría porque la comparación `=` de SQL Server ignora
+    // los blancos a la derecha. Lo que se corrige es el acoplamiento: la fila dependía de que una
+    // utilería compartida siguiera recortando, y nada lo obliga.
+    // Este caso lo puede exhibir porque el doble de `parseExternPurchaseOrders` de esta suite es un
+    // pass-through que NO recorta (línea 97) — el mismo hecho que la revisión anotó como WR-03.
+    test('IN-04: la fila reconciliada lleva la clave recortada, no el external_id crudo', async () => {
+        const PADDED_OC = `${GATE_OPEN_OC}  `;
+        stubSelect([{ EXTERNAL_ID: PADDED_OC, errorCount: 3, lastErrorAt: null, dbNow: DB_NOW }]);
+        stubPortalFound(VALID_ID, 'OPEN');
+
+        await createPurchaseOrders(0);
+
+        const inserts = insertsEmitted();
+        expect(inserts.length).toBe(1);
+        // La clave que se escribe es la MISMA con la que se preguntó al portal y con la que se leyó
+        // errorCounts. Las dos aserciones discriminan: contra el fuente anterior el literal emitido
+        // es `'<oc>  '`, que no contiene `'<oc>'` (después de la OC viene un blanco, no la comilla).
+        expect(inserts[0][0]).toContain(`'${GATE_OPEN_OC}'`);
+        expect(inserts[0][0]).not.toContain(`'${PADDED_OC}'`);
+        // La bitácora de reconciliación va por el mismo camino.
+        const okLine = mockLogGenerator.mock.calls.find((c) => String(c[2]).includes('reconciliada'));
+        expect(okLine).toBeDefined();
+        expect(okLine[2]).toContain(`PO ${GATE_OPEN_OC} reconciliada`);
+    });
+
     test('fila 2 (aceptación #6): found + GENERATED — mismo desenlace que OPEN', async () => {
         // Esta fila existe porque `20.1-RELEASE-STATUS.md` § BLOQUEOS 1 registró sólo DOS valores de
         // status, y el SPEC de esta fase corrige el dato: el enum del portal tiene CUATRO —

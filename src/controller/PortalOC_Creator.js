@@ -443,7 +443,7 @@ order by A.PONUMBER, B.PORLREV;
           (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
         VALUES
           ('${probe.id}',
-           '${po.external_id}',
+           '${ocKey}',
            '${localStatus}',
            GETDATE(),
            GETDATE(),
@@ -453,7 +453,14 @@ order by A.PONUMBER, B.PORLREV;
       `;
             stage = 'write';
             await runQuery(sqlCheck, 'FESA');
-            logGenerator(logFileName, 'info', `[OK] PO ${po.external_id} reconciliada desde el portal en FESA como ${localStatus} con idFocaltec: ${probe.id}`);
+            // IN-04 (revisión de la 20.3): la fila y su bitácora llevan `ocKey`, la MISMA clave con
+            // la que se preguntó al portal y con la que se leyó `errorCounts` — no `po.external_id`
+            // crudo. Hoy los dos valores coinciden porque `groupOrdersByNumber` recorta los strings
+            // (OC_GroupOrdersByNumber.js:21), y el dedupe sobreviviría de todos modos porque la
+            // comparación `=` de SQL Server ignora los blancos a la derecha. O sea: no era un fallo
+            // vivo. Se corrige para que la fila deje de depender de que una utilería compartida siga
+            // recortando —nada lo obliga— y para que el valor almacenado sea el mismo que se consultó.
+            logGenerator(logFileName, 'info', `[OK] PO ${ocKey} reconciliada desde el portal en FESA como ${localStatus} con idFocaltec: ${probe.id}`);
           }
 
           stage = 'log';
