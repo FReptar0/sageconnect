@@ -194,7 +194,7 @@ Plans:
 - [x] 20.4-01-PLAN.md (wave 1) — `config.portal.probeBudgetMs` / `probeMaxPerTick` vía `parseEnvNumber`, tres guardas (dos pisos + la primera guarda **relacional** del archivo: presupuesto <= 50% de `STEP_TIMEOUT_MS`), `.env.example` con el nuevo nivel interno del invariante, y `tests/config.probe-budget.test.js` que prueba cada desenlace por **código de salida** en un subproceso hermético [RETRY-E2]
 - [x] 20.4-02-PLAN.md (wave 2) — `tickStart` como primera sentencia de `createPurchaseOrders` (D-01/D-02/D-03), `probeDeferred` junto a los otros cinco contadores, el `continue` temprano **anidado** dentro de `if (priorErrors > 0)` (D-04 — nunca un `&&` sobre la compuerta), resumen emitido con `probed > 0 || probeDeferred > 0` (D-07) y campo `deferred=` al final; incluye el re-anclaje de las 8 aserciones `$`-ancladas de la suite 20.3 en el mismo cambio [RETRY-E1, RETRY-E3, RETRY-E4]
 - [x] 20.4-03-PLAN.md (wave 3) — `tests/controller/PortalOC_Creator.probe-budget.test.js`: reloj virtual con `jest.spyOn(Date, 'now')` y un único sitio de avance, ambos topes probados **alcanzables por separado** (D-16), y la ruta diferida probada inerte en las cuatro superficies (GET, POST, Joi, INSERT) para los dos topes [RETRY-E1, RETRY-E3]
-- [ ] 20.4-04-PLAN.md (wave 4) — invariante `probed === found + absent + skipped + unknown` como igualdad explícita en cinco escenarios, cobertura del punto ciego D-07 (`probed=0` con `deferred>0` sí imprime resumen) más su control, ancla de orden de los seis campos, ocho guardas estructurales (incl. SHA-256 de `GetPurchaseOrders.js` y prohibición del `&&`) y el gate de baseline de `npm test` [RETRY-E4, RETRY-E1]
+- [x] 20.4-04-PLAN.md (wave 4) — invariante `probed === found + absent + skipped + unknown` como igualdad explícita en cinco escenarios, cobertura del punto ciego D-07 (`probed=0` con `deferred>0` sí imprime resumen) más su control, ancla de orden de los seis campos, ocho guardas estructurales (incl. SHA-256 de `GetPurchaseOrders.js` y prohibición del `&&`) y el gate de baseline de `npm test` [RETRY-E4, RETRY-E1]
 
 
 ### Phase 20.5: Q3 differentiated alerts: immediate PO failure alert + biweekly payment pending report (INSERTED)
@@ -252,5 +252,5 @@ Plans:
 | 20.1 Retry policy correction  | v2.4      | 3/3            | Complete | 2026-07-27 |
 | 20.2 Retry code vs. schema    | v2.4      | 6/6 | Complete    | 2026-07-28 |
 | 20.3 Cross-system 409 detect  | v2.4      | 4/4 | Complete   | 2026-07-29 |
-| 20.4 Portal probe per-tick    | v2.4      | 3/4 | In Progress|  |
+| 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
