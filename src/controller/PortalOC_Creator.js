@@ -450,14 +450,6 @@ order by A.PONUMBER, B.PORLREV;
           }
 
           stage = 'log';
-          if (result === 'found') {
-            probeFound++;
-          } else if (result === 'cancelled') {
-            probeSkipped++;
-          } else {
-            probeUnknown++;
-          }
-
           const level = (result === 'unknown' || result === 'ambiguous') ? 'warn' : 'info';
           const idField = (probe && probe.outcome === 'found') ? probe.id : 'n/a';
           // El status viene del portal y va a parar a la bitácora de auditoría de winston: se
@@ -472,6 +464,36 @@ order by A.PONUMBER, B.PORLREV;
             console.log(checkMsg);
           }
           logGenerator(logFileName, level, checkMsg);
+
+          // WR-06 (20.4): los tres incrementos van AL FINAL de la etapa `log`, después de que la
+          // bitácora ya salió, y ése es el punto entero de dónde están escritos.
+          //
+          // Estaban arriba, justo después de `stage = 'log'`, y con `console.*` y `logGenerator`
+          // por delante. Ese orden rompía `probed === found + absent + skipped + unknown` cuando el
+          // que fallaba era el emisor de bitácora: el desenlace ya se había contado en su bucket, y
+          // el `probeUnknown++` del catch lo contaba OTRA VEZ. Un tick con dos OCs encontradas y un
+          // fallo de bitácora imprimía `probed=2 found=2 unknown=1` — tres desenlaces para dos
+          // sondas. Que los dos emisores fallen no es hipotético y este mismo bloque lo dice más
+          // arriba: `logGenerator` hace `fs.mkdirSync` fuera de todo try en su ruta de respaldo
+          // (LogGenerator.js:53-56) y `console.*` puede dar EPIPE mientras Servy rota
+          // servy-stdout.log.
+          //
+          // Contando al final no hace falta compensación de ningún tipo: si la bitácora lanza, el
+          // bucket nunca se tocó y el `probeUnknown++` del catch queda como el ÚNICO conteo de esa
+          // OC. La invariante se cumple sola. Es deliberadamente distinto de la compensación
+          // explícita (`probeAbsent--`) que el tramo `log-absent` trae desde la fase 20.3: aquélla
+          // corrige después, ésta no da lugar a la corrección. No "uniformices" ninguna de las dos
+          // hacia la otra sin re-hacer este razonamiento — la invariante no es interna, verificarla
+          // contra respuestas reales del portal es el punto 2 del UAT humano pendiente de la 20.3.
+          //
+          // No mover arriba, no mover dentro del `if (localStatus)`, no fusionar con el catch.
+          if (result === 'found') {
+            probeFound++;
+          } else if (result === 'cancelled') {
+            probeSkipped++;
+          } else {
+            probeUnknown++;
+          }
           continue;
         }
 

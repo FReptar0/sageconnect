@@ -680,10 +680,10 @@ describe('PortalOC_Creator — invariante de contadores y visibilidad del rezago
     test('casilla 5 del SPEC: la invariante sobrevive a un fallo de escritura a media sonda con una cota disparando', async () => {
         // La forma de WR-02 —el fallo que rompió la invariante la primera vez— cruzada con el
         // mecanismo nuevo. El desenlace efectivo de esa OC es `unknown` y NO `found`: el contador de
-        // encontradas se incrementa DESPUÉS de la escritura (`PortalOC_Creator.js:451-457`), así que
-        // si el INSERT lanza, el catch cuenta unknown y nadie contó found. Un contador movido de
-        // sitio —o un `probeDeferred++` metido dentro del try, que es justo lo que D-10 prohíbe—
-        // rompería la igualdad aquí y en ningún otro caso de la suite.
+        // encontradas se incrementa DESPUÉS de la escritura —y, desde WR-06, también después de la
+        // bitácora—, así que si el INSERT lanza, el catch cuenta unknown y nadie contó found. Un
+        // contador movido de sitio —o un `probeDeferred++` metido dentro del try, que es justo lo
+        // que D-10 prohíbe— rompería la igualdad aquí y en ningún otro caso de la suite.
         const rows = manyGateOpenRows(MIXED_PROBED + MIXED_DEFERRED);
         mockConfig.portal.probeMaxPerTick = MIXED_PROBED;
         stubSelect(rows);
@@ -713,6 +713,105 @@ describe('PortalOC_Creator — invariante de contadores y visibilidad del rezago
         expect(perRowCheckLines().some(
             (m) => new RegExp(`^\\[PORTAL-CHECK\\] PO ${rows[0].EXTERNAL_ID} tenant=COPDAT result=unknown .* reason=write-failed$`).test(m)
         )).toBe(true);
+    });
+
+    // ── WR-06: el fallo a media BITÁCORA, hermano del fallo a media escritura ────────────────
+    //
+    // El try de la sonda abarca TRES etapas —`probe`, `write` y `log`— y hasta aquí la suite
+    // cubría las dos primeras. La tercera es la que rompía la invariante: los tres incrementos de
+    // bucket vivían ARRIBA de `console.*` y de `logGenerator`, así que un fallo del emisor dejaba
+    // el desenlace contado en su bucket Y recontado como `unknown` por el catch. La 20.3 ya había
+    // cubierto exactamente esta forma para el tramo `absent` —y por eso ese tramo tiene su
+    // `probeAbsent--` compensatorio— pero el tramo `found` se quedó sin la suya y sin cobertura.
+    //
+    // Que los dos emisores fallen no es hipotético, y el propio fuente lo declara: `logGenerator`
+    // hace `fs.mkdirSync` fuera de todo try en su ruta de respaldo (LogGenerator.js:53-56) y
+    // `console.*` puede dar EPIPE mientras Servy rota servy-stdout.log.
+    //
+    // Nota de construcción, y vale para los dos casos: el fallo se inyecta SÓLO en las líneas por
+    // fila de desenlace, nunca en la que el propio catch emite. El catch no está envuelto en nada,
+    // así que un `logGenerator` que lanzara ahí escaparía de `createPurchaseOrders` y mataría el
+    // tick a media tanda; el caso mediría esa propagación en vez de la invariante. Se distinguen
+    // por `reason=`: las de desenlace terminan en `n/a`, `ambiguous` o `unrecognised-status`, y la
+    // del catch siempre en `-failed`.
+
+    test('WR-06: si la bitácora de la etapa `log` lanza, el desenlace NO se cuenta dos veces', async () => {
+        // La reproducción exacta del hallazgo: dos OCs encontradas y un solo fallo de bitácora en
+        // la primera. Antes de mover los incrementos, el resumen salía
+        // `probed=2 found=2 absent=0 skipped=0 unknown=1` — dos sondas y TRES desenlaces.
+        const rows = manyGateOpenRows(2);
+        stubSelect(rows);
+        mockPortalGet
+            .mockResolvedValueOnce(portalFoundBody(rows[0].EXTERNAL_ID, 'OPEN'))
+            .mockResolvedValueOnce(portalFoundBody(rows[1].EXTERNAL_ID, 'OPEN'));
+        stubPostAlwaysSuccess();
+
+        // Sólo la línea por fila de la PRIMERA OC lanza. El `[OK]` de su escritura ya salió antes
+        // (etapa `write`, y esa escritura sí ocurrió), el resumen no casa este patrón y la línea
+        // del catch tampoco: el fallo inyectado es exactamente uno y está exactamente donde el
+        // hallazgo lo puso.
+        mockLogGenerator.mockImplementation((_file, _level, msg) => {
+            if (new RegExp(`^\\[PORTAL-CHECK\\] PO ${rows[0].EXTERNAL_ID} .*result=found `).test(String(msg))) {
+                throw new Error('EPIPE: write EPIPE');
+            }
+        });
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.probed).toBe(2);
+        // La OC que falló la bitácora cuenta como `unknown` y NO como `found`: su desenlace
+        // efectivo no llegó a quedar registrado en ninguna parte legible por el operador.
+        expect(c.found).toBe(1);
+        expect(c.unknown).toBe(1);
+        expect(c.deferred).toBe(0);
+
+        // Ancla del MECANISMO y no sólo del resultado, igual que en el caso de `write-failed`: el
+        // catch nombra la etapa en `reason=`, y `log-failed` sólo se emite si la excepción ocurrió
+        // con stage='log'. Sin esta aserción el caso pasaría igual si el fallo hubiera caído en
+        // otra etapa del try, y estaría midiendo algo distinto de lo que dice medir.
+        expect(perRowCheckLines().some(
+            (m) => new RegExp(`^\\[PORTAL-CHECK\\] PO ${rows[0].EXTERNAL_ID} tenant=COPDAT result=unknown .* reason=log-failed$`).test(m)
+        )).toBe(true);
+    });
+
+    test('WR-06: la invariante se sostiene con los TRES buckets de la etapa `log` fallando a la vez', async () => {
+        // El caso anterior sólo ejercita el brazo `found` del `if/else if/else`. Los otros dos
+        // brazos se incrementaban en el mismo sitio y tenían el mismo defecto, así que uno movido
+        // y dos olvidados pasarían aquel caso y fallarían éste. Cada OC toma un brazo distinto.
+        const rows = manyGateOpenRows(3);
+        stubSelect(rows);
+        mockPortalGet
+            .mockResolvedValueOnce(portalFoundBody(rows[0].EXTERNAL_ID, 'OPEN'))         // -> found
+            .mockResolvedValueOnce(portalFoundBody(rows[1].EXTERNAL_ID, 'CANCELLED'))    // -> skipped
+            .mockResolvedValueOnce(portalAmbiguousBody(rows[2].EXTERNAL_ID));            // -> unknown
+        stubPostAlwaysSuccess();
+
+        // Las TRES líneas por fila de desenlace lanzan; la del catch queda excluida por su
+        // `reason=…-failed` (ver la nota del bloque).
+        mockLogGenerator.mockImplementation((_file, _level, msg) => {
+            const text = String(msg);
+            if (/^\[PORTAL-CHECK\] /.test(text) && !/reason=[a-z-]+-failed$/.test(text)) {
+                throw new Error('EPIPE: write EPIPE');
+            }
+        });
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        // Con los incrementos arriba: found=1, skipped=1, unknown=1+3=4 ⇒ suma 6 contra probed=3.
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.probed).toBe(3);
+        expect(c.found).toBe(0);
+        expect(c.skipped).toBe(0);
+        expect(c.unknown).toBe(3);
+
+        // Y las tres fallaron en la etapa `log`, no en otra: es lo que hace que este caso cubra los
+        // tres brazos y no tres veces el mismo.
+        expect(perRowCheckLines().filter((m) => /reason=log-failed$/.test(m))).toHaveLength(3);
     });
 
     test('D-07 (punto ciego, en ninguna casilla del SPEC): presupuesto agotado por el SELECT ⇒ probed=0 y AUN ASÍ se emite resumen', async () => {
