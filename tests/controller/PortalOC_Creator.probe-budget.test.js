@@ -250,6 +250,24 @@ const summaryField = (name) => {
 const insertsEmitted = () => mockRunQuery.mock.calls
     .filter((c) => /INSERT INTO fesa\.dbo\.fesaOCFocaltec/i.test(c[0] || ''));
 
+// Las líneas por fila que emite el bloque de sonda de la 20.3 (`PortalOC_Creator.js:468` y `:483`).
+// El ancla lleva el espacio final a propósito: sin él, la línea de resumen —cuya etiqueta empieza
+// con el mismo prefijo— también casaría y el conteo saldría inflado en uno.
+const perRowCheckLines = () => loggedMessages().filter((m) => /^\[PORTAL-CHECK\] /.test(m));
+
+// El conjunto de etiquetas entre corchetes que este tick llegó a escribir en bitácora. Se recoge en
+// vez de enumerar una lista blanca porque lo que hay que probar es una AUSENCIA abierta: que no
+// nació ninguna etiqueta hermana para el camino diferido. Una lista blanca prueba lo contrario —
+// que las conocidas siguen ahí— y deja pasar cualquier etiqueta nueva que nadie pensó en prohibir.
+const loggedTags = () => {
+    const tags = new Set();
+    loggedMessages().forEach((m) => {
+        const match = m.match(/^\[([^\]]+)\]/);
+        if (match) tags.add(match[1]);
+    });
+    return tags;
+};
+
 beforeEach(() => {
     resetProbeStubs();
     // T-20.4-15: los dos parámetros vuelven a su default de producción ANTES de cada caso, para que
@@ -351,5 +369,134 @@ describe('PortalOC_Creator — ambos topes, cada uno alcanzable por separado (RE
         // reloj sólo avanza. Falso ahí ⇒ falso en toda evaluación previa. El presupuesto no pudo ser
         // el término verdadero del `||`, así que lo que detuvo el bucle fue el cap, sin ambigüedad.
         expect(elapsed >= mockConfig.portal.probeBudgetMs).toBe(false);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Lo que este bloque guarda de verdad (D-04):
+//
+// La cota está escrita como un `if` ANIDADO dentro de `if (priorErrors > 0)`, con un `continue`.
+// La lectura natural de la letra de RETRY-E1 —"la compuerta exige además que quede presupuesto y
+// quede conteo"— produce en cambio una CONJUNCIÓN sobre la compuerta, y esa forma es un bug: hoy,
+// cuando esa compuerta se vuelve falsa, el control NO termina el turno, cae al bloque de Joi y de
+// ahí al POST. Con la conjunción, las 16 OCs diferidas del escenario de presupuesto acabarían
+// POSTeadas — el POST duplicado / 409 que la fase 20.3 existe para eliminar, refabricado por el
+// mecanismo que venía a protegerlo.
+//
+// Y aquí está el punto: esa forma pasa TODAS las aserciones del bloque anterior. El conteo de
+// sondas sería idéntico (4 y 50), porque lo que cambia no es cuántas se sondean sino qué les pasa a
+// las que no. Las aserciones sobre el POST de este bloque son las que fallan en esa reescritura.
+// Ésta es la mitad conductual de la guarda; el plan 20.4-04 agrega la mitad estructural.
+//
+// Regla del bloque: cada conteo se lee del registro de llamadas de un doble, jamás del texto de la
+// bitácora — es la redacción literal del criterio de aceptación de RETRY-E3. El cuarto caso es la
+// única excepción y afirma sobre el texto a propósito, porque lo que acota es justamente el VOLUMEN
+// de bitácora.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('PortalOC_Creator — fail-closed al alcanzar cualquiera de los dos topes (RETRY-E3)', () => {
+
+    // Escenario compartido por los casos 1, 2 y 4: 20 OCs elegibles, sonda de 30 s, presupuesto de
+    // 120 000 ms. Se detiene tras 4 sondas y difiere 16. Se arma dentro de cada caso —no en un
+    // `beforeEach` propio— para que cada uno siga siendo legible por sí solo y para no anidar un
+    // segundo `beforeEach` bajo el que ya instala el reloj.
+    const PROBED = 4;
+    const arrangeBudgetScenario = () => {
+        const rows = manyGateOpenRows(20);
+        stubSelect(rows);
+        stubPortalCostly(30000, PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+        return rows;
+    };
+
+    test('casilla 4 del SPEC (cota por presupuesto): las 16 OCs diferidas no emiten ningún GET ni ningún POST', async () => {
+        arrangeBudgetScenario();
+
+        await createPurchaseOrders(0);
+
+        // Ningún GET por las diferidas: el `continue` antecede a la sonda.
+        expect(mockPortalGet).toHaveBeenCalledTimes(PROBED);
+        // Y ningún POST: uno por OC sondeada-y-ausente, cero por diferida. Con la conjunción sobre
+        // la compuerta este número sería 20 y el caso se pondría rojo aquí, que es exactamente para
+        // lo que existe.
+        expect(mockPortalPost).toHaveBeenCalledTimes(PROBED);
+    });
+
+    test('casilla 4 del SPEC (cota por presupuesto): ninguna OC diferida corre Joi ni llega a un INSERT', async () => {
+        const rows = arrangeBudgetScenario();
+
+        await createPurchaseOrders(0);
+
+        // Joi. Importa más allá del orden: el camino de FALLO de Joi es en sí mismo un emisor de
+        // filas ERROR (`PortalOC_Creator.js:534-547`), y la fase 20.3 puso el bloque de sonda por
+        // delante justamente por eso. Una OC diferida que corriera Joi podría escribir la misma fila
+        // ERROR que esta fase existe para dejar de fabricar.
+        expect(mockValidatePO).toHaveBeenCalledTimes(PROBED);
+
+        // INSERT: exactamente los cuatro POSTED de las sondeadas-y-ausentes.
+        expect(insertsEmitted()).toHaveLength(PROBED);
+
+        // Y ninguno de los 16 ids diferidos aparece en NINGUNA sentencia emitida. La aserción es
+        // sobre los argumentos del doble de runQuery, no sobre la bitácora: es la diferencia entre
+        // probar que no se escribió y probar que no se dijo que se escribió.
+        const deferredIds = rows.slice(PROBED).map((r) => r.EXTERNAL_ID);
+        expect(deferredIds).toHaveLength(16);
+        deferredIds.forEach((id) => {
+            expect(insertsEmitted().some((c) => String(c[0]).includes(id))).toBe(false);
+        });
+    });
+
+    test('casilla 4 del SPEC (cota por CONTEO): la misma garantía fail-closed, probada y no extrapolada', async () => {
+        // Sin este caso, el fail-closed quedaría probado para una cota y SUPUESTO para la otra —
+        // exactamente el hueco que D-16 cierra del lado de la alcanzabilidad. Las dos cotas comparten
+        // el cuerpo del `if`, pero es la condición la que decide cuál dispara, y una regresión puede
+        // vivir en un solo término.
+        const rows = manyGateOpenRows(60);
+        stubSelect(rows);
+        stubPortalCostly(0, PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        expect(mockPortalGet).toHaveBeenCalledTimes(50);
+        expect(mockPortalPost).toHaveBeenCalledTimes(50);
+        expect(mockValidatePO).toHaveBeenCalledTimes(50);
+        expect(insertsEmitted()).toHaveLength(50);
+
+        const deferredIds = rows.slice(50).map((r) => r.EXTERNAL_ID);
+        expect(deferredIds).toHaveLength(10);
+        deferredIds.forEach((id) => {
+            expect(insertsEmitted().some((c) => String(c[0]).includes(id))).toBe(false);
+        });
+    });
+
+    test('D-06: el camino diferido no agrega ni una línea por fila ni una etiqueta nueva', async () => {
+        const rows = arrangeBudgetScenario();
+
+        await createPurchaseOrders(0);
+
+        // Cuatro líneas por fila, no veinte. Las líneas por fila de la 20.3 están acotadas por lo
+        // que efectivamente se sondeó; el conjunto diferido está acotado sólo por el tamaño de
+        // ordersToSend, que es precisamente el caso para el que existe esta fase. Una línea por fila
+        // escupiría miles de renglones en el peor tick — el único tick que el operador de verdad
+        // necesita poder leer.
+        expect(perRowCheckLines()).toHaveLength(PROBED);
+
+        // Ninguna etiqueta hermana de PORTAL-CHECK nació para el camino diferido: el agregado es el
+        // único canal. Se afirma sobre el conjunto recogido, no contra una lista blanca, para que
+        // una etiqueta que nadie previó tampoco pase.
+        const tags = [...loggedTags()];
+        expect(tags).toContain('PORTAL-CHECK-SUMMARY');
+        expect(tags.filter((t) => t.startsWith('PORTAL-CHECK-') && t !== 'PORTAL-CHECK-SUMMARY')).toEqual([]);
+
+        // Cierre del hueco que deja la aserción anterior: una línea por fila para las diferidas
+        // podría emitirse REUTILIZANDO una etiqueta ya existente, y entonces el conjunto de
+        // etiquetas no se movería. Ningún mensaje de bitácora del tick menciona a una OC diferida,
+        // bajo ninguna etiqueta. Es la forma fuerte de D-06.
+        const deferredIds = rows.slice(PROBED).map((r) => r.EXTERNAL_ID);
+        const messages = loggedMessages();
+        deferredIds.forEach((id) => {
+            expect(messages.some((m) => m.includes(id))).toBe(false);
+        });
     });
 });
