@@ -500,3 +500,298 @@ describe('PortalOC_Creator — fail-closed al alcanzar cualquiera de los dos top
         });
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Lo que este bloque guarda de verdad (RETRY-E4):
+//
+// Dos cosas distintas, y conviene no confundirlas.
+//
+// (1) La INVARIANTE `probed === found + absent + skipped + unknown`. No es una identidad
+//     aritmética que se cumpla sola: es una afirmación sobre DÓNDE se incrementa cada contador.
+//     WR-02 ya la rompió una vez, contando dentro del try de la sonda un desenlace que después se
+//     recontaba en el catch. Esta fase agrega un sexto contador y un camino nuevo, así que la
+//     invariante vuelve a estar en juego. Se afirma como una IGUALDAD EXPLÍCITA sobre la línea
+//     parseada —la redacción literal de la aceptación de RETRY-E4— y no como cuatro aserciones
+//     sueltas de contador: cuatro aserciones cerradas prueban los valores de ESE escenario, la
+//     igualdad prueba la relación. Verificar esa invariante contra respuestas reales del portal
+//     sigue siendo el punto 2 del UAT humano pendiente de la fase 20.3, así que esta fase no sólo
+//     no puede perturbarla: tiene que demostrar que no la perturbó.
+//
+// (2) El PUNTO CIEGO de D-07, que es la razón de más peso para que este bloque exista. El estado
+//     `probed === 0` con `deferred > 0` es alcanzable en producción —con el origen del reloj en la
+//     entrada de la función (D-01), un SELECT lento se come el presupuesto antes de la primera OC
+//     elegible— y es, exactamente, el peor tick posible. Bajo la condición de emisión ANTERIOR ese
+//     tick no imprimía nada: el único escenario verdaderamente malo era también el único mudo.
+//     Ninguna de las 14 casillas de aceptación del SPEC lo nombra, y la ola 2 midió que revertir la
+//     condición ensanchada dejaba pasar los 48 casos que existían entonces. Es decir: hasta este
+//     bloque, era el único comportamiento de la fase que podía revertirse en silencio.
+//
+//     Por eso van DOS casos y no uno. El caso 5 prueba que el tick mudo ahora habla; el caso 6
+//     prueba que el tick verdaderamente vacío sigue callado. Sin el segundo, el primero pasaría
+//     igual si alguien hubiera ensanchado la condición hasta "emitir siempre" —un bug distinto, con
+//     el mismo síntoma verde— y se habría tirado por la borda el razonamiento de D-06 de la 20.3:
+//     el tick silencioso es el abrumadoramente común, y una línea de ceros cada 15 minutos vuelve
+//     ilegible la bitácora que el operador de verdad necesita leer.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('PortalOC_Creator — invariante de contadores y visibilidad del rezago (RETRY-E4)', () => {
+
+    // Lee los seis campos de la línea de resumen de una sola pasada.
+    //
+    // Llega a la línea ÚNICAMENTE a través de `summaryLine()`, que ancla en
+    // /^\[PORTAL-CHECK-SUMMARY\]/. Eso no es comodidad: la bitácora de este mismo tick trae otra
+    // línea con un campo `deferred=` que significa una cosa distinta —"retenida por el intervalo de
+    // reintento" en el resumen del post-filtro de reintentos (`PortalOC_Creator.js:282`), contra
+    // "retenida por el presupuesto de sondeo del tick" aquí—. Un parser que barriera todas las
+    // líneas buscando un `deferred=` suelto leería el número equivocado y pasaría en verde. Lo que
+    // las desambigua es la ETIQUETA, nunca el nombre del campo (T-20.4-17).
+    const summaryCounters = () => {
+        const msg = summaryLine();
+        const read = (field) => {
+            const match = msg.match(new RegExp(`${field}=(\\d+)`));
+            expect(match).not.toBeNull();
+            return Number(match[1]);
+        };
+        return {
+            msg,
+            probed: read('probed'),
+            found: read('found'),
+            absent: read('absent'),
+            skipped: read('skipped'),
+            unknown: read('unknown'),
+            deferred: read('deferred'),
+        };
+    };
+
+    // Respuestas del portal con la forma exacta que parsea la sonda REAL (`GetPurchaseOrders.js`):
+    // { data: { items: [...], total } }, y el `external_id` de cada item tiene que coincidir con el
+    // de la OC preguntada, porque la sonda re-filtra del lado del cliente y no confía en el filtro
+    // del API (`GetPurchaseOrders.js:120-123`). El id va en forma de 24 hexadecimales o la sonda lo
+    // rechaza con reason=invalid-id (RETRY-D8) y el desenlace dejaría de ser el que el caso pide.
+    const portalFoundBody = (externalId, status, id = VALID_ID) => ({
+        data: { items: [{ id, external_id: externalId, status }], total: 1 },
+    });
+
+    // Dos items exactos para el MISMO external id: la sonda devuelve outcome=unknown,
+    // reason='ambiguous' (`GetPurchaseOrders.js:134-138`) y el controlador lo pliega en `unknown`.
+    const portalAmbiguousBody = (externalId, id = VALID_ID) => ({
+        data: {
+            items: [
+                { id, external_id: externalId, status: 'OPEN' },
+                { id, external_id: externalId, status: 'OPEN' },
+            ],
+            total: 2,
+        },
+    });
+
+    // El escenario mixto que comparten los casos 3 y 7: 12 OCs elegibles y el cap en 5, de modo que
+    // se sondean exactamente 5 y se difieren 7, y las CINCO respuestas encoladas producen un
+    // desenlace distinto cada una, cubriendo los cuatro buckets a la vez.
+    //
+    // Se encolan con respuestas de un solo uso y NO con una implementación: el reloj virtual sólo
+    // avanza dentro de `stubPortalCostly`, así que aquí no transcurre ni un milisegundo y el
+    // presupuesto queda intacto. Lo que detuvo el bucle fue el cap, sin ambigüedad posible.
+    const MIXED_PROBED = 5;
+    const MIXED_DEFERRED = 7;
+    const arrangeMixedScenario = () => {
+        const rows = manyGateOpenRows(MIXED_PROBED + MIXED_DEFERRED);
+        mockConfig.portal.probeMaxPerTick = MIXED_PROBED;
+        stubSelect(rows);
+
+        mockPortalGet
+            // 1) OPEN     -> found++   , INSERT de una fila POSTED
+            .mockResolvedValueOnce(portalFoundBody(rows[0].EXTERNAL_ID, 'OPEN'))
+            // 2) CLOSED   -> found++   , INSERT de una fila CLOSED
+            .mockResolvedValueOnce(portalFoundBody(rows[1].EXTERNAL_ID, 'CLOSED'))
+            // 3) CANCELLED-> skipped++ , sin fila
+            .mockResolvedValueOnce(portalFoundBody(rows[2].EXTERNAL_ID, 'CANCELLED'))
+            // 4) ambigua  -> unknown++ , sin fila
+            .mockResolvedValueOnce(portalAmbiguousBody(rows[3].EXTERNAL_ID))
+            // 5) ausente  -> absent++  , cae al bloque Joi y al POST
+            .mockResolvedValueOnce(PORTAL_ABSENT_BODY);
+
+        stubPostAlwaysSuccess();
+        return rows;
+    };
+
+    test('casilla 5 del SPEC (cota por presupuesto): la invariante se cumple con 4 sondeadas y 21 diferidas', async () => {
+        const rows = manyGateOpenRows(25);
+        stubSelect(rows);
+        stubPortalCostly(30000, PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        // La igualdad explícita sobre la línea parseada, tal como la redacta la aceptación de
+        // RETRY-E4. Escrita así y no como cuatro comparaciones sueltas: lo que hay que probar es la
+        // RELACIÓN entre los contadores, no los valores concretos de este escenario.
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+
+        // Y el diferido se fija, no sólo se excluye de la suma: un `deferred` que se quedara en cero
+        // por una regresión también satisfaría la igualdad de arriba sin decir nada.
+        expect(c.deferred).toBe(21);
+    });
+
+    test('casilla 5 del SPEC (cota por CONTEO): la invariante se cumple con 50 sondeadas y 10 diferidas', async () => {
+        const rows = manyGateOpenRows(60);
+        stubSelect(rows);
+        stubPortalCostly(0, PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.probed).toBe(50);
+        expect(c.deferred).toBe(10);
+    });
+
+    test('casilla 5 del SPEC: la invariante con los CUATRO buckets distintos de cero y una cota disparando a la vez', async () => {
+        // Éste es el caso que vuelve real la invariante en vez de aritméticamente vacía. En los dos
+        // anteriores todo se resolvió en `absent`, así que la igualdad se reducía a `probed ===
+        // absent` y tres sumandos valían cero — cierta, pero sin ejercitar ninguna de las dos reglas
+        // de plegado (cancelled→skipped, ambiguous→unknown) ni el camino de escritura. Aquí los
+        // cuatro buckets están ocupados simultáneamente MIENTRAS una cota difiere, que es
+        // exactamente la combinación que esta fase introduce y que nadie había ejercitado.
+        arrangeMixedScenario();
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+
+        expect(c.probed).toBe(MIXED_PROBED);
+        expect(c.found).toBe(2);      // OPEN + CLOSED
+        expect(c.absent).toBe(1);
+        expect(c.skipped).toBe(1);    // CANCELLED, plegado en skipped y no en unknown
+        expect(c.unknown).toBe(1);    // ambigua, plegada en unknown y no en skipped
+        expect(c.deferred).toBe(MIXED_DEFERRED);
+
+        // El presupuesto quedó intacto: sin implementación costosa el reloj no avanzó, así que el
+        // término de tiempo de la cota nunca pudo ser el verdadero del ||. Lo que difirió las 7 fue
+        // el cap, y el escenario significa lo que dice que significa.
+        expect(virtualNow - VIRTUAL_START).toBe(0);
+    });
+
+    test('casilla 5 del SPEC: la invariante sobrevive a un fallo de escritura a media sonda con una cota disparando', async () => {
+        // La forma de WR-02 —el fallo que rompió la invariante la primera vez— cruzada con el
+        // mecanismo nuevo. El desenlace efectivo de esa OC es `unknown` y NO `found`: el contador de
+        // encontradas se incrementa DESPUÉS de la escritura (`PortalOC_Creator.js:451-457`), así que
+        // si el INSERT lanza, el catch cuenta unknown y nadie contó found. Un contador movido de
+        // sitio —o un `probeDeferred++` metido dentro del try, que es justo lo que D-10 prohíbe—
+        // rompería la igualdad aquí y en ningún otro caso de la suite.
+        const rows = manyGateOpenRows(MIXED_PROBED + MIXED_DEFERRED);
+        mockConfig.portal.probeMaxPerTick = MIXED_PROBED;
+        stubSelect(rows);
+        // La llamada 0 de runQuery es el SELECT por tenant; la 1 es el INSERT de reconciliación de
+        // la primera OC sondeada, que es la que contesta OPEN. Esa es la que se hace fallar.
+        mockRunQuery.mockRejectedValueOnce(new Error('write failed'));
+
+        mockPortalGet
+            .mockResolvedValueOnce(portalFoundBody(rows[0].EXTERNAL_ID, 'OPEN'))
+            .mockResolvedValue(PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+        expect(c.unknown).toBeGreaterThanOrEqual(1);
+        expect(c.deferred).toBe(MIXED_DEFERRED);
+
+        // Ancla del MECANISMO, y no sólo del resultado. Sin ella el caso pasaría igual si el rechazo
+        // hubiera caído en cualquier otro runQuery del tick —el INSERT POSTED de una ausente, por
+        // ejemplo— y entonces estaría midiendo un fallo distinto del que dice medir. El controlador
+        // nombra la ETAPA en `reason=` justamente para esto (`PortalOC_Creator.js:497`): `write-failed`
+        // sólo se emite si la excepción ocurrió con stage='write', o sea en la escritura de
+        // reconciliación de la OC que el portal confirmó como OPEN. Es la forma de WR-02, verificada.
+        expect(perRowCheckLines().some(
+            (m) => new RegExp(`^\\[PORTAL-CHECK\\] PO ${rows[0].EXTERNAL_ID} tenant=COPDAT result=unknown .* reason=write-failed$`).test(m)
+        )).toBe(true);
+    });
+
+    test('D-07 (punto ciego, en ninguna casilla del SPEC): presupuesto agotado por el SELECT ⇒ probed=0 y AUN ASÍ se emite resumen', async () => {
+        // Se reproduce el escenario que la propia D-01 acepta como costo, no uno artificial: el
+        // presupuesto se mide desde la ENTRADA de la función, así que un SELECT anormalmente lento
+        // —un OUTER APPLY sobre una tabla de control de 9,032 filas -— puede consumirlo entero antes
+        // de que el bucle llegue a la primera OC elegible.
+        //
+        // El costo se cobra por `advanceClock`, el ÚNICO sitio de avance del archivo. Encolar una
+        // secuencia de lecturas aquí ataría el caso al número de veces que el controlador lee el
+        // reloj, que es precisamente lo que la ola 3 se prohibió.
+        const rows = manyGateOpenRows(10);
+        mockRunQuery.mockImplementationOnce(() => {
+            advanceClock(mockConfig.portal.probeBudgetMs);
+            return Promise.resolve({ recordset: rows });
+        });
+        mockRunQuery.mockResolvedValue({ recordset: [], rowsAffected: [1] });
+        stubPortalCostly(30000, PORTAL_ABSENT_BODY);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        // Ni una sonda: el término de presupuesto ya era verdadero en la PRIMERA evaluación.
+        expect(mockPortalGet).not.toHaveBeenCalled();
+
+        // Y sin embargo el tick habla. Ésta es la aserción entera de D-07: con la condición de
+        // emisión anterior —la que sólo miraba `probed`— este tick no imprimía absolutamente nada,
+        // de modo que el peor escenario posible era el único mudo y RETRY-E4 ("el rezago se vuelve
+        // visible") quedaba incumplido justo donde importa. `summaryLine()` afirma por dentro que
+        // hay exactamente una línea de resumen, así que cero la pone roja aquí mismo.
+        const c = summaryCounters();
+        expect(c.msg).toBeDefined();
+
+        expect(c.probed).toBe(0);
+        expect(c.deferred).toBe(10);
+
+        // La igualdad también se evalúa en el camino cero. Trivialmente cierta (0 === 0), y aun así
+        // vale la pena: prueba que la invariante se EVALÚA en este camino en vez de saltárselo, que
+        // es donde una regresión de contadores tiene más facilidad para esconderse.
+        expect(c.probed).toBe(c.found + c.absent + c.skipped + c.unknown);
+    });
+
+    test('D-07 (control complementario): nada sondeado y nada diferido ⇒ no se emite ninguna línea de resumen', async () => {
+        // El control negativo del caso anterior, y no es opcional. Sin él, el caso 5 pasaría igual
+        // si alguien hubiera ensanchado la condición hasta "emitir siempre" — un bug distinto, con
+        // el mismo síntoma verde. Y ese bug tirarían por la borda el razonamiento de D-06 de la
+        // 20.3: el tick sin ninguna OC ya fallida es el abrumadoramente común, y una línea de ceros
+        // cada 15 minutos vuelve ilegible la bitácora que el operador necesita poder leer.
+        //
+        // `errorCount: 0` cierra la compuerta de la sonda (`PortalOC_Creator.js:337`), así que esta
+        // OC no se sondea ni se difiere: los dos contadores quedan en cero y la disyunción
+        // ensanchada sigue sin emitir nada.
+        stubSelect([{ EXTERNAL_ID: 'PO99999', errorCount: 0, lastErrorAt: null, dbNow: DB_NOW }]);
+        stubPostAlwaysSuccess();
+
+        await createPurchaseOrders(0);
+
+        // No se usa `summaryLine()` a propósito: ese helper afirma por dentro que hay exactamente
+        // una, o sea que fallaría con un mensaje que apuntaría al lugar equivocado. Aquí lo que se
+        // afirma es el cero.
+        const summaries = loggedMessages().filter((m) => /^\[PORTAL-CHECK-SUMMARY\]/.test(m));
+        expect(summaries).toHaveLength(0);
+    });
+
+    test('casilla 6 del SPEC: los seis campos, en su orden, con el fin de línea anclado', async () => {
+        arrangeMixedScenario();
+
+        await createPurchaseOrders(0);
+
+        const c = summaryCounters();
+
+        // El `$` es todo el punto de esta aserción, igual que en las ocho anclas de la fase 20.3 que
+        // esta fase tuvo que re-anclar en vez de aflojar. Con el fin de línea anclado, este único
+        // patrón prueba cuatro cosas a la vez: que los cinco campos preexistentes conservan NOMBRE,
+        // ORDEN y ORTOGRAFÍA (D-09), que `deferred=` va AL FINAL, que no se coló un séptimo campo, y
+        // que nada quedó pegado detrás de la línea. Se afirma sobre el escenario mixto y no sobre uno
+        // de ceros para que los seis campos lleven valores no triviales.
+        expect(c.msg).toMatch(
+            /^\[PORTAL-CHECK-SUMMARY\] tenant=COPDAT probed=\d+ found=\d+ absent=\d+ skipped=\d+ unknown=\d+ deferred=\d+$/
+        );
+    });
+});
