@@ -1,6 +1,7 @@
 // EOM-01 / EOM-03 / EOM-04 / D-07 / D-08 / D-10 / D-15 / D-16: gate evaluation, atomic sentinel I/O, and HTML body builder for the end-of-month operator email.
 // 20.2: RETRY-S3 / D-10 / D-11 — the payments table drops the error-description column (its control table cannot hold one); the POs table is unchanged.
 // 20.5: Q3-03 / Q3-05 / D-06 / D-07 / D-09 / D-12 — biweekly payment-report gate (no exact-day term, the sentinel path carries the period) and a `po-alert` variant of the HTML body whose default output stays byte-identical.
+// 20.6: D-04 / D-08 / D-09 — la variante `payment-report` le da al reporte quincenal su propio encabezado, introducción y caso vacío; el rótulo del periodo lo pone el sitio de llamada y la salida del cierre de mes no se mueve.
 
 const fs = require('fs');
 const path = require('path');
@@ -212,18 +213,43 @@ function shouldDispatchPaymentReport(now, sentinelPath, reportConfig) {
  * The column COUNT is deliberately identical in both variants, so the D-11 rule
  * that "el encabezado y el cuerpo DEBEN ramificar juntos" is not in play here —
  * that rule guards against six headers over five cells, and both variants are six
- * over six. `variant` is orthogonal to `category` in the signature, but the only
- * supported combination beyond the default is `('pos', 'po-alert')`: the variant is
- * INERT on the payments branch — `('payments', 'po-alert')` returns exactly what
- * `('payments')` returns, footnote included — and it must never be used to branch
- * that footnote.
+ * over six. `variant` is orthogonal to `category` in the signature, and `'po-alert'`
+ * sigue siendo INERTE del lado de pagos: `('payments', 'po-alert')` devuelve
+ * exactamente lo que devuelve `('payments')`, pie de nota incluido, y una prueba
+ * preexistente lo asegura. El pie de nota no se ramifica por `variant` en ninguna
+ * combinación.
+ *
+ * 20.6 / D-04 / D-09: `'payment-report'` es la ÚNICA combinación soportada del lado de
+ * pagos, y sólo en la forma `('payments', 'payment-report', { periodLabel })`. La
+ * conjunción con `!isPos` es la simétrica exacta de la que lleva `isPoAlert` con `isPos`
+ * y conserva la misma propiedad: una pareja categoría × variante que no se reconoce
+ * DEGRADA al cuerpo del cierre de mes de SU categoría en vez de mentir sobre su propio
+ * contenido — `('pos', 'payment-report')` cae al camino de siempre, igual que hoy cae
+ * `('payments', 'po-alert')`. Exigir además el rótulo hace que una llamada sin él
+ * degrade en lugar de imprimir un encabezado de quincena sin quincena. El cuarto
+ * parámetro es un objeto de opciones y no un cuarto posicional (D-09): con el objeto
+ * vacío por omisión el camino del cierre de mes queda byte a byte igual, y las variantes
+ * futuras agregan llaves en vez de posiciones.
+ *
+ * 20.6 / D-08: el rótulo del periodo entra por el sitio de llamada y NO se calcula aquí.
+ * La compuerta ya resolvió el periodo y el asunto ya lo lleva; resolverlo por segunda vez
+ * dentro de este constructor sería un segundo reloj, y un tick que cruce la medianoche
+ * del 15 al 16 rotularía el cuerpo con un periodo y el asunto con otro — el defecto que
+ * esta fase existe para quitar, reintroducido por el mecanismo que venía a arreglarlo.
+ * Por la misma razón la rama de quincena no lee `monthLabel`, que sale de una fila
+ * arbitraria de una ventana de 365 días. El rótulo se interpola escapado (T-20.6-05)
+ * aunque hoy venga de aritmética de fechas y no de datos: cuesta cero, porque un rótulo
+ * legítimo no lleva caracteres significativos en HTML y su salida es idéntica.
  *
  * @param {Array<object>} rows - Pending-document rows for one category.
  * @param {'pos'|'payments'} category - Drives the table title AND the table shape.
- * @param {'eom'|'po-alert'} [variant='eom'] - Wording only. Defaults to the month-close form.
+ * @param {'eom'|'po-alert'|'payment-report'} [variant='eom'] - Wording only. Defaults to the month-close form.
+ * @param {{periodLabel?: string}} [opts] - Bolsa de opciones. `periodLabel` es el rótulo de
+ *   periodo que imprime el cuerpo; lo exige la variante `'payment-report'` y toda otra
+ *   combinación lo ignora.
  * @returns {string} HTML string.
  */
-function buildEomEmailHtml(rows, category, variant = 'eom') {
+function buildEomEmailHtml(rows, category, variant = 'eom', opts = {}) {
     const safeRows = Array.isArray(rows) ? rows : [];
     const isPos = category !== 'payments';
     // El variant se conjuga con `isPos` a propósito: fuera de la rama POs es INERTE,
@@ -232,6 +258,19 @@ function buildEomEmailHtml(rows, category, variant = 'eom') {
     // tabla de PAGOS bajo el título "OCs que fallaron" — un encabezado que miente
     // sobre su propio cuerpo. Degradar al camino de pagos ya probado es lo correcto.
     const isPoAlert = isPos && variant === 'po-alert';
+
+    // 20.6 / D-08: el rótulo lo pone quien llama; aquí no se deriva de ninguna fila del
+    // lote ni de un segundo reloj. Cualquier cosa que no sea una cadena no vacía vale
+    // null, y un null degrada la variante — más vale el cuerpo del cierre de mes que un
+    // encabezado de quincena sin quincena.
+    const periodLabel = (opts && typeof opts === 'object'
+        && typeof opts.periodLabel === 'string' && opts.periodLabel.length > 0)
+        ? opts.periodLabel
+        : null;
+    // Simétrico exacto de isPoAlert, y por la misma razón (D-04): con la conjunción,
+    // ('pos', 'payment-report') cae al camino de siempre en vez de mandar la tabla de OCs
+    // bajo un título de pagos. La tercera condición extiende la propiedad al rótulo.
+    const isPaymentReport = !isPos && variant === 'payment-report' && periodLabel !== null;
 
     // YYYY-MM derived from the first row's authorization date, else current month.
     let monthLabel;
@@ -248,6 +287,8 @@ function buildEomEmailHtml(rows, category, variant = 'eom') {
     let intro;
     if (isPoAlert) {
         intro = 'Estas OCs fallaron su primer intento de subida al portal en este ciclo. Revise el error de cada una y corríjala en Sage o en el portal.';
+    } else if (isPaymentReport) {
+        intro = 'Resumen de pagos pendientes de subir al portal en esta quincena.';
     } else {
         intro = isPos
             ? 'Resumen de POs pendientes de subir al portal al cierre del mes.'
@@ -259,13 +300,17 @@ function buildEomEmailHtml(rows, category, variant = 'eom') {
     // un mes invitaría al operador a archivarla junto al correo de cierre de mes.
     if (isPoAlert) {
         lines.push('<h1>SageConnect: OCs que fallaron al subir al portal</h1>');
+    } else if (isPaymentReport) {
+        lines.push(`<h1>SageConnect: Pagos pendientes — ${escapeHtml(periodLabel)}</h1>`);
     } else {
         lines.push(`<h1>SageConnect: Pendientes fin de mes — ${monthLabel}</h1>`);
     }
     lines.push(`<p>${intro}</p>`);
 
     if (safeRows.length === 0) {
-        lines.push('<p>Sin pendientes en esta categoría este mes</p>');
+        lines.push(isPaymentReport
+            ? '<p>Sin pendientes en esta quincena</p>'
+            : '<p>Sin pendientes en esta categoría este mes</p>');
     } else {
         lines.push('<table border="1" cellspacing="0" cellpadding="4">');
         lines.push('  <thead>');
