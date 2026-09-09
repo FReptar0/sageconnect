@@ -102,11 +102,26 @@ async function sendMail(data) {
  * @param {string} args.html    - Full HTML body (typically from buildEomEmailHtml in EomNotification.js)
  * @param {string} args.callerLogFile - Log file name for [OPERATOR-EMAIL] entries (e.g., 'EomNotification', 'ForResponse').
  *                                       Defaults to 'EmailSender' if missing.
- * @returns {Promise<void>} — Always resolves; SMTP failures are swallowed (logged as warn).
- *                            Q3-06: el envío está acotado por MAIL_TIMEOUT_MS en los tres
- *                            timeouts de nodemailer, y al vencer sigue resolviendo (nunca
- *                            lanza): un servidor de correo muerto degrada las notificaciones
- *                            y nada más.
+ * @returns {Promise<{delivered: boolean, error: string|null}>} — SIEMPRE resuelve; nunca
+ *          lanza. Un fallo de SMTP se sigue tragando y registrando en warn, y ahora además
+ *          sale por el valor de retorno.
+ *
+ *          Fase 20.6, decisión D-01: el resultado es un OBJETO y no un booleano porque el
+ *          sitio de llamada de la alerta de OCs necesita registrar POR QUÉ falló el envío,
+ *          no sólo que falló; y porque una tercera señal futura (entrega parcial a parte de
+ *          la lista) cabe como llave nueva sin inventar otra firma.
+ *
+ *          El campo `error` lleva ÚNICAMENTE el mensaje del transporte: ni la pila, ni el
+ *          servidor, ni el usuario, ni la clave de correo (T-20.6-01). Ese texto viaja a un
+ *          archivo de bitácora y a un archivo centinela en el servidor del cliente.
+ *
+ *          Quien lo consuma trata como NO entregado cualquier cosa distinta de
+ *          `delivered === true`, incluido un `undefined`: la duda nunca se resuelve a favor
+ *          de «salió», que es justo la mentira que esta fase existe para quitar.
+ *
+ *          Q3-06: el envío está acotado por MAIL_TIMEOUT_MS en los timeouts de nodemailer,
+ *          y al vencer sigue resolviendo — un servidor de correo muerto degrada las
+ *          notificaciones y nada más.
  */
 async function sendOperatorReport({ subject, html, callerLogFile }) {
     const logFile = callerLogFile || 'EmailSender';
@@ -139,8 +154,10 @@ async function sendOperatorReport({ subject, html, callerLogFile }) {
             html,
         });
         logGenerator(logFile, 'info', '[OPERATOR-EMAIL] Sent to ' + to + ': ' + subject);
+        return { delivered: true, error: null };
     } catch (err) {
         logGenerator(logFile, 'warn', '[OPERATOR-EMAIL] Failed: ' + err.message);
+        return { delivered: false, error: err.message };
     }
 }
 
