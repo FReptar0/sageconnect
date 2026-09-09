@@ -497,9 +497,17 @@ async function dispatchEomIfDue(now, cfg) {
  * Sin respaldo al buzón de administración, a diferencia de dispatchEomIfDue, cuyo catch sí lo
  * usa: LICENSE_ADMIN_EMAIL está
  * reservado al timeout del proceso hijo (D-15) y no debe recibir correo de operación.
- * sendOperatorReport ya se traga los fallos de SMTP internamente, así que el try/catch del
- * envío conserva la forma más que una ruta viva; se mantiene para que el payload del
- * centinela siga siendo honesto si ese contrato llegara a cambiar.
+ *
+ * Fase 20.6 — el envío ya no va envuelto en try/catch: el canal de correo del operador no
+ * rechaza, devuelve el desenlace de la entrega (D-01). Lo que hasta ayer era una rama de
+ * fallo inalcanzable es hoy una rama sobre ese valor, leída en cerrado: sólo cuenta como
+ * entregado un resultado que lo afirme, y un valor ausente o malformado cae del lado de la
+ * no entrega. De ahí sale el payload del centinela, que antes decía que el correo había
+ * salido pasara lo que pasara (D-10).
+ *
+ * El rótulo del periodo se arma una sola vez, arriba, y viaja al asunto y al cuerpo. Dos
+ * derivaciones serían dos relojes, y un tick que cruce la medianoche del 15 al 16 los
+ * pondría en periodos distintos (D-08).
  *
  * Best-effort: no re-lanza. El llamador (forResponse) atrapa y continúa.
  *
@@ -543,27 +551,31 @@ async function dispatchPaymentReportIfDue(now, cfg) {
         }
     }
 
-    // Variante por omisión a propósito. La tabla de pagos y su pie de nota 20.2-05 son
-    // exactamente lo que este reporte necesita: el pie declara que el sistema de control
-    // todavía no registra el detalle del error de cada pago (CR-03, diferido), así que el
-    // correo es honesto sobre su propio hueco incluso cuando llega vacío.
-    const html = buildEomEmailHtml(allRows, 'payments');
-    const subject = `[SageConnect] Pagos pendientes — quincena ${period} — ${yyyyMm}`;
+    // Un solo origen para el rótulo del periodo: el que ya calculó la compuerta, y de ahí
+    // al asunto y al cuerpo. La tabla de pagos y su pie de nota 20.2-05 no cambian con la
+    // variante de quincena; el pie sigue declarando que el sistema de control todavía no
+    // registra el detalle del error de cada pago (CR-03, diferido), así que el correo sigue
+    // siendo honesto sobre su propio hueco incluso cuando llega vacío.
+    const periodLabel = `quincena ${period} — ${yyyyMm}`;
+    const html = buildEomEmailHtml(allRows, 'payments', 'payment-report', { periodLabel });
+    const subject = `[SageConnect] Pagos pendientes — ${periodLabel}`;
+
+    const delivery = await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
     let sentinelPayload;
-    try {
-        await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
+    if (delivery && delivery.delivered === true) {
         sentinelPayload = { timestamp: new Date().toISOString(), success: true, rowCount: allRows.length };
         logGenerator('EomNotification', 'info',
             `[PAYREPORT-DISPATCH] period=${period} rows=${allRows.length} sent=true`);
-    } catch (smtpErr) {
+    } else {
+        const deliveryError = (delivery && delivery.error) ? delivery.error : 'unknown delivery failure';
         sentinelPayload = {
             timestamp: new Date().toISOString(),
             success: false,
-            error: smtpErr.message,
+            error: deliveryError,
             rowCount: allRows.length,
         };
         logGenerator('EomNotification', 'error',
-            `[PAYREPORT-DISPATCH] period=${period} rows=${allRows.length} sent=false err=${smtpErr.message}`);
+            `[PAYREPORT-DISPATCH] period=${period} rows=${allRows.length} sent=false err=${deliveryError}`);
         // Aquí NO va un respaldo al buzón de administración: ver el encabezado (D-15).
     }
 
