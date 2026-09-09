@@ -65,6 +65,45 @@ async function forResponse(options = {}) {
         }
     }
 
+    // Q3-03 / Q3-04: la misma compuerta, ahora para el reporte quincenal de pagos pendientes.
+    // Va en su PROPIO bloque y no dentro del try de arriba a proposito: si dispatchEomIfDue
+    // lanza, ese catch se dispara y el reporte quincenal nunca correria — un fallo del cierre
+    // de mes silenciaria un reporte que no tiene nada que ver con el. Q3-04 pide interruptores
+    // de apagado independientes, y dominios de fallo independientes son ese mismo requisito
+    // expresado en tiempo de ejecucion.
+    //
+    // El nombre del paso, paymentReport, es distinto del de cierre de mes a proposito, para que
+    // una linea [TIMEOUT] nombre el flujo que de verdad se atoro. withStepTimeout por paso es
+    // el patron ya establecido aqui — forResponse envuelve cada uno de sus siete pasos
+    // por tenant — asi que esto no anade ningun nivel a la cadena de CLAUDE.md §9:
+    // STEP_TIMEOUT_MS sigue acotando cada paso y LOCK_TIMEOUT_MS sigue acotando el tick.
+    //
+    // Reutiliza `date`, el reloj ya capturado al inicio del tick. Dos lecturas dentro de un
+    // mismo tick podrian caer a distintos lados de la medianoche o de la hora y poner a los dos
+    // despachadores en dias distintos: un bug que asomaria una vez al ano y no se reproduciria.
+    if (!config.notifications.paymentReport.enabled) {
+        logGenerator('EomNotification', 'info', '[PAYREPORT-SKIP] reason=enabled-false');
+    } else {
+        const __step = 'paymentReport';
+        try {
+            await withStepTimeout(
+                dispatchPaymentReportIfDue(date, config),
+                config.schedule.stepTimeoutMs,
+                `step=${__step}`
+            );
+        } catch (stepErr) {
+            const __stepError = stepErr.message || String(stepErr);
+            if (/Step timeout/.test(__stepError)) {
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=${__step} tenant=global url=n/a ` +
+                    `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+            }
+            // Mismo criterio que el bloque de cierre de mes: el reporte es best-effort y el
+            // tick del cron debe continuar. No se re-lanza.
+            logGenerator('EomNotification', 'error', `[PAYREPORT-DISPATCH] Failed: ${__stepError}`);
+        }
+    }
+
     const tenantIds = config.portal.tenants.map(t => t.id);
     for (let i = 0; i < tenantIds.length; i++) {
         try {

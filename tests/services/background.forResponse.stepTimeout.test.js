@@ -50,6 +50,16 @@ jest.mock('../../src/config', () => ({
     // Disabled here so the gate short-circuits — these tests exercise the
     // step-timeout path, not the EOM dispatch.
     eom: { notificationHour: 18, notificationEnabled: false },
+    // Fase 20.5 (Q3-03/Q3-04): forResponse ahora lee config.notifications.paymentReport
+    // ANTES del bucle de tenants; sin esta clave el acceso lanza TypeError y ningún paso
+    // llegaría a correr, así que la ausencia rompería estas pruebas antes de empezar.
+    // enabled:false para que la compuerta corte igual que la de cierre de mes — aquí se
+    // ejercita el timeout por paso, no el despacho.
+    notifications: {
+        poAlert: { enabled: false },
+        paymentReport: { enabled: false, hour: 18, lookbackDays: 365 },
+        mailTimeoutMs: 30000,
+    },
 }));
 
 // Mock LogGenerator
