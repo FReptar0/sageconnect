@@ -229,7 +229,7 @@ Plans:
   1. El correo quincenal de pagos sale con encabezado, introducción, caso vacío y rótulo de periodo propios de una quincena; ninguno de los cuatro menciona el cierre de mes ni deriva el periodo de una fila del lote.
   2. El cuerpo del correo de cierre de mes de la fase 20 queda intacto — mismo encabezado, misma introducción, mismo caso vacío, misma tabla de cinco columnas y mismo pie de nota — verificable contra la salida previa.
   3. Un fallo de envío deja de registrarse como éxito: no se escribe `sent=true` ni un centinela con `success:true` cuando el correo no salió.
-  4. Una OC cuya alerta no se pudo entregar sigue siendo elegible para alertar en un tick posterior.
+  4. Una OC cuya alerta no se pudo entregar queda registrada en un nivel que el operador pueda encontrar, y su rezago sigue siendo rastreable hasta el correo de cierre de mes. (NO vuelve a ser elegible para alertar: D-03 de la 20.5 se conserva — ver el Out of scope del SPEC.)
   5. El `catch (smtpErr)` de `dispatchEomIfDue` deja de ser inalcanzable, o se elimina junto con la afirmación de REQ EOM-04 que lo justifica.
   6. Una excepción en el camino de notificación sigue sin reprobar el paso del tenant, y el bloque de alerta sigue sin relanzar.
   7. `npm test` se mantiene en la línea base de CLAUDE.md §6, sin fallas NUEVAS.
