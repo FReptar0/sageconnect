@@ -159,7 +159,11 @@ describe('PortalOC_Creator — alerta inmediata de OCs con fallo de carga (fase 
         mockPortalPost.mockReset();
         mockPortalGet.mockReset();
         mockSendOperatorReport.mockReset();
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        // D-14 de la 20.6: el doble refleja lo que la función hace DE VERDAD. Desde el plan 20.6-01
+        // sendOperatorReport resuelve `{ delivered, error }` en sus dos desenlaces y nunca rechaza;
+        // un doble que resolviera `undefined` caería del lado NO entregado bajo la regla fail-closed
+        // del controlador y volvería roja, por la razón equivocada, cada caso de éxito de abajo.
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
         mockValidatePO.mockReset();
         mockValidatePO.mockImplementation((po) => po);
         // El interruptor vuelve a encendido: el caso que lo apaga no debe contaminar a los demás.
@@ -298,13 +302,72 @@ describe('PortalOC_Creator — alerta inmediata de OCs con fallo de carga (fase 
         expect(logLines()).toContainEqual(expect.stringMatching(/^\[PORTAL-CHECK-SUMMARY\] tenant=DBALFA probed=1 /));
     });
 
-    test('resiliencia: aunque el envio RECHACE, createPurchaseOrders resuelve y el tick no se cae', async () => {
-        // sendOperatorReport de producción no rechaza jamás: traga los fallos de SMTP y los registra
-        // en warn. Este caso NO prueba SMTP; prueba que el camino de notificación entero —el
-        // constructor de HTML incluido— no puede tumbar un tick que ya escribió sus filas en la
-        // tabla de control. El envío vive al final de createPurchaseOrders, que corre dentro de
+    test('el transporte no entrega: la bitacora no dice que si, y nombra las OCs afectadas', async () => {
+        // Requisito 6 del SPEC de la 20.6 y decisión D-13. Éste es el escenario del servidor de
+        // correo muerto, y desde el contrato del plan 20.6-01 se alcanza por VALOR DE RETORNO y no
+        // por un rechazo simulado (D-14): producción no puede producir un rechazo aquí, así que una
+        // prueba escrita con uno pasaría en verde siendo compatible con el defecto.
+        //
+        // Hasta esta fase el tick registraba una entrega que no constaba y la alerta se perdía en
+        // silencio. Como la supresión es derivada y la fila ERROR se escribe ANTES del envío, esa OC
+        // queda con errorCount = 1 y no vuelve a alertar: el operador necesita poder encontrar con
+        // un grep cuáles fueron, para saber que su rezago sólo reaparecerá al cierre de mes.
+        primeTick([poRow('OC-MMM-001', 0), poRow('OC-MMM-002', 0)]);
+        mockPortalPost.mockRejectedValue(portalError('ED00', 'rechazo'));
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: 'SMTP connection refused' });
+
+        await expect(createPurchaseOrders(0)).resolves.toBeUndefined();
+
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        // La afirmación falsa que esta fase existe para quitar: NINGUNA línea puede decir que salió.
+        expect(logLines().filter((l) => /sent=true/.test(l))).toHaveLength(0);
+        // El nivel se asegura sobre los TRES argumentos y NO con el ayudante logLines(), que mapea
+        // únicamente c[2] y pierde justo el dato que el requisito 6 exige comprobar: que la línea
+        // sea encontrable en warn. En info se ahogaría en la bitácora de un tick sano.
+        expect(mockLogGenerator).toHaveBeenCalledWith(
+            'PortalOC_Creator',
+            'warn',
+            expect.stringMatching(
+                /^\[PO-ALERT\] tenant=DBALFA pos=2 sent=false reason=undelivered ocs=OC-MMM-001,OC-MMM-002 err=SMTP connection refused$/
+            ),
+        );
+    });
+
+    test('la lista de OCs de la linea de no entrega esta acotada (T-20.6-11)', async () => {
+        // Una línea por tick y jamás una por fila era ya la propiedad del acumulador. Lo que fija
+        // este caso es la otra mitad de la mitigación: que la línea tampoco crezca sin techo cuando
+        // el lote es grande. Con 25 OCs se enumeran las primeras 20 y se cuenta el excedente.
+        const veinticinco = Array.from({ length: 25 }, (_, n) => poRow(`OC-NNN-${String(n).padStart(3, '0')}`, 0));
+        primeTick(veinticinco);
+        mockPortalPost.mockRejectedValue(portalError('EE00', 'rechazo'));
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: 'SMTP connection refused' });
+
+        await createPurchaseOrders(0);
+
+        const linea = logLines().find((l) => /sent=false reason=undelivered/.test(l));
+        expect(linea).toBeDefined();
+        // El conteo que se reporta sigue siendo el REAL: se acota lo que se ENUMERA, no lo que se
+        // cuenta. Un pos= recortado convertiría la mitigación en otra afirmación falsa.
+        expect(linea).toContain('pos=25');
+        expect(linea).toContain(',+5');
+        expect(linea).not.toContain('OC-NNN-020');
+        expect(linea.length).toBeLessThan(700);
+    });
+
+    test('violacion del contrato: si el camino de notificacion LANZA, el tick tampoco se cae', async () => {
+        // OJO: éste ya NO es el caso del servidor de correo caído. Desde el contrato del plan
+        // 20.6-01, un SMTP muerto produce un VALOR y no un rechazo, y ese escenario es el caso de
+        // arriba. Lo que este caso documenta es lo que sigue siendo real y sigue valiendo la pena:
+        // que una VIOLACIÓN del contrato —o una excepción de cualquier otra parte del camino de
+        // notificación: el armado del HTML, el del asunto, o el propio logGenerator, que según la
+        // nota S-3 de la 20.3 sí puede lanzar— no puede tumbar un tick que YA escribió sus filas en
+        // la tabla de control. El envío vive al final de createPurchaseOrders, que corre dentro de
         // withStepTimeout dentro de forResponse: una excepción aquí reprobaría el paso completo del
         // tenant DESPUÉS de que los INSERT ya se comprometieron, a cambio de un correo.
+        //
+        // El texto del error simulado es irrelevante; lo que se simula es el RECHAZO, que es la
+        // violación. Que producción no pueda alcanzar ese estado (WR-09 de la 20.5) es justamente
+        // el punto del caso: no lo conviertas de vuelta en un caso de SMTP.
         primeTick([poRow('OC-III-001', 0)]);
         mockPortalPost.mockRejectedValue(portalError('E900', 'rechazo'));
         mockSendOperatorReport.mockRejectedValue(new Error('smtp caido'));
@@ -475,13 +538,21 @@ describe('PortalOC_Creator — guardas estructurales de la alerta inmediata (fas
     test('Guarda 7 (Guarda 9 de la 20.3): sigue sin nacer ninguna etiqueta hermana del prefijo de la sonda', () => {
         // La etiqueta de la alerta se eligió a propósito FUERA de ese espacio de nombres.
         expect(CONTROLLER_SRC).not.toMatch(/\[PORTAL-CHECK-(?!SUMMARY)[A-Z-]+\]/);
-        // Tres sitios de emisión, uno solo de los cuales corre por tick: enviada, silenciada por el
-        // interruptor, y fallida. El tercero lo añadió el caso de resiliencia de este mismo archivo;
-        // antes de él eran dos. Ninguno vive dentro del bucle — eso lo prueba la Guarda 1.
-        expect(countOf(CONTROLLER_SRC, /\[PO-ALERT\]/g)).toBe(3);
+        // CUATRO sitios de emisión, uno solo de los cuales corre por tick: entregada, silenciada por
+        // el interruptor de apagado, NO ENTREGADA, y fallida por excepción. Ninguno vive dentro del
+        // bucle — eso lo prueba la Guarda 1.
+        //
+        // El conteo se movió DE TRES A CUATRO en la fase 20.6, a propósito y no por deriva: hasta
+        // entonces sendOperatorReport resolvía lo mismo entregara o no, así que el caso de la
+        // entrega perdida no existía y la línea de éxito se emitía pase lo que pase. El cuarto sitio
+        // es el requisito 6 del SPEC de la 20.6 (decisión D-13) y es el único que sube a warn.
+        // Si este número vuelve a moverse, que sea con la misma deliberación: una emisión de más es
+        // una línea que alguien metió en el bucle o una rama que nadie documentó.
+        expect(countOf(CONTROLLER_SRC, /\[PO-ALERT\]/g)).toBe(4);
         expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=true/);
         expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=false reason=disabled/);
         expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=false reason=error/);
+        expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=false reason=undelivered/);
     });
 
     test('Guarda 8 (Q3-04): el interruptor se lee UNA vez, en el sitio del envio y en ningun otro', () => {

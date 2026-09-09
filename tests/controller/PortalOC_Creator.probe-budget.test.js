@@ -122,7 +122,10 @@ jest.mock('../../src/config', () => mockConfig);
 // Fase 20.5: este archivo ejecuta el createPurchaseOrders REAL por caminos de fallo del POST con
 // fixtures cuyo errorCount es 0 — que es exactamente la condición de primer fallo. Sin este mock la
 // suite intentaría envíos SMTP salientes de verdad contra un host inventado.
-jest.mock('../../src/utils/EmailSender', () => ({ sendMail: jest.fn(), sendOperatorReport: jest.fn().mockResolvedValue(undefined) }));
+// D-14 de la 20.6: el doble resuelve lo que la función resuelve de verdad desde el plan 20.6-01.
+// Con `undefined` caería del lado NO entregado bajo la regla fail-closed del controlador, y
+// cualquier tick de esta suite que dispare la alerta registraría una no entrega falsa.
+jest.mock('../../src/utils/EmailSender', () => ({ sendMail: jest.fn(), sendOperatorReport: jest.fn().mockResolvedValue({ delivered: true, error: null }) }));
 
 const mockLogGenerator = jest.fn();
 jest.mock('../../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }));
