@@ -81,8 +81,14 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         jest.clearAllMocks();
         if (fs.existsSync(tmpRoot)) fs.rmSync(tmpRoot, { recursive: true, force: true });
         fs.mkdirSync(tmpRoot, { recursive: true });
-        // Default: operator + admin emails succeed.
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        // Por omisión el correo del operador SE ENTREGA. El doble refleja el contrato real
+        // (D-14 de la 20.6): el canal devuelve el desenlace de la entrega y nunca rechaza,
+        // así que un valor ausente contaría como NO entregado en el sitio de llamada, que
+        // lee en cerrado. Antes de la 20.6 este doble resolvía vacío y era inerte porque
+        // nadie leía el retorno; hoy lo leen los tres despachadores.
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
+        // El escalamiento SÍ resuelve vacío, y se queda así a propósito: sendAdminAlert no
+        // cambió de contrato en la fase 20.6. No lo "alinees" con el de arriba.
         mockSendAdminAlert.mockResolvedValue(undefined);
     });
 
@@ -154,12 +160,16 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         expect(fs.readFileSync(sentinelPos, 'utf8')).toBe(posBefore);
     });
 
-    test('REQ EOM-04 (c): SMTP failure → sentinel success:false + admin alert + no resend on subsequent ticks', async () => {
+    test('REQ EOM-04 (c): el transporte NO ENTREGA → sentinel success:false + admin alert + no resend on subsequent ticks', async () => {
         const lastDayLateHour = new Date(2026, 4, 31, 18, 5, 0);
-        // Operator email fails for both categories; admin alert succeeds.
+        // El correo del operador NO SE ENTREGA en ninguna de las dos categorías; el
+        // escalamiento sí sale. El doble devuelve el desenlace en vez de rechazar: ése es
+        // el contrato real desde la 20.6 (D-01 / D-14), y un rechazo simulado describía un
+        // estado que producción no puede alcanzar — hallazgo WR-09 de la revisión de la 20.5.
+        // Las aserciones de abajo no se tocaron: lo que estaba mal era el doble, no ellas.
         mockSendOperatorReport
-            .mockRejectedValueOnce(new Error('SMTP connection refused')) // operator email POs — fail
-            .mockRejectedValueOnce(new Error('SMTP connection refused')); // operator email payments — fail
+            .mockResolvedValueOnce({ delivered: false, error: 'SMTP connection refused' }) // POs — no entregado
+            .mockResolvedValueOnce({ delivered: false, error: 'SMTP connection refused' }); // payments — no entregado
         mockRunQuery
             .mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083449', fechaAuth: '2026-05-07', attempts: 3, lastError: 'X' }] })
             // Payments rows carry no error description — the fixed query cannot produce one (RETRY-S3).
@@ -183,10 +193,50 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         expect(payPayload.success).toBe(false);
         // Subsequent tick: sentinel-present blocks resend.
         jest.clearAllMocks();
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
         await dispatchEomIfDue(new Date(2026, 4, 31, 18, 30, 0), config);
         expect(mockSendOperatorReport).not.toHaveBeenCalled();
         expect(mockRunQuery).not.toHaveBeenCalled();
+    });
+
+    // Fase 20.6, requisito 7 — la evidencia directa de que el escalamiento de REQ EOM-04
+    // dejó de ser código muerto. El caso (c) de arriba ya recorre la rama, pero sobre dos
+    // categorías a la vez; éste la reduce a una sola para que, si se pone rojo, el dedo
+    // apunte a la rama y no al arnés. La otra categoría se cierra con su propio centinela,
+    // que es el mecanismo que el despachador ya tiene, no un mock nuevo.
+    test('requisito 7: la rama de fallo es alcanzable con el contrato real (una sola categoría)', async () => {
+        const lastDayLateHour = new Date(2026, 4, 31, 18, 5, 0);
+        // Cierra la compuerta de payments: sólo pos queda en juego.
+        fs.writeFileSync(path.join(tmpRoot, 'eom-2026-05-payments.sent'),
+            JSON.stringify({ timestamp: '2026-05-31T18:00:00.000Z', success: true, rowCount: 0 }));
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: 'mailbox unavailable' });
+        mockRunQuery.mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083449', fechaAuth: '2026-05-07', attempts: 2, lastError: 'X' }] });
+
+        // RESUELVE, no rechaza: la rama corre entera y nada escapa hacia forResponse. La
+        // restricción rectora de la fase — la notificación jamás reprueba el tick — se
+        // sostiene también ahora que la rama se ejecuta de verdad.
+        await expect(dispatchEomIfDue(lastDayLateHour, config)).resolves.toBeUndefined();
+
+        // Un solo envío (payments quedó fuera por su centinela) y un solo escalamiento.
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+        expect(mockSendAdminAlert.mock.calls[0][0]).toMatch(/EOM email FAILED for 2026-05 - pos/);
+        expect(mockSendAdminAlert.mock.calls[0][1]).toMatch(/mailbox unavailable/);
+        expect(mockSendAdminAlert.mock.calls[0][2]).toBe('EomNotification');
+
+        // La línea de bitácora en nivel error es la prueba de que el código dejó de estar
+        // muerto: antes de la 20.6 era inalcanzable y nunca se emitió en producción.
+        expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+            expect.stringMatching(/^\[EOM-DISPATCH\] category=pos rows=1 sent=false err=mailbox unavailable$/));
+        // Y la de éxito NO se emitió: el sistema deja de afirmar una entrega que no consta.
+        expect(mockLogGenerator).not.toHaveBeenCalledWith('EomNotification', 'info',
+            expect.stringMatching(/sent=true/));
+
+        // El centinela se escribe igual (REQ EOM-04 / D-07), ahora con payload honesto.
+        const posPayload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'eom-2026-05-pos.sent'), 'utf8'));
+        expect(posPayload.success).toBe(false);
+        expect(posPayload.error).toBe('mailbox unavailable');
+        expect(posPayload.rowCount).toBe(1);
     });
 });
 
