@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.5 plan 01 executed (ola 1 de 3 — la superficie de configuración de Q3 en tierra)
-last_updated: "2026-09-09T16:54:06Z"
-last_activity: 2026-09-09 -- Phase 20.5 plan 01 complete (Q3-04, Q3-06) — config.notifications con cinco vars opcionales, seis guardas y 24 tests por código de salida
+stopped_at: Phase 20.5 plan 02 executed (ola 2 — SMTP acotado por MAIL_TIMEOUT_MS en los dos call sites)
+last_updated: "2026-09-09T17:31:00Z"
+last_activity: 2026-09-09 -- Phase 20.5 plan 02 complete (Q3-06) — los tres timeouts de nodemailer en ambos call sites de EmailSender, probados contra un socket real que nunca saluda
 progress:
   total_phases: 7
   completed_phases: 4
   total_plans: 31
-  completed_plans: 27
-  percent: 87
+  completed_plans: 28
+  percent: 90
 ---
 
 # Project State
@@ -26,10 +26,13 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 ## Current Position
 
 Phase: 20.5
-Plan: 1 of 5 executed (20.5-01 — Q3-04/Q3-06, la superficie de configuración: `config.notifications` con las cinco vars OPCIONALES, las seis guardas de arranque, el tier SMTP documentado en `.env.example` y en `CLAUDE.md` §9, y 24 casos que miden cada desenlace por el código de salida de un proceso hijo real). Es la única ola 1 de la fase: los planes 02-05 leen claves creadas aquí.
-Status: Executing — falta ejecutar 20.5-02..05 (olas 2 y 3).
-Next: ejecutar `20.5-02-PLAN.md`. **Nota para quien siga:** el hook `.claude/hooks/pre-commit-redaction.sh` grepea el diff COMPLETO —añadidas, borradas Y contexto— así que una línea preexistente con lenguaje prohibido bloquea cualquier commit que caiga a 3 líneas de ella. Por eso `notifications:` quedó ANTES de `eom:` en el object literal. El chequeo de redacción correcto es sobre líneas AÑADIDAS: `git diff --cached | grep -E "^\+" | grep -in ...`.
-Test suite baseline tras 20.5-01 (medida 2026-09-09): **6 suites en rojo / 7 tests en rojo / 639 en verde / 647 total, 39 suites verdes de 45.** Mismo conjunto en rojo POR NOMBRE que siempre (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + los cuelgues de worker de `config` y `operation-manager`). Los totales se movieron sólo por los 24 casos nuevos (623 → 647) y las suites verdes por una (38 → 39). **Éste es el punto de comparación para 20.5-02.**
+Plan: 2 of 5 executed (20.5-01 — Q3-04/Q3-06, la superficie de configuración: `config.notifications` con las cinco vars OPCIONALES, las seis guardas de arranque, el tier SMTP documentado en `.env.example` y en `CLAUDE.md` §9, y 24 casos que miden cada desenlace por el código de salida de un proceso hijo real). Es la única ola 1 de la fase: los planes 02-05 leen claves creadas aquí.
+**Ola 2 — 20.5-02 EJECUTADO (Q3-06).** `src/utils/EmailSender.js` entrega a nodemailer `connectionTimeout`, `greetingTimeout` y `socketTimeout` en **ambos** call sites (`sendMail` y `sendOperatorReport`), desde un accesor `mailTimeoutMs()` leído POR ENVÍO —no capturado en el require— respaldado por `config.notifications.mailTimeoutMs`. Esto desplaza el default de `socketTimeout` de nodemailer, **600000 ms**: el doble de `STEP_TIMEOUT_MS` e igual a `CHILD_PROCESS_TIMEOUT_MS`. Los contratos siguen intactos: `sendMail` lanza, `sendOperatorReport` traga y resuelve. La casilla 14 del SPEC quedó saldada por comportamiento, no por estructura: `tests/EmailSender.timeout.test.js` levanta un `net.createServer()` en loopback que acepta y **nunca** escribe el saludo 220, y los tres casos cierran en **~1507 ms** contra un `mailTimeoutMs` de prueba de 1500.
+**Lo que hay que saber para no romperlo:** los identificadores `connectionTimeout`/`greetingTimeout`/`socketTimeout` aparecen **exactamente dos veces cada uno** en `EmailSender.js`, una por call site, y ese conteo `grep -c == 2` es la guarda que detecta un call site incompleto. Por eso el comentario del accesor los describe por su función y NO los nombra: mencionarlos en prosa infla el conteo y ciega la guarda. Lo mismo con `30000`, que aparece una sola vez (el respaldo del accesor) y debe seguir igual al default de `src/config.js` y de `.env.example`. La guarda anti-hardcode del caso (3) se verificó **por mutación**: al sustituir la lectura de config por el literal, falla con `Expected: 7777, Received: 30000`.
+Status: Executing — falta ejecutar 20.5-04..05; 20.5-03 corrió en paralelo con esta ola.
+Next: ejecutar `20.5-04-PLAN.md`. **Nota para quien siga:** el hook `.claude/hooks/pre-commit-redaction.sh` grepea el diff COMPLETO —añadidas, borradas Y contexto— así que una línea preexistente con lenguaje prohibido bloquea cualquier commit que caiga a 3 líneas de ella. Por eso `notifications:` quedó ANTES de `eom:` en el object literal. El chequeo de redacción correcto es sobre líneas AÑADIDAS: `git diff --cached | grep -E "^\+" | grep -in ...`.
+Test suite baseline tras 20.5-01 (medida 2026-09-09): **6 suites en rojo / 7 tests en rojo / 639 en verde / 647 total, 39 suites verdes de 45.** Mismo conjunto en rojo POR NOMBRE que siempre (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + los cuelgues de worker de `config` y `operation-manager`). Los totales se movieron sólo por los 24 casos nuevos (623 → 647) y las suites verdes por una (38 → 39).
+Baseline **remedida por el ejecutor de 20.5-02** al cerrar su ola: **6 suites en rojo / 7 tests en rojo / 647 en verde / 655 total, 40 suites verdes de 46.** Mismo conjunto en rojo por nombre; ninguna falla nueva. El movimiento (+1 suite, +8 tests) es todo de 20.5-02. **Advertencia para quien mida después:** esa cifra se tomó con el árbol de trabajo del agente hermano de 20.5-03 presente, así que no es un punto de comparación limpio para la ola 3 — quien ejecute 20.5-04 debe **medir su propio baseline antes de su primer edit**, que es como se ha sostenido la disciplina de CLAUDE.md §6 en toda esta fase.
 
 **Fase anterior, todavía pendiente de verificar:**
 Phase 20.4 — Plan: 4 of 4 executed (20.4-01 — RETRY-E2, los dos parámetros del tope y sus tres guardas de arranque; 20.4-02 — RETRY-E1/E3/E4, la cota instalada en el bucle y el campo `deferred=` en el resumen; 20.4-03 — RETRY-E1/E3, las dos cotas probadas alcanzables por separado y el camino diferido probado inerte; 20.4-04 — RETRY-E1/E4, la invariante como igualdad explícita, el punto ciego de D-07 cerrado con su control, el ancla de orden de los seis campos y nueve guardas estructurales)
