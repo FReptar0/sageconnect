@@ -367,3 +367,143 @@ describe('PortalOC_Creator — alerta inmediata de OCs con fallo de carga (fase 
         expect(second.html).not.toContain('OC-LLL-UNO');
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Guardas estructurales de la fase 20.5.
+//
+// La cobertura de comportamiento atrapa el error que YA se cometió; la estructural lo atrapa
+// aunque una edición futura venga escrita de una forma que los fixtures no ejerciten. Hacen falta
+// las dos y ninguna sustituye a la otra — el mismo razonamiento que abre el bloque estructural de
+// la 20.4.
+//
+// Toda expresión regular de este bloque ancla en un IDENTIFICADOR o en una etiqueta entre
+// corchetes, jamás en un número de renglón. La lección del §9 de la 20.4 vale igual para las
+// aserciones que para la documentación: un rango desactualizado es la manera en que una guarda
+// deja de guardar en silencio.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const CONTROLLER_SRC = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'src', 'controller', 'PortalOC_Creator.js'), 'utf8');
+
+const countOf = (src, re) => (src.match(re) || []).length;
+
+// Anclas de posición, leídas una sola vez. Son las mismas formas de código que usan las guardas de
+// la 20.3 y la 20.4, para que las tres suites se rompan juntas si alguien reescribe el bucle.
+const FN_AT = CONTROLLER_SRC.indexOf('async function createPurchaseOrders');
+const LOOP_AT = CONTROLLER_SRC.indexOf('for (let i = 0; i < ordersToSend.length; i++)');
+const SUMMARY_BLOCK_AT = CONTROLLER_SRC.indexOf('if (probed > 0 || probeDeferred > 0)');
+const SUMMARY_TAG_AT = CONTROLLER_SRC.indexOf('[PORTAL-CHECK-SUMMARY]');
+
+describe('PortalOC_Creator — guardas estructurales de la alerta inmediata (fase 20.5)', () => {
+
+    test('Guarda 1 (D-01, casilla 17 del SPEC): no se emite ningun envio desde DENTRO del bucle de OCs', () => {
+        // La rebanada entre la cabecera del bucle y el bloque de resumen es, literalmente, todo el
+        // cuerpo del bucle. Un await a SMTP ahí multiplicaría los viajes de red por el número de OCs
+        // fallidas y gastaría el presupuesto de paso que la fase 20.4 existe para proteger.
+        expect(FN_AT).toBeGreaterThan(-1);
+        expect(LOOP_AT).toBeGreaterThan(-1);
+        expect(SUMMARY_BLOCK_AT).toBeGreaterThan(LOOP_AT);
+
+        const loopBody = CONTROLLER_SRC.slice(LOOP_AT, SUMMARY_BLOCK_AT);
+        // La rebanada NO es vacua: contiene los dos sitios de captura y los dos catch donde
+        // DEVIATIONS.md quería poner el envío. Sin estas cuatro aserciones, un refactor que moviera
+        // el bucle dejaría la rebanada vacía y las prohibiciones de abajo pasarían por no encontrar
+        // nada — una guarda verde que ya no guarda nada.
+        expect(loopBody).toContain('catch (valErr)');
+        expect(loopBody).toContain('catch (err)');
+        expect(countOf(loopBody, /poAlerts\.push/g)).toBe(2);
+        expect(loopBody.length).toBeGreaterThan(1000);
+
+        expect(loopBody).not.toMatch(/sendOperatorReport/);
+        expect(loopBody).not.toMatch(/sendMail/);
+        expect(loopBody).not.toMatch(/sendAdminAlert/);
+        expect(loopBody).not.toMatch(/nodemailer/);
+        expect(loopBody).not.toMatch(/createTransport/);
+    });
+
+    test('Guarda 2 (D-01): un solo envio en todo el archivo, y va DESPUES de la linea de resumen', () => {
+        // Dos envíos significarían que alguien volvió a añadir un disparo por sitio de fallo; un
+        // envío ANTES del resumen significaría que se coló de vuelta dentro del bucle.
+        expect(countOf(CONTROLLER_SRC, /await sendOperatorReport\(/g)).toBe(1);
+        const sendAt = CONTROLLER_SRC.indexOf('await sendOperatorReport(');
+        expect(SUMMARY_TAG_AT).toBeGreaterThan(-1);
+        expect(sendAt).toBeGreaterThan(SUMMARY_TAG_AT);
+    });
+
+    test('Guarda 3 (CLAUDE.md §3): esta fase tampoco anadio ninguna primitiva always-on', () => {
+        // Repite la Guarda 4 de la suite de la 20.3 y la Guarda 2 de la 20.4 contra el fuente
+        // POST-20.5. Que la guarda ya pasara antes es justamente el punto: la propiedad es sobre el
+        // archivo TAL COMO ESTÁ HOY, no sobre el cambio que la introdujo.
+        expect(CONTROLLER_SRC).not.toMatch(/setInterval/);
+        expect(CONTROLLER_SRC).not.toMatch(/setTimeout/);
+        expect(CONTROLLER_SRC).not.toMatch(/new Set\(/);
+        expect(CONTROLLER_SRC).not.toMatch(/\.addListener\(/);
+        expect(countOf(CONTROLLER_SRC, /new Map\(/g)).toBe(1);
+        expect(CONTROLLER_SRC.indexOf('new Map(')).toBeGreaterThan(FN_AT);
+    });
+
+    test('Guarda 4 (D-03): no se almacena NADA — ni centinela por OC ni lectura de disco', () => {
+        // Los dos diseños rechazados —un archivo por OC y un Map en scope de módulo— se verían
+        // exactamente así. Ésta es la guarda que vuelve permanente el rechazo en vez de dejarlo como
+        // una decisión de una sola vez.
+        expect(CONTROLLER_SRC).not.toMatch(/writeFileSync/);
+        expect(CONTROLLER_SRC).not.toMatch(/writeSentinelAtomically/);
+        expect(CONTROLLER_SRC).not.toMatch(/existsSync/);
+        expect(CONTROLLER_SRC).not.toMatch(/readFileSync/);
+    });
+
+    test('Guarda 5 (D-03): el acumulador se declara DENTRO de la funcion y antes del bucle', () => {
+        // Una declaración en scope de módulo haría que las alertas del tick N dependieran del tick
+        // N−1 y se derramaría entre tenants. El caso de aislamiento del bloque de arriba es su
+        // mitad de comportamiento.
+        const declAt = CONTROLLER_SRC.indexOf('const poAlerts = [];');
+        expect(declAt).toBeGreaterThan(-1);
+        expect(declAt).toBeGreaterThan(FN_AT);
+        expect(declAt).toBeLessThan(LOOP_AT);
+    });
+
+    test('Guarda 6 (D-03): la condicion es DERIVADA y esta en los DOS sitios de fallo', () => {
+        // Una sola aparición significaría que un sitio de fallo se quedó mudo: o los rechazos de Joi
+        // o los del POST dejarían de alertar, y nada más lo delataría.
+        expect(countOf(CONTROLLER_SRC, /priorErrors === 0/g)).toBe(2);
+        const first = CONTROLLER_SRC.indexOf('priorErrors === 0');
+        const second = CONTROLLER_SRC.indexOf('priorErrors === 0', first + 1);
+        expect(first).toBeGreaterThan(LOOP_AT);
+        expect(second).toBeLessThan(SUMMARY_BLOCK_AT);
+    });
+
+    test('Guarda 7 (Guarda 9 de la 20.3): sigue sin nacer ninguna etiqueta hermana del prefijo de la sonda', () => {
+        // La etiqueta de la alerta se eligió a propósito FUERA de ese espacio de nombres.
+        expect(CONTROLLER_SRC).not.toMatch(/\[PORTAL-CHECK-(?!SUMMARY)[A-Z-]+\]/);
+        // Tres sitios de emisión, uno solo de los cuales corre por tick: enviada, silenciada por el
+        // interruptor, y fallida. El tercero lo añadió el caso de resiliencia de este mismo archivo;
+        // antes de él eran dos. Ninguno vive dentro del bucle — eso lo prueba la Guarda 1.
+        expect(countOf(CONTROLLER_SRC, /\[PO-ALERT\]/g)).toBe(3);
+        expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=true/);
+        expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=false reason=disabled/);
+        expect(CONTROLLER_SRC).toMatch(/\[PO-ALERT\][^`]*sent=false reason=error/);
+    });
+
+    test('Guarda 8 (Q3-04): el interruptor se lee UNA vez, en el sitio del envio y en ningun otro', () => {
+        // Una segunda lectura dentro del bucle sería una rama por fila que nadie pidió; una lectura
+        // antes del bucle congelaría un valor que el arnés de pruebas muta entre casos.
+        expect(countOf(CONTROLLER_SRC, /config\.notifications\.poAlert\.enabled/g)).toBe(1);
+        expect(CONTROLLER_SRC.indexOf('config.notifications.poAlert.enabled')).toBeGreaterThan(SUMMARY_TAG_AT);
+    });
+
+    test('Guarda 9 (CLAUDE.md §6 #1 y #2): la utileria de consulta compartida sigue intacta', () => {
+        // Los dos números vienen de la Guarda 2 de la suite de la 20.3, medidos contra el fuente
+        // pre-20.5 y sin cambio en esta fase: CUATRO sitios de escritura (fallo de Joi, POST
+        // exitoso, POST fallido y reconciliación) que pasan el literal FESA, más UNA lectura, el
+        // SELECT por tenant, que pasa databases[index]. Total cinco. Si el primero sube sin que suba
+        // el segundo, alguien añadió una escritura que va a caer en la base por omisión de runQuery
+        // — el modo de falla exacto del PR #16, que rompió 7 llamadores.
+        expect(countOf(CONTROLLER_SRC, /runQuery\(/g)).toBe(5);
+        expect(countOf(CONTROLLER_SRC, /runQuery\([A-Za-z]+,\s*'FESA'\)/g)).toBe(4);
+        expect(countOf(CONTROLLER_SRC, /INSERT INTO fesa\.dbo\.fesaOCFocaltec/g)).toBe(4);
+        // El valor por omisión implícito no debe aparecer escrito nunca en este controlador.
+        expect(CONTROLLER_SRC).not.toMatch(/config\.database\.database/);
+        // Ninguna sentencia de actualización contra la tabla de control, por ningún camino.
+        expect(CONTROLLER_SRC).not.toMatch(/UPDATE\s+fesa\.dbo\.fesaOCFocaltec/i);
+    });
+});
