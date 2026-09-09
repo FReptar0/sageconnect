@@ -399,3 +399,98 @@ describe('buildEomEmailHtml variant (Q3-05 + Q3-01)', () => {
         expect(buildEomEmailHtml(payRows, 'payments', 'po-alert')).toMatch(/<p><em>Nota:/);
     });
 });
+
+describe('buildEomEmailHtml variante payment-report (fase 20.6, D-04 / D-08 / D-09)', () => {
+    // La fechaAuth de la PRIMERA fila es de otro año y de otro mes que el rótulo, a
+    // propósito: es la fila de la que el cuerpo sacaba su periodo antes de esta fase
+    // (`safeRows[0].fechaAuth`), y la ventana consultada es de 365 días, así que puede
+    // traer cualquier mes del año. Es el corazón del requisito 2.
+    const payRows = [
+        { tenant: 'COPDAT', idOrPo: 'PAY00001234', fechaAuth: '2025-11-03', attempts: 1, lastError: 'BANCO_NO_ENCONTRADO 2318' },
+        { tenant: 'COPDAT', idOrPo: 'PAY00005678', fechaAuth: '2025-12-19', attempts: 2, lastError: 'TIMEOUT 30s' },
+    ];
+
+    // Mismo guion largo que ya lleva el asunto en src/background.js.
+    const LABEL = 'quincena 2 — 2026-05';
+    const withLabel = { periodLabel: LABEL };
+
+    // El <h1> es siempre la primera línea del cuerpo.
+    const headingOf = (html) => html.split('\n')[0];
+
+    // Requisito 1, su casilla de aceptación literal.
+    test('1. el cuerpo de quincena no menciona el cierre de mes', () => {
+        const actual = buildEomEmailHtml(payRows, 'payments', 'payment-report', withLabel);
+        expect(actual).not.toContain('fin de mes');
+        expect(actual).not.toContain('al cierre del mes');
+        expect(actual).not.toContain('este mes');
+        expect(actual).toContain('Pagos pendientes');
+        expect(actual).toContain('en esta quincena');
+    });
+
+    // La mitad de control del caso 1: sin ella, el caso 1 pasaría igual si el helper
+    // hubiera dejado de emitir texto.
+    test('2. el mismo lote en la variante por omisión SÍ las menciona', () => {
+        const actual = buildEomEmailHtml(payRows, 'payments');
+        expect(actual).toContain('Pendientes fin de mes');
+        expect(actual).toContain('al cierre del mes');
+    });
+
+    // Requisito 2, y el caso que hoy falla en producción. La aserción negativa va sobre
+    // el ENCABEZADO y no sobre el cuerpo entero: la fecha de la fila sí aparece —y debe
+    // aparecer— en su propia celda de la tabla. Lo que no puede pasar es que se convierta
+    // en el rótulo del periodo.
+    test('3. el rótulo del cuerpo es el que le pasó el llamador, no el del lote', () => {
+        const actual = buildEomEmailHtml(payRows, 'payments', 'payment-report', withLabel);
+        expect(actual).toContain(LABEL);
+        expect(headingOf(actual)).toBe(`<h1>SageConnect: Pagos pendientes — ${LABEL}</h1>`);
+        expect(headingOf(actual)).not.toContain('2025-11');
+        expect(actual).not.toContain('Pendientes fin de mes');
+    });
+
+    test('4. lote vacío: mismo rótulo, caso vacío de quincena, pie de nota y pie de página', () => {
+        const actual = buildEomEmailHtml([], 'payments', 'payment-report', withLabel);
+        expect(actual).toContain(LABEL);
+        expect(actual).toContain('Sin pendientes en esta quincena');
+        expect(actual).not.toContain('este mes');
+        // El pie de nota 20.2-05 sigue apareciendo con el lote vacío: es justamente
+        // cuando un operador podría concluir que no falló nada.
+        expect(actual).toMatch(/<p><em>Nota:/);
+        expect(actual).toMatch(/>Ver POs<\/a>/);
+        expect(actual).toMatch(/>Ver pagos<\/a>/);
+    });
+
+    // D-07: el conteo de columnas no se separa entre variantes. T-20.6-07: lastError no
+    // llega a la tabla de pagos, asegurado sobre la variante nueva y no por herencia.
+    test('5. el conteo de columnas no ramifica (D-07)', () => {
+        const actual = buildEomEmailHtml(payRows, 'payments', 'payment-report', withLabel);
+        expect((actual.match(/<th>/g) || []).length).toBe(5);
+        expect((actual.match(/<td>/g) || []).length).toBe(10);
+        expect(actual).not.toContain('Último error');
+        expect(actual).not.toContain('BANCO_NO_ENCONTRADO 2318');
+        expect(actual).not.toContain('TIMEOUT 30s');
+    });
+
+    // T-20.6-06, la propiedad de seguridad de D-04 vuelta permanente: lo no reconocido
+    // degrada al cuerpo del cierre de mes de SU categoría, no miente sobre su contenido.
+    test('6. una pareja no soportada DEGRADA en vez de mentir', () => {
+        expect(buildEomEmailHtml(payRows, 'payments', 'payment-report')).toBe(buildEomEmailHtml(payRows, 'payments'));
+        expect(buildEomEmailHtml(payRows, 'payments', 'payment-report', {})).toBe(buildEomEmailHtml(payRows, 'payments'));
+        expect(buildEomEmailHtml(payRows, 'pos', 'payment-report', withLabel)).toBe(buildEomEmailHtml(payRows, 'pos'));
+    });
+
+    // Requisito 3, en una forma que sobrevive a un refactor del fixture.
+    test('7. el camino por omisión sigue siendo indistinguible', () => {
+        expect(buildEomEmailHtml(payRows, 'payments')).toBe(buildEomEmailHtml(payRows, 'payments', 'eom'));
+        expect(buildEomEmailHtml(payRows, 'payments')).toBe(buildEomEmailHtml(payRows, 'payments', 'eom', {}));
+        expect(buildEomEmailHtml([], 'payments')).toBe(buildEomEmailHtml([], 'payments', 'eom', {}));
+        expect(buildEomEmailHtml(payRows, 'pos')).toBe(buildEomEmailHtml(payRows, 'pos', 'eom', {}));
+    });
+
+    // T-20.6-05 asegurada SOBRE la ruta nueva, no heredada del código compartido —
+    // mismo método que usó la 20.5-03 para T-20-14.
+    test('8. el rótulo se escapa (T-20.6-05)', () => {
+        const actual = buildEomEmailHtml(payRows, 'payments', 'payment-report', { periodLabel: '<script>alert(1)</script>' });
+        expect(actual).toContain('&lt;script&gt;');
+        expect(actual).not.toContain('<script>');
+    });
+});
