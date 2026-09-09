@@ -114,16 +114,17 @@ Slash commands: `/test`, `/env-check`, `/diagnose`, `/deploy-checklist` (defined
 ## 9. Defense-in-depth invariant (do not break)
 
 ```
-axios (30s)  <  probe budget (2m)  <  step (5m)  <  child (10m)  <  lock (14m)
+axios (30s) / SMTP (30s)  <  probe budget (2m)  <  step (5m)  <  child (10m)  <  lock (14m)
 ```
 
 - `PORTAL_HTTP_TIMEOUT_MS` (default 30s) — aborts individual HTTP requests.
+- `MAIL_TIMEOUT_MS` (default 30s) — sets nodemailer's `connectionTimeout`, `greetingTimeout` and `socketTimeout` at both `EmailSender` call sites. Floor 1000 ms; one relational guard, `< STEP_TIMEOUT_MS`. Added in Phase 20.5, together with the second SMTP call site that made an unbounded mail send materially worse than it had been. It is a **sibling** of the axios tier, not a tier of its own depth: both default to 30s and both are innermost. It lives on `config.notifications`, not `config.mailing`, because `buildMailing()` returns `{}` when `MAIL_TRANSPORT` is unset and an `undefined` would pass the floor guard silently.
 - `PORTAL_PROBE_BUDGET_MS` (default 2m) — per-tick elapsed-time budget for the portal existence probe in `createPurchaseOrders`; paired with `PORTAL_PROBE_MAX_PER_TICK` (default 50). Added in Phase 20.4.
 - `STEP_TIMEOUT_MS` (default 5m) — wraps each of the 7 forResponse steps in `Promise.race`.
 - `CHILD_PROCESS_TIMEOUT_MS` (default 10m) — triggers SIGTERM → 30s grace → `taskkill /F /T` on `ImportaFacturasFocaltec.exe`.
 - `LOCK_TIMEOUT_MS` (default 14m = ~93% of 15-min cron cadence) — auto-release on `OperationManager` lock, emits `lock:timeout`.
 
-Every tier has a **floor** guard at startup — values below the minimum exit 1. The probe budget additionally has two **relational** guards, the only ones in the file: it must be `> PORTAL_HTTP_TIMEOUT_MS` (below one axios timeout the probe collapses to a single OC per tick) and `<= 50% of STEP_TIMEOUT_MS`. They live in the guard block that runs from the `LOCK_TIMEOUT_MS` check to the end of `src/config.js` — deliberately not cited by line number, because the block grows and a stale range is how this section came to omit an entire tier.
+Every tier has a **floor** guard at startup — values below the minimum exit 1. Two tiers additionally carry **relational** guards. The probe budget has two of its own: it must be `> PORTAL_HTTP_TIMEOUT_MS` (below one axios timeout the probe collapses to a single OC per tick) and `<= 50% of STEP_TIMEOUT_MS`. `MAIL_TIMEOUT_MS` has one, added in Phase 20.5: it must be `< STEP_TIMEOUT_MS`, and the comparison is `>=` so that equality fails — a mail timeout exactly equal to the step budget is not strictly bounded by it. Do not restate that as a total count for the file; an absolute count stated here is how this section came to omit an entire tier in the first place (finding IN-01 of Phase 20.4). All of them live in the guard block that runs from the `LOCK_TIMEOUT_MS` check to the end of `src/config.js` — deliberately not cited by line number, because the block grows and a stale range is the same failure in a different coat.
 
 **What the budget does and does not promise** (corrected in Phase 20.4 after the code review): it bounds how much *probing* one tick performs. It does **not** bound the step — `STEP_TIMEOUT_MS` remains the outer bound. An OC already admitted past the budget check can still overshoot by its own tail: GET 30s + POST 30s + the 180s `requestTimeout` at `src/utils/SQLServerConnection.js:18`. Reserving that tail would force the budget to ≤ 60s, which throttles a healthy portal to ~2 probes per tick — worse than the problem it solves. The arithmetic lives in exactly one place, the relational guard's comment in `src/config.js`; do not restate it elsewhere.
 
