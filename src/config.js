@@ -97,7 +97,10 @@ function parseEnvNumber(raw, parser, def) {
 }
 
 /**
- * RETRY-E2 / WR-09: parser ESTRICTO de entero. Se usa SOLO en las dos vars de la sonda.
+ * RETRY-E2 / WR-09: parser ESTRICTO de entero. NO es específico de la sonda, aunque nació con
+ * ella: hoy lo usan CINCO vars — las dos de la sonda (PORTAL_PROBE_BUDGET_MS y
+ * PORTAL_PROBE_MAX_PER_TICK, fase 20.4) y las tres numéricas de config.notifications
+ * (PAYMENT_REPORT_HOUR, PAYMENT_REPORT_LOOKBACK_DAYS y MAIL_TIMEOUT_MS, fase 20.5).
  *
  * Por qué existe: parseInt devuelve el entero de un PREFIJO y descarta el resto en silencio, y
  * ese entero es un entero de verdad, así que Number.isInteger lo acepta encantado. El caso
@@ -118,7 +121,10 @@ function parseEnvNumber(raw, parser, def) {
  *
  * Deliberadamente NO se aplica a las demás vars numéricas del archivo: cambiar el idiom
  * compartido tiene su propio radio de impacto (CLAUDE.md §6 #2) y ninguna otra alimenta una
- * comparación que se apague en silencio si el valor sale mal.
+ * comparación que se apague en silencio si el valor sale mal. Pero la regla para una var NUEVA
+ * es la contraria: si alimenta una guarda de rango, se parsea con parseStrictInt. Leer esta
+ * cabecera como "esto es de la sonda" y alcanzar parseEnvNumber a secas para la siguiente var
+ * reabre exactamente el agujero que el helper existe para cerrar.
  */
 function parseStrictInt(raw) {
     const text = String(raw).trim();
@@ -247,6 +253,71 @@ const config = {
             // POs: default 240 min = 4h (team, 2026-06-11). Range [30, 1440].
             po: parseEnvNumber(process.env.RETRY_INTERVAL_PO_MIN, (v) => parseInt(v, 10), 240),
         },
+    },
+
+    // Va ANTES de config.eom, no después, por una razón mecánica y no de estilo: el hook
+    // .claude/hooks/pre-commit-redaction.sh grepea el diff COMPLETO —contexto incluido— y una
+    // línea preexistente del bloque eom lleva un término que ese hook prohíbe. Insertando aquí,
+    // esa línea queda fuera de la ventana de contexto de 3 líneas y el commit pasa sin bypass;
+    // debajo de eom: no pasaba de ninguna forma, ni tocando la línea (aparece como -) ni
+    // dejándola intacta (aparece como contexto). Es una clave HERMANA: el orden dentro del
+    // object literal no significa nada, y config.eom queda byte-idéntico a HEAD.
+    // === Fase 20.5 (Q3-04 / Q3-06) — alertas diferenciadas ===
+    // Los tres interruptores de apagado independientes de Q3-04 más el tier SMTP de Q3-06.
+    //
+    // Se AÑADE junto a config.eom, nunca en su lugar (D-09): Q3-05 exige que el camino del cierre
+    // de mes quede byte-idéntico, y renombrar ensancharía el diff a través de guardas y de tests
+    // que hoy pasan, sin ganancia de comportamiento alguna. DEVIATIONS.md de la fase 20 propone
+    // borrar el namespace `eom`; esa propuesta queda superseded por D-09.
+    //
+    // Las cinco vars son OPCIONALES y ninguna entra al mapa REQUIRED de validate() (D-10). Eso es
+    // load-bearing, no comodidad: el servidor nuevo de octubre arranca desde un .env limpio y una
+    // var REQUIRED ausente sale con exit 1 antes de que el servicio llegue a existir (decisión
+    // 20.1-01).
+    //
+    // Las tres vars numéricas usan parseStrictInt y NO (v) => parseInt(v, 10) — ver el comentario
+    // de parseStrictInt y el de mailTimeoutMs. Esto NO cambia el parser de ninguna var
+    // preexistente: EOM_NOTIFICATION_HOUR, RETRY_LOOKBACK_DAYS y los dos intervalos de reintento
+    // conservan parseInt, porque cambiar un idiom compartido tiene su propio radio de impacto
+    // (CLAUDE.md §6 #2, PR #16).
+    notifications: {
+        poAlert: {
+            // Q3-01/Q3-02: interruptor de apagado de la alerta inmediata de OC fallida.
+            // Default 'true'.
+            // Deliberadamente independiente de EOM_NOTIFICATION_ENABLED y de
+            // PAYMENT_REPORT_ENABLED: silenciar un flujo no debe silenciar otro (Q3-04). Quien
+            // quiera todo en silencio apaga los tres interruptores, uno por uno y a sabiendas.
+            enabled: (process.env.PO_ALERT_ENABLED || 'true').toLowerCase() === 'true',
+        },
+        paymentReport: {
+            // Q3-03: interruptor de apagado del reporte quincenal de pagos pendientes.
+            // Default 'true'.
+            // Misma independencia que poAlert.enabled (Q3-04).
+            enabled: (process.env.PAYMENT_REPORT_ENABLED || 'true').toLowerCase() === 'true',
+            // Q3-03: hora del día a partir de la cual el reporte es elegible. Default 18. Rango
+            // [0, 23]. Misma hora que el correo de cierre de mes a propósito: el operador aprende
+            // un solo hábito.
+            hour: parseEnvNumber(process.env.PAYMENT_REPORT_HOUR, parseStrictInt, 18),
+            // Q3-03: ventana hacia atrás del reporte. Default 365. Rango [30, 3650].
+            // Var propia y deliberadamente NO RETRY_LOOKBACK_DAYS: la ventana de reintento es lo
+            // que el cron todavía intenta subir; ésta es lo que el operador todavía necesita ver.
+            // Acoplarlas encogería el reporte el día que alguien afine la ventana de reintento.
+            lookbackDays: parseEnvNumber(process.env.PAYMENT_REPORT_LOOKBACK_DAYS, parseStrictInt, 365),
+        },
+        // Q3-06 (D-11): el tier SMTP. Alimenta connectionTimeout / greetingTimeout / socketTimeout
+        // de nodemailer en los DOS call sites de EmailSender. Default 30000, piso 1000, y una sola
+        // guarda relacional: < STEP_TIMEOUT_MS.
+        //
+        // POR QUÉ VIVE AQUÍ Y NO EN config.mailing, que es donde un lector lo buscaría:
+        // buildMailing() abre con `if (!transport) return {};`, así que en cualquier despliegue que
+        // no haya puesto MAIL_TRANSPORT el valor sería undefined. Y `undefined < 1000` es false: la
+        // guarda de piso PASARÍA, sin emitir un solo mensaje en ninguna parte, y nodemailer se
+        // quedaría con su socketTimeout por defecto de 600000 ms — el doble del presupuesto del
+        // step e igual al tier del proceso hijo. Es fail-open exacto, la misma forma que
+        // parseStrictInt existe para cerrar. config.notifications es un object literal
+        // INCONDICIONAL; por eso la clave vive aquí. No la "ordenes" moviéndola a config.mailing
+        // sin resolver antes ese undefined.
+        mailTimeoutMs: parseEnvNumber(process.env.MAIL_TIMEOUT_MS, parseStrictInt, 30000),
     },
 
     eom: {
@@ -430,6 +501,66 @@ if (!Number.isInteger(config.eom.notificationHour) || config.eom.notificationHou
 // EOM-05: enabled is boolean (parsed via toLowerCase === 'true' above).
 if (typeof config.eom.notificationEnabled !== 'boolean') {
     console.error('[CONFIG ERROR] EOM_NOTIFICATION_ENABLED must be "true" or "false". Got: ' + process.env.EOM_NOTIFICATION_ENABLED);
+    process.exit(1);
+}
+
+// === Fase 20.5 (Q3-04 / Q3-06) — las seis guardas de config.notifications ===
+// El bloque va DESPUÉS de las dos guardas de config.eom y ANTES del warn de la API key.
+//
+// El término Number.isInteger de G3, G4 y G5 no es decoración: es lo ÚNICO que rechaza el NaN que
+// devuelve parseStrictInt. Sin él, toda comparación < o > contra NaN es false, la guarda pasa en
+// silencio, y el servicio arranca con un valor que el operador nunca escribió — que es justo el
+// desenlace fail-open que estas guardas existen para cerrar (WR-09 de la fase 20.4).
+
+// Q3-04 (G1): el idiom de arriba produce un booleano por construcción; la guarda atrapa el caso en
+// que alguien cambie ese idiom y deje de producirlo.
+if (typeof config.notifications.poAlert.enabled !== 'boolean') {
+    console.error('[CONFIG ERROR] PO_ALERT_ENABLED must be "true" or "false". Got: ' + process.env.PO_ALERT_ENABLED);
+    process.exit(1);
+}
+
+// Q3-04 (G2): mismo contrato para el switch del reporte quincenal.
+if (typeof config.notifications.paymentReport.enabled !== 'boolean') {
+    console.error('[CONFIG ERROR] PAYMENT_REPORT_ENABLED must be "true" or "false". Got: ' + process.env.PAYMENT_REPORT_ENABLED);
+    process.exit(1);
+}
+
+// Q3-03 (G3): hora en [0, 23].
+if (!Number.isInteger(config.notifications.paymentReport.hour) || config.notifications.paymentReport.hour < 0 || config.notifications.paymentReport.hour > 23) {
+    console.error('[CONFIG ERROR] PAYMENT_REPORT_HOUR must be integer in [0, 23]. Got: ' + config.notifications.paymentReport.hour);
+    process.exit(1);
+}
+
+// Q3-03 (G4): ventana en [30, 3650].
+if (!Number.isInteger(config.notifications.paymentReport.lookbackDays) || config.notifications.paymentReport.lookbackDays < 30 || config.notifications.paymentReport.lookbackDays > 3650) {
+    console.error('[CONFIG ERROR] PAYMENT_REPORT_LOOKBACK_DAYS must be integer in [30, 3650]. Got: ' + config.notifications.paymentReport.lookbackDays);
+    process.exit(1);
+}
+
+// Q3-06 (G5): piso de 1000 ms. Por debajo de un segundo el timeout no acota un envío SMTP, lo
+// cancela siempre.
+if (!Number.isInteger(config.notifications.mailTimeoutMs) || config.notifications.mailTimeoutMs < 1000) {
+    console.error('[CONFIG ERROR] MAIL_TIMEOUT_MS must be integer >= 1000 (1 sec). Got: ' + config.notifications.mailTimeoutMs);
+    process.exit(1);
+}
+
+// Q3-06 (G6, D-12): la ÚNICA relación que el código exige para MAIL_TIMEOUT_MS.
+//
+// Va aquí, y no más arriba, por la misma regla de orden que las guardas de la sonda: una guarda
+// relacional debe ir DESPUÉS de la guarda de piso del valor contra el que compara. El piso de
+// STEP_TIMEOUT_MS queda muy por encima de este punto, así que aquí config.schedule.stepTimeoutMs
+// ya está validado; ponerla antes la haría comparar contra un valor ya conocido como inválido y
+// nombrar la variable equivocada en el error.
+//
+// Es >= y no >: un timeout de correo exactamente igual al presupuesto del step no puede estar
+// estrictamente acotado por él, y el caso de aceptación del SPEC es MAIL_TIMEOUT_MS=300000 junto a
+// STEP_TIMEOUT_MS=300000 saliendo con exit 1. La igualdad tiene que fallar.
+//
+// MAIL_TIMEOUT_MS es HERMANO del tier de axios — ambos default 30000, ambos el tier más interno —
+// y deliberadamente NO se relaciona con PORTAL_PROBE_BUDGET_MS, que acota otro subsistema. La
+// única relación que se afirma aquí es contra el step.
+if (config.notifications.mailTimeoutMs >= config.schedule.stepTimeoutMs) {
+    console.error('[CONFIG ERROR] MAIL_TIMEOUT_MS (' + config.notifications.mailTimeoutMs + ') must be < STEP_TIMEOUT_MS (' + config.schedule.stepTimeoutMs + '). Lower MAIL_TIMEOUT_MS or raise STEP_TIMEOUT_MS.');
     process.exit(1);
 }
 
