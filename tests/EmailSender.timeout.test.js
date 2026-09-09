@@ -68,11 +68,14 @@ beforeEach(() => {
 describe('EmailSender contra un SMTP que acepta y nunca saluda (Q3-06)', () => {
     test('(1) SPEC casilla 14: sendOperatorReport se resuelve en segundos, no en diez minutos', async () => {
         const started = Date.now();
+        // El mensaje se asserta como "algun texto" y no literal a proposito: lo produce
+        // nodemailer contra un socket real y puede cambiar entre versiones de la libreria.
+        // Fijarlo textual volveria fragil esta suite por una razon ajena a lo que prueba.
         await expect(sendOperatorReport({
             subject: '[SageConnect] Prueba de timeout',
             html: '<p>cuerpo</p>',
             callerLogFile: 'EmailSender',
-        })).resolves.toBeUndefined();
+        })).resolves.toEqual({ delivered: false, error: expect.any(String) });
         const elapsed = Date.now() - started;
         // Cota generosa sobre 1500 ms a proposito: lo que importa es "cierra en segundos"
         // frente a un default que lo habria dejado colgado 600000 ms. El timeout explicito
@@ -93,12 +96,12 @@ describe('EmailSender contra un SMTP que acepta y nunca saluda (Q3-06)', () => {
         expect(warnCall[0]).toBe('EmailSender');
     }, 15000);
 
-    test('(3) resuelve a undefined y ningun rechazo se escapa', async () => {
+    test('(3) resuelve al objeto fail-closed y ningun rechazo se escapa', async () => {
         await expect(sendOperatorReport({
             subject: '[SageConnect] Prueba de timeout',
             html: '<p>cuerpo</p>',
             callerLogFile: 'EmailSender',
-        })).resolves.toBeUndefined();
+        })).resolves.toEqual({ delivered: false, error: expect.any(String) });
     }, 15000);
 
     test('(4) control: sin la llave en el mock, el respaldo del accesor tampoco truena', async () => {
@@ -123,7 +126,7 @@ describe('EmailSender contra un SMTP que acepta y nunca saluda (Q3-06)', () => {
                 subject: '[SageConnect] Respaldo',
                 html: '<p>cuerpo</p>',
                 callerLogFile: 'EmailSender',
-            })).resolves.toBeUndefined();
+            })).resolves.toEqual({ delivered: false, error: expect.any(String) });
             expect(Date.now() - started).toBeLessThan(2000);
         } finally {
             mockedConfig.notifications.mailTimeoutMs = savedTimeout;
