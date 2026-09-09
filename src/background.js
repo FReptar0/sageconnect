@@ -648,7 +648,7 @@ function buildEomDataQuery(category, tenantDb, scope = { scope: 'current_month' 
         `;
     }
     // category === 'payments'
-    const dateField = 'P.AUDTDATE';
+    const dateField = 'CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))';
     // RETRY-S3 / D-10: este OUTER APPLY solo puede contar filas. `fesa.dbo.fesaPagosFocaltec`
     // tiene exactamente cuatro columnas (idCia, NoPagoSage, status, idFocaltec) segun la lectura
     // del esquema de produccion del 2026-07-27, asi que no existe columna alguna que pueda
@@ -661,7 +661,7 @@ function buildEomDataQuery(category, tenantDb, scope = { scope: 'current_month' 
         SELECT
             '${tenantDb}' AS tenant,
             RTRIM(P.DOCNBR) AS idOrPo,
-            P.AUDTDATE AS fechaAuth,
+            CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))) AS fechaAuth,
             COALESCE(ef.errorCount, 0) AS attempts
         FROM APBTA B
         JOIN BKACCT BK ON B.IDBANK = BK.BANK

@@ -90,7 +90,7 @@ async function sweepTenantPayments(tenantIndex) {
         SELECT
             RTRIM(P.DOCNBR) AS payment_id,
             '${tenantDb}' AS tenant,
-            P.AUDTDATE AS fechaAuth,
+            CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))) AS fechaAuth,
             COALESCE(ef.errorCount, 0) AS errorCount,
             ef.lastErrorAt,
             -- D-01: reloj único de la comparación de reintentos, del MISMO SELECT que lastErrorAt.
@@ -105,7 +105,7 @@ async function sweepTenantPayments(tenantIndex) {
             AND B.BATCHSTAT = 3
             AND P.ERRENTRY = 0
             AND P.RMITTYPE = 1
-            AND ${buildScopeWhere(config.retry, { dateField: 'P.AUDTDATE' })}
+            AND ${buildScopeWhere(config.retry, { dateField: 'CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))' })}
             AND P.DOCNBR NOT IN (
                 SELECT NoPagoSage
                 FROM fesa.dbo.fesaPagosFocaltec
