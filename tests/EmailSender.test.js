@@ -24,7 +24,11 @@ jest.mock('../src/config', () => ({
         defaultAddress: { city: '', country: '', identifier: '', municipality: '', state: '', street: '', zip: '' },
         addressIdentifiersSkip: []
     },
-    license: { adminEmail: 'admin@test.com' }
+    license: { adminEmail: 'admin@test.com' },
+    // Sin esta llave todos los casos ejercitarian el respaldo heredado del accesor
+    // mailTimeoutMs() en vez de la ruta de config -- justo la forma de desactivado
+    // silencioso que la fase 20.4 corrigio en dos mocks de controlador.
+    notifications: { mailTimeoutMs: 30000 }
 }));
 
 const mockTransportSendMail = jest.fn();
@@ -37,6 +41,10 @@ jest.mock('../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }
 
 // EmailSender loads its own config internally via require('../config')
 const { sendMail, sendOperatorReport } = require('../src/utils/EmailSender');
+
+// Mismas instancias que ve EmailSender: el modulo mockeado y el mock de nodemailer.
+const nodeMailer = require('nodemailer');
+const mockedConfig = require('../src/config');
 
 describe('sendMail util', () => {
     // Integration test -- requires real SMTP credentials in .env
@@ -152,5 +160,72 @@ describe('sendOperatorReport', () => {
         // sendMail itself remains a function with arity >= 1; deeper behavior covered by the existing skipped integration test
         expect(typeof sendMail).toBe('function');
         expect(sendMail.length).toBeGreaterThanOrEqual(1);
+    });
+});
+
+describe('MAIL_TIMEOUT_MS wiring (Q3-06)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockTransportSendMail.mockResolvedValue({ accepted: ['ops1@test.com'], rejected: [] });
+    });
+
+    test('(1) sendMail entrega a createTransport los tres timeouts de nodemailer', async () => {
+        await sendMail({
+            h1: 'Prueba', p: 'cuerpo', status: 200, message: 'OK',
+            position: 0, idCia: 'TESTCOMP',
+        });
+        const transportConfig = nodeMailer.createTransport.mock.calls[0][0];
+        expect(transportConfig.connectionTimeout).toBe(30000);
+        expect(transportConfig.greetingTimeout).toBe(30000);
+        expect(transportConfig.socketTimeout).toBe(30000);
+    });
+
+    test('(2) sendOperatorReport pone las tres opciones en su PROPIO transportConfig', async () => {
+        // Se asserta aparte de (1) a proposito: son dos objetos distintos y arreglar uno
+        // no puede darse por hecho que arregla el otro.
+        await sendOperatorReport({
+            subject: '[SageConnect] Prueba',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+        const transportConfig = nodeMailer.createTransport.mock.calls[0][0];
+        expect(transportConfig.connectionTimeout).toBe(30000);
+        expect(transportConfig.greetingTimeout).toBe(30000);
+        expect(transportConfig.socketTimeout).toBe(30000);
+    });
+
+    test('(3) el valor viene de config y no de un literal: 7777 llega hasta nodemailer', async () => {
+        // Esta es la guarda anti-hardcode. Si alguien reemplaza la lectura de config por
+        // la constante, este caso se pone rojo; sin el, la conexion podria revertirse a un
+        // literal sin que nada fallara -- el hueco exacto que la revision de 20.4 marco.
+        const saved = mockedConfig.notifications.mailTimeoutMs;
+        mockedConfig.notifications.mailTimeoutMs = 7777;
+        try {
+            await sendOperatorReport({
+                subject: '[SageConnect] Prueba',
+                html: '<p>x</p>',
+                callerLogFile: 'TestCaller',
+            });
+            const transportConfig = nodeMailer.createTransport.mock.calls[0][0];
+            expect(transportConfig.connectionTimeout).toBe(7777);
+            expect(transportConfig.greetingTimeout).toBe(7777);
+            expect(transportConfig.socketTimeout).toBe(7777);
+        } finally {
+            // Se restaura dentro del mismo caso para no afectar a ningun otro.
+            mockedConfig.notifications.mailTimeoutMs = saved;
+        }
+    });
+
+    test('(4) regresion: socketTimeout esta presente y NO es el default 600000 de nodemailer', async () => {
+        // 600000 ms es el numero especifico que este requisito existe para desplazar:
+        // el doble de STEP_TIMEOUT_MS e igual a CHILD_PROCESS_TIMEOUT_MS.
+        await sendOperatorReport({
+            subject: '[SageConnect] Prueba',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+        const transportConfig = nodeMailer.createTransport.mock.calls[0][0];
+        expect(transportConfig.socketTimeout).toBeDefined();
+        expect(transportConfig.socketTimeout).not.toBe(600000);
     });
 });
