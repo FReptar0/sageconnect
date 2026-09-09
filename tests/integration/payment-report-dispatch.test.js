@@ -85,7 +85,13 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
         jest.clearAllMocks();
         if (fs.existsSync(tmpRoot)) fs.rmSync(tmpRoot, { recursive: true, force: true });
         fs.mkdirSync(tmpRoot, { recursive: true });
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        // Fase 20.6 — el canal de correo del operador devuelve el desenlace de la entrega y el
+        // sitio de llamada lo lee en cerrado, así que el doble por omisión tiene que AFIRMAR la
+        // entrega: un valor ausente cae del lado de la no entrega y todos los casos de éxito
+        // pasarían a escribir un centinela de fallo.
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
+        // Este otro se queda como está a propósito: el remitente del buzón de administración no
+        // cambió de contrato en esta fase y aquí sólo existe para la aserción NEGATIVA de D-15.
         mockSendAdminAlert.mockResolvedValue(undefined);
         mockRunQuery.mockResolvedValue({ recordset: [] });
     });
@@ -121,7 +127,7 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
         expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
 
         jest.clearAllMocks();
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
         mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00001234', '2026-05-12')] });
 
         await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 19, 0, 0), config);
@@ -157,7 +163,7 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
 
         // El día 15 sigue siendo la quincena 1: mismo centinela, silencio.
         jest.clearAllMocks();
-        mockSendOperatorReport.mockResolvedValue(undefined);
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
         await dispatchPaymentReportIfDue(new Date(2026, 4, 15, 18, 5, 0), config);
         expect(mockSendOperatorReport).not.toHaveBeenCalled();
     });
@@ -276,9 +282,14 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
 
     // D-15: LICENSE_ADMIN_EMAIL está reservado al timeout del proceso hijo. La aserción
     // negativa es la que se pone en rojo si alguien copia aquí el respaldo del cierre de mes.
-    test('SMTP caído: el centinela se escribe igual con success:false y NO se avisa al buzón de administración', async () => {
+    //
+    // Fase 20.6 / D-14: el doble ya no simula un RECHAZO, simula una NO ENTREGA. WR-09 de la
+    // revisión de la 20.5 señaló que el rechazo describe un estado que producción no puede
+    // alcanzar —el canal de correo del operador nunca lanza—, así que una prueba verde era
+    // compatible con el defecto en vivo. Ahora el doble refleja lo que la función hace de veras.
+    test('correo no entregado: el centinela se escribe igual con success:false y NO se avisa al buzón de administración', async () => {
         mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00005555', '2026-05-13')] });
-        mockSendOperatorReport.mockRejectedValueOnce(new Error('SMTP connection refused'));
+        mockSendOperatorReport.mockResolvedValueOnce({ delivered: false, error: 'SMTP connection refused' });
 
         await expect(dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config)).resolves.toBeUndefined();
 
@@ -288,6 +299,14 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
         expect(payload.rowCount).toBe(1);
 
         expect(mockSendAdminAlert).not.toHaveBeenCalled();
+
+        // El desenlace tiene que constar en un nivel que un operador encuentre, y la línea de
+        // éxito no puede haberse emitido: afirmar una entrega que no consta es exactamente el
+        // defecto que esta fase viene a quitar.
+        expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+            expect.stringMatching(/^\[PAYREPORT-DISPATCH\] period=2 rows=1 sent=false err=SMTP connection refused$/));
+        expect(mockLogGenerator).not.toHaveBeenCalledWith('EomNotification', 'info',
+            expect.stringMatching(/sent=true/));
     });
 
     // Un periodo vacío es justo cuando un operador podría concluir que no falló nada; el pie
@@ -305,5 +324,88 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
         const payload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'payment-report-2026-05-2.sent'), 'utf8'));
         expect(payload.success).toBe(true);
         expect(payload.rowCount).toBe(0);
+    });
+
+    // Fase 20.6 — el cuerpo de quincena cableado y el centinela honesto, medidos en el sitio de
+    // llamada real y no en el constructor. Todos los dobles de aquí van por VALOR DE RETORNO y
+    // no por rechazo simulado (D-14).
+    describe('Fase 20.6 — cuerpo de quincena y centinela honesto', () => {
+        // Requisito 1. Hasta esta fase el reporte pedía la variante por omisión y salía vestido
+        // con el cuerpo del cierre de mes, contradiciendo su propio asunto.
+        test('el cuerpo es el de quincena, no el del cierre de mes', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00006001', '2026-05-14')] });
+
+            await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config);
+
+            const html = mockSendOperatorReport.mock.calls[0][0].html;
+            expect(html).not.toContain('fin de mes');
+            expect(html).not.toContain('al cierre del mes');
+            expect(html).not.toContain('este mes');
+            expect(html).toContain('Pagos pendientes');
+            expect(html).toContain('en esta quincena');
+        });
+
+        // Requisito 2, y el caso que hoy falla en producción: el rótulo del cuerpo salía de la
+        // fecha de la PRIMERA fila del lote —una fila arbitraria de una ventana de 365 días—
+        // mientras el asunto anunciaba la quincena en curso.
+        //
+        // La aserción negativa va sobre el ENCABEZADO y no sobre el cuerpo entero: la tabla
+        // renderiza esa fecha en su propia celda y debe hacerlo, así que exigir su ausencia
+        // global sería exigir que la tabla no muestre sus datos. Sobre el encabezado se refuerza
+        // a igualdad byte a byte, más estricta que la ausencia pedida: con la variante por
+        // omisión este mismo lote produce «SageConnect: Pendientes fin de mes — 2025-11».
+        test('el rótulo del cuerpo es el mismo que el del asunto', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00006002', '2025-11-03')] });
+
+            await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config);
+
+            const { subject, html } = mockSendOperatorReport.mock.calls[0][0];
+            const heading = html.split('\n')[0];
+
+            expect(subject).toContain('quincena 2 — 2026-05');
+            expect(html).toContain('quincena 2 — 2026-05');
+            expect(heading).toBe('<h1>SageConnect: Pagos pendientes — quincena 2 — 2026-05</h1>');
+            expect(heading).not.toContain('2025-11');
+        });
+
+        // El lote vacío es donde «este mes» sí discrimina: el caso vacío del cierre de mes dice
+        // «Sin pendientes en esta categoría este mes». Con filas, esa cadena no aparece en
+        // ninguna de las dos variantes.
+        test('lote vacío: el cuerpo de quincena sigue saliendo, con su pie de nota', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [] });
+
+            await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config);
+
+            const html = mockSendOperatorReport.mock.calls[0][0].html;
+            expect(html).toContain('Sin pendientes en esta quincena');
+            expect(html).toContain('no registra el detalle del error de cada pago');
+            expect(html).not.toContain('este mes');
+
+            const payload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'payment-report-2026-05-2.sent'), 'utf8'));
+            expect(payload.success).toBe(true);
+            expect(payload.rowCount).toBe(0);
+        });
+
+        // Requisito 5 por el lado del éxito. El archivo ya tenía idempotencia por periodo, pero
+        // ningún caso encadenaba «éxito → centinela honesto → no-op» en uno solo.
+        test('transporte sano: el centinela dice success:true y el segundo tick es no-op', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00006004', '2026-05-17')] });
+
+            await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config);
+
+            const sentinel = path.join(tmpRoot, 'payment-report-2026-05-2.sent');
+            const payload = JSON.parse(fs.readFileSync(sentinel, 'utf8'));
+            expect(payload.success).toBe(true);
+            expect(payload.error).toBeUndefined();
+
+            jest.clearAllMocks();
+            mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00006004', '2026-05-17')] });
+
+            await dispatchPaymentReportIfDue(new Date(2026, 4, 16, 20, 30, 0), config);
+
+            expect(mockSendOperatorReport).not.toHaveBeenCalled();
+            expect(mockRunQuery).not.toHaveBeenCalled();
+        });
     });
 });
