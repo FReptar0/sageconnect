@@ -237,7 +237,7 @@ Plans:
 
 Plans:
 - [x] 20.6-01-PLAN.md (wave 1) — `sendOperatorReport` devuelve `{ delivered, error }` y sigue sin lanzar (D-01); sin `throwOnFailure` (D-02) ni EventEmitter (D-03), con guarda estructural que lo vuelve permanente. Contrato que consumen los planes 03, 04 y 05 [REQ 4]
-- [ ] 20.6-02-PLAN.md (wave 1) — variante `payment-report` en `buildEomEmailHtml`, ramificada por `category` ademas de por `variant` (D-04), y `opts.periodLabel` como cuarto parametro por objeto (D-09). El cuerpo del cierre de mes queda byte a byte y el fixture lo prueba [REQ 1, 2, 3]
+- [x] 20.6-02-PLAN.md (wave 1) — variante `payment-report` en `buildEomEmailHtml`, ramificada por `category` ademas de por `variant` (D-04), y `opts.periodLabel` como cuarto parametro por objeto (D-09). El cuerpo del cierre de mes queda byte a byte y el fixture lo prueba [REQ 1, 2, 3]
 - [ ] 20.6-03-PLAN.md (wave 2, dep 01) — la linea de la alerta de OCs distingue entregado de no entregado; el caso perdido sube a `warn` con el conteo y las claves de las OCs afectadas (D-13). El bloque sigue sin relanzar; Guarda 7 pasa de tres a cuatro sitios de emision [REQ 6]
 - [ ] 20.6-04-PLAN.md (wave 2, dep 01+02) — `dispatchPaymentReportIfDue` con cuerpo de quincena y un rotulo unico compartido con su asunto (D-08), y payload de centinela honesto. El centinela se sigue escribiendo SIEMPRE (D-10) y sigue sin respaldo al buzon de administracion (D-12). Incluye el punto de control de archivo critico para `src/background.js` [REQ 1, 2, 5]
 - [ ] 20.6-05-PLAN.md (wave 3, dep 04) — la rama de fallo de `dispatchEomIfDue` se vuelve alcanzable y con ella el escalamiento de REQ EOM-04, que hoy es codigo muerto (D-11); una prueba la observa correr con un doble por valor de retorno (D-14) [REQ 3, 7]
