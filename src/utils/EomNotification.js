@@ -1,5 +1,6 @@
 // EOM-01 / EOM-03 / EOM-04 / D-07 / D-08 / D-10 / D-15 / D-16: gate evaluation, atomic sentinel I/O, and HTML body builder for the end-of-month operator email.
 // 20.2: RETRY-S3 / D-10 / D-11 — the payments table drops the error-description column (its control table cannot hold one); the POs table is unchanged.
+// 20.5: Q3-03 / Q3-05 / D-06 / D-07 / D-09 / D-12 — biweekly payment-report gate (no exact-day term, the sentinel path carries the period) and a `po-alert` variant of the HTML body whose default output stays byte-identical.
 
 const fs = require('fs');
 const path = require('path');
@@ -78,6 +79,94 @@ function shouldDispatchEom(now, sentinelPath, eomConfig) {
     }
 
     if (now.getHours() < eomConfig.notificationHour) {
+        return false;
+    }
+
+    if (fs.existsSync(sentinelPath)) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Resolve which half of the month a date falls in. Natural periods per CONTEXT
+ * D-06: days 1 to 15 are period 1, day 16 to the end of the month is period 2.
+ * February needs no special case — the upper period is defined as "16 or later",
+ * never as "16 to 30", so 28-, 29-, 30- and 31-day months all resolve the same way.
+ *
+ * Fail-closed like the rest of the module: anything that is not a valid `Date`
+ * yields `null` rather than a guessed period.
+ *
+ * @example
+ * paymentPeriodOf(new Date(2026, 1, 28)) // => 2  (February needs no branch)
+ *
+ * @param {Date} date - Date instance.
+ * @returns {1|2|null} Period ordinal, or `null` on bad input.
+ */
+function paymentPeriodOf(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return null;
+    }
+    return date.getDate() <= 15 ? 1 : 2;
+}
+
+/**
+ * Decide whether the biweekly pending-payment report should be dispatched on
+ * this cron tick (Q3-03). Clock-injected per CONTEXT D-16 and fail-closed in the
+ * same order as `shouldDispatchEom` above, so the two gates read as a pair.
+ *
+ * Returns `true` only when ALL hold:
+ *   - reportConfig.enabled === true            (short-circuit kill-switch, Q3-04)
+ *   - `now` is a valid Date and `sentinelPath` a non-empty string
+ *   - now.getHours() >= reportConfig.hour
+ *   - the per-period sentinel file does NOT exist (idempotency)
+ *
+ * D-07 — there is deliberately NO exact-day term here, and its absence IS the
+ * decision. The period is carried by the sentinel PATH, which the caller builds
+ * from `paymentPeriodOf(now)`. The predicate is therefore true on the FIRST tick
+ * at or after the period start, and false on every tick once the sentinel lands.
+ * Requiring the day to be exactly the 1st or the 16th would mean that a service
+ * that was down, restarting or licence-blocked on that day loses the period's
+ * report permanently and silently — nothing anywhere would report the gap. The
+ * sentinel is what makes "at or after" idempotent, so no day term is needed at all.
+ *
+ * D-09 / Q3-04 — the kill-switch read here is `reportConfig.enabled`. It is
+ * deliberately NOT the EOM key name
+ * (`notificationEnabled`): the two namespaces use different key names because
+ * they are independent switches, and reusing the EOM name here would invite a
+ * later merge of `config.eom` into `config.notifications`.
+ *
+ * @example
+ * // The 16th was missed; the period's report has still not gone out.
+ * shouldDispatchPaymentReport(new Date(2026, 8, 20, 18, 5), 'logs/payment-report-2026-09-2.sent', config.notifications.paymentReport)
+ * // => true
+ *
+ * @param {Date} now - Current time (clock injection).
+ * @param {string} sentinelPath - Path to the per-period sentinel file.
+ * @param {{hour: number, enabled: boolean}} reportConfig - `config.notifications.paymentReport`.
+ * @returns {boolean}
+ */
+function shouldDispatchPaymentReport(now, sentinelPath, reportConfig) {
+    // Fail-closed on bad input — never dispatch on a malformed call.
+    if (!reportConfig || typeof reportConfig !== 'object') {
+        return false;
+    }
+    if (!reportConfig.enabled) {
+        return false;
+    }
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+        return false;
+    }
+    if (typeof sentinelPath !== 'string' || sentinelPath.length === 0) {
+        return false;
+    }
+
+    // Sin término de día, a propósito (D-07): el periodo lo lleva la ruta del
+    // centinela, que el llamador arma con paymentPeriodOf(now). Añadir aquí una
+    // comparación de día exacto haría que un servicio caído ese día perdiera el
+    // reporte del periodo, en silencio y para siempre.
+    if (now.getHours() < reportConfig.hour) {
         return false;
     }
 
@@ -229,7 +318,7 @@ function readSentinelPayload(sentinelPath) {
     }
 }
 
-module.exports = { shouldDispatchEom, buildEomEmailHtml, writeSentinelAtomically, readSentinelPayload };
+module.exports = { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, readSentinelPayload };
 
 // LOG_FILE retained for future callers routing entries via logGenerator(LOG_FILE, ...).
 void LOG_FILE;
