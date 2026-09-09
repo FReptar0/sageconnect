@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.4 plan 04 executed (ola 4 de 4 — las cuatro olas en tierra)
-last_updated: "2026-09-08T20:06:46.203Z"
-last_activity: 2026-09-08 -- Phase 20.4 plan 04 complete (RETRY-E1, RETRY-E4) — fase 20.4 ejecutada, pendiente /gsd-verify-work
+stopped_at: Phase 20.5 plan 01 executed (ola 1 de 3 — la superficie de configuración de Q3 en tierra)
+last_updated: "2026-09-09T16:54:06Z"
+last_activity: 2026-09-09 -- Phase 20.5 plan 01 complete (Q3-04, Q3-06) — config.notifications con cinco vars opcionales, seis guardas y 24 tests por código de salida
 progress:
   total_phases: 7
   completed_phases: 4
-  total_plans: 26
-  completed_plans: 26
-  percent: 100
+  total_plans: 31
+  completed_plans: 27
+  percent: 87
 ---
 
 # Project State
@@ -25,8 +25,14 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 ## Current Position
 
-Phase: 20.4
-Plan: 4 of 4 executed (20.4-01 — RETRY-E2, los dos parámetros del tope y sus tres guardas de arranque; 20.4-02 — RETRY-E1/E3/E4, la cota instalada en el bucle y el campo `deferred=` en el resumen; 20.4-03 — RETRY-E1/E3, las dos cotas probadas alcanzables por separado y el camino diferido probado inerte; 20.4-04 — RETRY-E1/E4, la invariante como igualdad explícita, el punto ciego de D-07 cerrado con su control, el ancla de orden de los seis campos y nueve guardas estructurales)
+Phase: 20.5
+Plan: 1 of 5 executed (20.5-01 — Q3-04/Q3-06, la superficie de configuración: `config.notifications` con las cinco vars OPCIONALES, las seis guardas de arranque, el tier SMTP documentado en `.env.example` y en `CLAUDE.md` §9, y 24 casos que miden cada desenlace por el código de salida de un proceso hijo real). Es la única ola 1 de la fase: los planes 02-05 leen claves creadas aquí.
+Status: Executing — falta ejecutar 20.5-02..05 (olas 2 y 3).
+Next: ejecutar `20.5-02-PLAN.md`. **Nota para quien siga:** el hook `.claude/hooks/pre-commit-redaction.sh` grepea el diff COMPLETO —añadidas, borradas Y contexto— así que una línea preexistente con lenguaje prohibido bloquea cualquier commit que caiga a 3 líneas de ella. Por eso `notifications:` quedó ANTES de `eom:` en el object literal. El chequeo de redacción correcto es sobre líneas AÑADIDAS: `git diff --cached | grep -E "^\+" | grep -in ...`.
+Test suite baseline tras 20.5-01 (medida 2026-09-09): **6 suites en rojo / 7 tests en rojo / 639 en verde / 647 total, 39 suites verdes de 45.** Mismo conjunto en rojo POR NOMBRE que siempre (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + los cuelgues de worker de `config` y `operation-manager`). Los totales se movieron sólo por los 24 casos nuevos (623 → 647) y las suites verdes por una (38 → 39). **Éste es el punto de comparación para 20.5-02.**
+
+**Fase anterior, todavía pendiente de verificar:**
+Phase 20.4 — Plan: 4 of 4 executed (20.4-01 — RETRY-E2, los dos parámetros del tope y sus tres guardas de arranque; 20.4-02 — RETRY-E1/E3/E4, la cota instalada en el bucle y el campo `deferred=` en el resumen; 20.4-03 — RETRY-E1/E3, las dos cotas probadas alcanzables por separado y el camino diferido probado inerte; 20.4-04 — RETRY-E1/E4, la invariante como igualdad explícita, el punto ciego de D-07 cerrado con su control, el ancla de orden de los seis campos y nueve guardas estructurales)
 Status: Executed — las cuatro olas en tierra; pendiente `/gsd-verify-work 20.4`
 Total phases: 21 (Phases 20-21 active this milestone)
 Next: `/gsd-verify-work 20.4` — la fase 20.4 tiene sus **cuatro** planes en tierra y los cuatro SUMMARY escritos. El 20.4-04-SUMMARY trae la tabla de mapeo SPEC↔aceptación de las 14 casillas y la evidencia de los cuatro controles negativos, escrita para ese comando. **Lo que queda vivo de la fase, para quien la verifique:** (1) confirmación en vivo en el servidor de pruebas antes de la migración de octubre — HANDOFF §6, no hay staging que ejercite el portal real; (2) el criterio de escalamiento que fija el propio SPEC: si `deferred=` se mantiene distinto de cero en ticks consecutivos, la programación justa de las OCs diferidas se vuelve un hallazgo con su propia fase; (3) `D-ITEM-01` y `D-ITEM-02` en `deferred-items.md` siguen abiertos y son decisión del usuario.
