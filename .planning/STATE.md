@@ -4,10 +4,10 @@ milestone: v2.4
 milestone_name: Retry policies
 status: executing
 stopped_at: Phase 20.5 COMPLETA — los cinco planes ejecutados (20.5-04 fue el último; alerta inmediata de OCs con fallo de carga)
-last_updated: "2026-09-09T17:32:00Z"
+last_updated: "2026-09-09T18:16:09.832Z"
 last_activity: 2026-09-09 -- Phase 20.5 plan 04 complete (Q3-01, Q3-02, mitad de OCs de Q3-04) — la alerta inmediata sale UNA vez por tick desde el final de createPurchaseOrders, con el estado «ya se alertó» DERIVADO de errorCounts y nueve guardas estructurales; la fase queda completa y lista para verificar
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 4
   total_plans: 31
   completed_plans: 31
@@ -233,3 +233,4 @@ Earlier context (Phase 20 execution notes): re-run `/gsd-execute-phase 20` in a 
 
 - Phase 20.3 inserted after Phase 20.2: Cross-system detection query (409 / portal existence) — deferred pendiente of 20.1/20.2, item #5 of the todo-junto August release; endpoint confirmed in repo swagger, self-contained (no Q3/CR-03/CR-04 dependency) (URGENT)
 - Phase 20.5 inserted after Phase 20: Q3 differentiated alerts (2026-05-20 client meeting): immediate PO failure alert + biweekly payment pending report (URGENT)
+- Phase 20.6 inserted after Phase 20.5: Cerrar CR-02 y CR-03 de la revision de codigo de la fase 20.5 — la variante de correo del reporte quincenal y la senalizacion real de entrega (URGENT)
