@@ -115,15 +115,21 @@ describe('Timeout logging integration (Phase 19, ROOT-04)', () => {
         test('background.js wraps each step with withStepTimeout (D-12 steps + EOM gate, NOT child)', () => {
             const fs = require('fs');
             const src = fs.readFileSync('src/background.js', 'utf8');
-            // 7 tenant-loop step wraps + 1 EOM-gate wrap (Phase 20, 20-07 / CONTEXT D-11).
-            // Both honor the defense-in-depth step tier (CLAUDE.md §9). startChildProcess
-            // is NOT among these — it has its own 10-min child-process timer.
+            // 7 tenant-loop step wraps + 1 EOM-gate wrap (Phase 20, 20-07 / CONTEXT D-11)
+            // + 1 biweekly payment-report wrap (Phase 20.5, Q3-03 / Q3-04). Los tres honran
+            // el tier de paso de la defensa en profundidad (CLAUDE.md §9). startChildProcess
+            // NO está entre ellos — tiene su propio temporizador de 10 min.
             const wrapMatches = src.match(/await withStepTimeout\(/g);
             expect(wrapMatches).not.toBeNull();
-            expect(wrapMatches.length).toBe(8);
+            expect(wrapMatches.length).toBe(9);
             // The EOM dispatch step is wrapped per D-11.
             expect(/withStepTimeout\(\s*dispatchEomIfDue\(/.test(src)).toBe(true);
             expect(/__step = 'eomDispatch'/.test(src)).toBe(true);
+            // El reporte quincenal está envuelto igual, y con su PROPIO nombre de paso: son
+            // dominios de fallo independientes (Q3-04), así que una línea [TIMEOUT] nombra el
+            // flujo que de verdad se atoró en vez de confundirlo con el cierre de mes.
+            expect(/withStepTimeout\(\s*dispatchPaymentReportIfDue\(/.test(src)).toBe(true);
+            expect(/__step = 'paymentReport'/.test(src)).toBe(true);
         });
 
         test('step timeout NO triggers sendAdminAlert (D-15 negation — step wording does NOT match child detection)', () => {
