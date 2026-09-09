@@ -41,3 +41,29 @@ archivos que sólo se manifiesta con el paralelismo por omisión de Jest.
 **Aviso para quien mida la línea base después.** Si ves siete u ocho suites en rojo, revisa
 primero si las extra son `schedule-force-release` o `log-generator` antes de buscar un
 defecto propio. Corre la suite en aislamiento y repite la corrida completa.
+
+---
+
+## D-20.6-02 — una frase del JSDoc de `dispatchPaymentReportIfDue` quedó obsoleta
+
+**Descubierto:** 2026-09-09, durante el plan 20.6-05, leyendo el despachador hermano para
+replicar su forma.
+
+**Qué dice hoy.** `src/background.js:510` — *«Sin respaldo al buzón de administración, a
+diferencia de `dispatchEomIfDue`, cuyo catch sí lo usa»*. Desde el commit `6061649` el
+cierre de mes ya **no** tiene un `catch`: el respaldo cuelga de la rama de no entrega. La
+afirmación de fondo —que el reporte quincenal no escala y el cierre de mes sí (D-12 / D-15)—
+**sigue siendo correcta**; lo único obsoleto es el mecanismo que la frase nombra.
+
+**Por qué no se arregló aquí.** El alcance del plan 20.6-05 está acotado **por escrito** a
+`dispatchEomIfDue` y sólo a ésa, en la aprobación `aprobar-ambos` transcrita en
+`20.6-04-SUMMARY.md`. Tocar el hermano habría (a) salido del alcance aprobado para un archivo
+crítico y (b) roto la propiedad que el plan 20.6-04 dejó como criterio: que su diff sobre este
+archivo sea revisable en aislamiento, byte a byte contra `HEAD`.
+
+**Impacto.** Ninguno en ejecución. Es prosa de JSDoc; ni una guarda ni un criterio de
+aceptación la cuenta.
+
+**Qué hacer con esto.** Una línea, en el primer plan que vuelva a abrir `src/background.js`
+con autorización para el hermano. Cambiar «cuyo catch sí lo usa» por «cuya rama de no entrega
+sí lo usa».
