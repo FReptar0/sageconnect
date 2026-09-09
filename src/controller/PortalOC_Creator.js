@@ -769,11 +769,21 @@ order by A.PONUMBER, B.PORLREV;
   // `pos=0 sent=false` para siempre. Anidadas, el tick sin fallos no emite nada (Q3-01) y el
   // interruptor se lee UNA sola vez, en el sitio del envío y en ningún otro (Q3-04).
   //
-  // El try/catch NO es sobre SMTP. sendOperatorReport ya traga los fallos de correo y los registra
-  // en warn internamente (EmailSender.js), así que un servidor de correo muerto degrada las
-  // notificaciones y nada más — eso ya está resuelto aguas abajo y debe seguir así. Este catch
-  // existe porque el camino de notificación ENTERO corre aquí: buildEomEmailHtml, el armado del
-  // asunto y el propio envío. createPurchaseOrders se ejecuta dentro de withStepTimeout dentro de
+  // El try/catch NO es sobre SMTP. sendOperatorReport sigue SIN lanzar: se traga el fallo de correo
+  // y lo registra en warn internamente (EmailSender.js), y eso no cambia — un servidor de correo
+  // muerto tiene que degradar las notificaciones y nada más. Lo que sí cambió en la fase 20.6 es
+  // que ahora DEVUELVE el desenlace del envío, así que este sitio de llamada por fin puede
+  // enterarse. Por eso el envío tiene DOS líneas de bitácora y no una, y por eso la de entrega
+  // perdida sube a warn nombrando las claves de las OCs afectadas: hasta hoy la bitácora afirmaba
+  // una entrega que no constaba. La lectura del resultado es fail-closed a propósito — sólo cuenta
+  // como entregado un resultado que lo AFIRME, y un valor ausente o malformado cuenta como perdido.
+  // No se agrega estado para reintentar la alerta perdida (D-03 de la 20.5 se conserva): lo que se
+  // gana es que el operador pueda encontrar con un grep las OCs cuyo aviso se perdió, y sepa que su
+  // rezago sólo reaparecerá en el correo consolidado de cierre de mes.
+  //
+  // El catch sigue haciendo falta por el RESTO del camino de notificación, que corre entero aquí:
+  // buildEomEmailHtml, el armado del asunto y el propio logGenerator — que según la nota S-3 de la
+  // 20.3 SÍ puede lanzar. createPurchaseOrders se ejecuta dentro de withStepTimeout dentro de
   // forResponse, así que una excepción en este bloque reprobaría el paso completo del tenant
   // DESPUÉS de que los INSERT de la tabla de control ya se comprometieron, y a cambio de un correo.
   // La asimetría no admite discusión: la alerta es una notificación, el tick es el trabajo.
@@ -797,8 +807,24 @@ order by A.PONUMBER, B.PORLREV;
       try {
         const subject = `[SageConnect] OCs con fallo de carga — ${databases[index]} — ${poAlertCount}`;
         const html = buildEomEmailHtml(poAlerts, 'pos', 'po-alert');
-        await sendOperatorReport({ subject, html, callerLogFile: logFileName });
-        logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+        const delivery = await sendOperatorReport({ subject, html, callerLogFile: logFileName });
+        if (delivery && delivery.delivered === true) {
+          logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+        } else {
+          // La cota de 20 claves y los 200 caracteres del texto de error son deliberados: la línea
+          // sigue siendo UNA por tick, jamás una por fila, y su longitud queda acotada aunque el
+          // lote sea grande. El recorte es síncrono sobre el array local que ya existe — no nace
+          // ninguna estructura de módulo, no se guarda nada y no se lee nada de disco.
+          //
+          // Se emiten las claves RECORTADAS (regla IN-04 de la 20.3), las mismas con las que se
+          // preguntó a la tabla de control, para que el grep del operador case con la fila que
+          // describe. Del error sale sólo el texto que la fase 20.6 dejó en el resultado, con los
+          // espacios colapsados para que un mensaje multilínea no arrastre contexto a la bitácora.
+          const ocs = poAlerts.slice(0, 20).map((a) => a.idOrPo).join(',');
+          const overflow = poAlertCount > 20 ? `,+${poAlertCount - 20}` : '';
+          const why = String((delivery && delivery.error) || 'sin detalle').replace(/\s+/g, ' ').trim().slice(0, 200);
+          logGenerator(logFileName, 'warn', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=undelivered ocs=${ocs}${overflow} err=${why}`);
+        }
       } catch (alertErr) {
         // Nivel warn, no error: el tick hizo su trabajo y sólo se perdió la notificación.
         logGenerator(logFileName, 'warn', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=error: ${alertErr.message}`);
