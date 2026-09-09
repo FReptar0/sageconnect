@@ -769,10 +769,19 @@ order by A.PONUMBER, B.PORLREV;
   // `pos=0 sent=false` para siempre. Anidadas, el tick sin fallos no emite nada (Q3-01) y el
   // interruptor se lee UNA sola vez, en el sitio del envío y en ningún otro (Q3-04).
   //
-  // El envío NO va envuelto en try/catch a propósito: sendOperatorReport siempre resuelve — traga
-  // los fallos de SMTP y los registra en warn internamente, nunca lanza. Un catch aquí insinuaría
-  // un modo de falla que no existe e invitaría a "manejarlo" relanzando, que es lo único que sí
-  // rompería el tick. Un servidor de correo muerto degrada las notificaciones y nada más.
+  // El try/catch NO es sobre SMTP. sendOperatorReport ya traga los fallos de correo y los registra
+  // en warn internamente (EmailSender.js), así que un servidor de correo muerto degrada las
+  // notificaciones y nada más — eso ya está resuelto aguas abajo y debe seguir así. Este catch
+  // existe porque el camino de notificación ENTERO corre aquí: buildEomEmailHtml, el armado del
+  // asunto y el propio envío. createPurchaseOrders se ejecuta dentro de withStepTimeout dentro de
+  // forResponse, así que una excepción en este bloque reprobaría el paso completo del tenant
+  // DESPUÉS de que los INSERT de la tabla de control ya se comprometieron, y a cambio de un correo.
+  // La asimetría no admite discusión: la alerta es una notificación, el tick es el trabajo.
+  //
+  // JAMÁS relanzar desde este catch. Relanzar es exactamente el único cambio que volvería a poner
+  // el tick a merced del camino de notificación. Y no se pierde nada silenciosamente: la OC
+  // alertada y no resuelta sigue apareciendo en el correo consolidado de cierre de mes (Q3-05), que
+  // es el respaldo que vuelve segura la semántica de "una sola alerta" (D-05).
   //
   // La etiqueta PO-ALERT es deliberada: la Guarda 9 de la 20.3 prohíbe cualquier hermana del
   // prefijo PORTAL-CHECK que no sea la de resumen, y PO-ALERT queda fuera de ese espacio de
@@ -785,10 +794,15 @@ order by A.PONUMBER, B.PORLREV;
   const poAlertCount = poAlerts.length;
   if (poAlertCount > 0) {
     if (config.notifications.poAlert.enabled) {
-      const subject = `[SageConnect] OCs con fallo de carga — ${databases[index]} — ${poAlertCount}`;
-      const html = buildEomEmailHtml(poAlerts, 'pos', 'po-alert');
-      await sendOperatorReport({ subject, html, callerLogFile: logFileName });
-      logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+      try {
+        const subject = `[SageConnect] OCs con fallo de carga — ${databases[index]} — ${poAlertCount}`;
+        const html = buildEomEmailHtml(poAlerts, 'pos', 'po-alert');
+        await sendOperatorReport({ subject, html, callerLogFile: logFileName });
+        logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+      } catch (alertErr) {
+        // Nivel warn, no error: el tick hizo su trabajo y sólo se perdió la notificación.
+        logGenerator(logFileName, 'warn', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=error: ${alertErr.message}`);
+      }
     } else {
       // Una alerta silenciada que no deja rastro es indistinguible de una rota.
       logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=disabled`);
