@@ -105,3 +105,11 @@ reintentos.txt
 # payment info, CFDI UUIDs, PO numbers and other customer data — keep
 # local-only, never commit.
 data/
+
+# Artefacto de `npm test`: la suite PaymentReconciliation llama a CsvWriter, que
+# resuelve su ruta relativa al CWD, así que en local aterriza en la raíz del repo
+# en vez de C:\Logs\sageconnect\<fecha>\. El contenido es sintético (PY-001,
+# portal-1, 1000 MXN) pero el archivo APPENDEA entre corridas y nada lo trunca.
+# Esto es la mitad barata de 20.4 D-ITEM-01; la honesta es que la suite escriba a
+# un directorio temporal y limpie, como ya hace tests/config.probe-budget.test.js.
+/sageconnect/
