@@ -402,8 +402,20 @@ async function forResponse(options = {}) {
  * mailbox if the cron-tick gate is open (last day of month, hour >= notificationHour,
  * sentinel missing). Per CONTEXT D-08, D-09, D-10, D-11, D-14.
  *
- * Best-effort: SMTP failures fall back to AdminEmailSender; sentinel always written;
- * does NOT re-throw — caller (forResponse) catches and continues.
+ * Best-effort: the AdminEmailSender fallback fires on READING the delivery outcome,
+ * not on catching an exception; sentinel always written; does NOT re-throw — caller
+ * (forResponse) catches and continues.
+ *
+ * Fase 20.6 (D-01): el canal de correo del operador no rechaza, devuelve el desenlace de
+ * la entrega. Lo que hasta ayer era una rama de fallo inalcanzable —y con ella el respaldo
+ * al buzón de administración— es hoy una rama sobre ese valor, leída en cerrado: sólo
+ * cuenta como entregado un resultado que lo afirme, y un valor ausente o malformado cae
+ * del lado de la no entrega.
+ *
+ * El respaldo se conserva a propósito (D-11), en vez de borrarse junto con la rama muerta:
+ * este correo es el control compensatorio de la alerta de OCs bajo D-03 de la 20.5 —una
+ * alerta perdida no se reintenta, la OC reaparece al cierre de mes—, así que si el control
+ * falla en silencio no queda nada. Es donde un escalamiento se gana el sueldo.
  *
  * @param {Date} now - current time (injected for testability per D-16)
  * @param {object} cfg - config object (injected for testability)
@@ -444,25 +456,26 @@ async function dispatchEomIfDue(now, cfg) {
         // Per CONTEXT D-10: empty categories STILL send the email (with "Sin pendientes" body)
         const html = buildEomEmailHtml(allRows, category);
         const subject = `[SageConnect] Pendientes fin de mes — ${category === 'pos' ? 'POs' : 'Pagos'} — ${yyyyMm}`;
+        const delivery = await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
         let sentinelPayload;
-        try {
-            await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
+        if (delivery && delivery.delivered === true) {
             sentinelPayload = { timestamp: new Date().toISOString(), success: true, rowCount: allRows.length };
             logGenerator('EomNotification', 'info',
                 `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=true`);
-        } catch (smtpErr) {
+        } else {
+            const deliveryError = (delivery && delivery.error) ? delivery.error : 'unknown delivery failure';
             sentinelPayload = {
                 timestamp: new Date().toISOString(),
                 success: false,
-                error: smtpErr.message,
+                error: deliveryError,
                 rowCount: allRows.length,
             };
             logGenerator('EomNotification', 'error',
-                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=false err=${smtpErr.message}`);
-            // SMTP failure fallback per REQ EOM-04
+                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=false err=${deliveryError}`);
+            // Respaldo al buzón de administración por REQ EOM-04, hoy alcanzable (D-11).
             await sendAdminAlert(
                 `[SageConnect] EOM email FAILED for ${yyyyMm} - ${category}`,
-                `<p>EOM dispatch failed for category ${category} on ${yyyyMm}.</p><p>Error: ${smtpErr.message}</p><p>Row count was ${allRows.length}.</p>`,
+                `<p>EOM dispatch failed for category ${category} on ${yyyyMm}.</p><p>Error: ${deliveryError}</p><p>Row count was ${allRows.length}.</p>`,
                 'EomNotification'
             );
         }
