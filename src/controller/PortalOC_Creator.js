@@ -20,6 +20,10 @@ const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrder
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
 const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 const { getPurchaseOrderByExternalId } = require('../utils/GetPurchaseOrders');
+// Fase 20.5 / Q3-01: la alerta inmediata de OCs que fallaron al subir. Ninguno de los dos modulos
+// tiene efectos secundarios al cargar, asi que requerirlos aqui no cambia el arranque del servicio.
+const { sendOperatorReport } = require('../utils/EmailSender');
+const { buildEomEmailHtml } = require('../utils/EomNotification');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -328,6 +332,29 @@ order by A.PONUMBER, B.PORLREV;
   let probeUnknown = 0;
   let probeDeferred = 0;
 
+  // Acumulador de la alerta inmediata (fase 20.5, Q3-01/Q3-02).
+  // Always-on (CLAUDE.md §3): el acumulador es un const dentro de createPurchaseOrders() y queda
+  // inalcanzable en cuanto la función retorna. No es cache, no crece entre ticks, nada que liberar.
+  // Su tamaño máximo es el número de OCs que fallan POR PRIMERA VEZ en este tick, acotado por
+  // ordersToSend.length.
+  //
+  // D-03 — el estado "ya se alertó" es DERIVADO, no se almacena nada. La condición es que el
+  // errorCount PREVIO de la OC sea 0, leído del Map errorCounts que la fase 20.3 ya construye
+  // arriba a partir del mismo SELECT. Las dos alternativas obvias quedaron rechazadas y deben
+  // seguir rechazadas:
+  //   - un archivo por OC (logs/po-alert-<oc>.sent) crece sin cota contra una tabla que ya tiene
+  //     3,313 filas ERROR y nada lo recolecta jamás: exactamente la clase de estado retenido que
+  //     CLAUDE.md §3 prohíbe;
+  //   - un Map en scope de módulo sobrevive a los ticks y nunca se libera en un servicio que no
+  //     termina. La misma violación, y peor.
+  // Derivarlo cuesta CERO estado nuevo, se limpia solo por construcción y no necesita consulta
+  // nueva: el dato ya viene en el recordset.
+  //
+  // D-04, consecuencia buscada: toda OC detrás de las 3,313 filas ERROR acumuladas ya tiene
+  // errorCount > 0, así que el primer tick tras el despliegue emite CERO alertas. El requisito de
+  // "no inundar" de Q3-02 queda satisfecho por construcción, no por un mecanismo de supresión.
+  const poAlerts = [];
+
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
@@ -581,6 +608,30 @@ order by A.PONUMBER, B.PORLREV;
           )
       `;
       await runQuery(sqlErr, 'FESA');
+
+      // Q3-01, sitio de captura 1 de 2 (fallo de Joi). Los dos sitios escriben una fila ERROR, así
+      // que los dos son "la subida falló"; cubrir sólo el POST dejaría muda toda rechazo de Joi.
+      //
+      // D-01 — AQUÍ NO SE MANDA CORREO. Este bloque corre una vez POR CADA OC que falla, dentro del
+      // bucle de tenants: un await a SMTP aquí multiplicaría los viajes de red por el número de
+      // fallos, gastaría justo el presupuesto de paso que la fase 20.4 existe para proteger, y
+      // produciría N correos donde el requisito pide UNO. El push es un append síncrono a un array;
+      // el único envío vive al final de la función, después de [PORTAL-CHECK-SUMMARY].
+      //
+      // Se usa ocKey, la clave RECORTADA — no po.external_id. Es la regla IN-04 de la 20.3: la fila
+      // debe llevar la clave con la que se preguntó a la tabla de control y con la que se leyó
+      // errorCounts, o un EXTERNAL_ID con espacios produciría una alerta con clave distinta de la
+      // fila que describe. respAPI va CRUDO: buildEomEmailHtml escapa y trunca a 100 caracteres, y
+      // hacerlo aquí lo aplicaría dos veces.
+      if (priorErrors === 0) {
+        poAlerts.push({
+          tenant: databases[index],
+          idOrPo: ocKey,
+          fechaAuth: today,
+          attempts: priorErrors + 1,
+          lastError: respAPI,
+        });
+      }
       continue;
     }
 
@@ -652,6 +703,24 @@ order by A.PONUMBER, B.PORLREV;
       `;
       await runQuery(sqlErr, 'FESA');
       logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
+
+      // Q3-01, sitio de captura 2 de 2 (fallo del POST al portal). Idéntico al sitio de Joi y bajo
+      // la misma condición derivada.
+      //
+      // D-01 — AQUÍ TAMPOCO SE MANDA CORREO, por las mismas tres razones: un await a SMTP dentro
+      // del bucle multiplica los viajes de red por el número de fallos, gasta el presupuesto de
+      // paso de la 20.4 y produce N correos donde el requisito pide UNO. Además este catch está en
+      // el bloque cuyo comentario S-3 de la 20.3 afirma que nada puede lanzar hacia afuera, y ya se
+      // sabe que esa afirmación no es cierta para logGenerator.
+      if (priorErrors === 0) {
+        poAlerts.push({
+          tenant: databases[index],
+          idOrPo: ocKey,
+          fechaAuth: today,
+          attempts: priorErrors + 1,
+          lastError: respAPI,
+        });
+      }
     }
   }
 
@@ -686,6 +755,44 @@ order by A.PONUMBER, B.PORLREV;
     const summaryMsg = `[PORTAL-CHECK-SUMMARY] tenant=${databases[index]} probed=${probed} found=${probeFound} absent=${probeAbsent} skipped=${probeSkipped} unknown=${probeUnknown} deferred=${probeDeferred}`;
     console.log(summaryMsg);
     logGenerator(logFileName, 'info', summaryMsg);
+  }
+
+  // Alerta inmediata de OCs que fallaron al subir (Q3-01, Q3-02 y la mitad de OCs de Q3-04).
+  //
+  // D-01, la decisión más importante de esta fase: el ÚNICO envío vive aquí, después del resumen y
+  // FUERA del bucle. Cuesta exactamente un viaje SMTP por tick sin importar cuántas OCs fallaron.
+  // DEVIATIONS.md proponía dispararlo desde el catch; eso daría N correos y N viajes de red.
+  //
+  // Las dos condiciones son necesarias y se leen anidadas a propósito: la exterior por el conteo,
+  // la interior por el interruptor de apagado. Escritas como una sola conjunción, el `else` que
+  // deja rastro del silenciamiento también se dispararía en cada tick limpio e imprimiría
+  // `pos=0 sent=false` para siempre. Anidadas, el tick sin fallos no emite nada (Q3-01) y el
+  // interruptor se lee UNA sola vez, en el sitio del envío y en ningún otro (Q3-04).
+  //
+  // El envío NO va envuelto en try/catch a propósito: sendOperatorReport siempre resuelve — traga
+  // los fallos de SMTP y los registra en warn internamente, nunca lanza. Un catch aquí insinuaría
+  // un modo de falla que no existe e invitaría a "manejarlo" relanzando, que es lo único que sí
+  // rompería el tick. Un servidor de correo muerto degrada las notificaciones y nada más.
+  //
+  // La etiqueta PO-ALERT es deliberada: la Guarda 9 de la 20.3 prohíbe cualquier hermana del
+  // prefijo PORTAL-CHECK que no sea la de resumen, y PO-ALERT queda fuera de ese espacio de
+  // nombres. NO renombrarla a una hermana de ese prefijo — la guarda la rechazaría, y con razón.
+  // Ningún comentario de este archivo escribe un nombre de etiqueta ENTRE CORCHETES: las guardas
+  // leen el fuente entero, comentarios incluidos, y las cuentan por aparición literal. Mencionar
+  // una etiqueta entre corchetes en prosa la contaría como un sitio de emisión más.
+  // Una línea por tick, jamás por fila: el punto entero del acumulador es que la bitácora del
+  // operador no escale con el número de fallos.
+  const poAlertCount = poAlerts.length;
+  if (poAlertCount > 0) {
+    if (config.notifications.poAlert.enabled) {
+      const subject = `[SageConnect] OCs con fallo de carga — ${databases[index]} — ${poAlertCount}`;
+      const html = buildEomEmailHtml(poAlerts, 'pos', 'po-alert');
+      await sendOperatorReport({ subject, html, callerLogFile: logFileName });
+      logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+    } else {
+      // Una alerta silenciada que no deja rastro es indistinguible de una rota.
+      logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=disabled`);
+    }
   }
 }
 

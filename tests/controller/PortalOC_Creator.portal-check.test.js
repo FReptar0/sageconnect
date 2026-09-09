@@ -73,8 +73,18 @@ jest.mock('../../src/config', () => ({
     // mantener el valor idéntico evita que las dos suites carguen el controlador con configs
     // distintas y que una diferencia de comportamiento se lea como una diferencia de config.
     retry: { scope: 'current_month', lookbackDays: 30, interval: { payment: 30, po: 240 } },
+    // Fase 20.5: omitir esta clave dejaría config.notifications.poAlert.enabled leyendo undefined y
+    // desactivaría en silencio la alerta inmediata en los 44 casos de este archivo — el mismo
+    // agujero de desactivación silenciosa que la fase 20.4 cerró en dos de estos mismos mocks.
+    notifications: { poAlert: { enabled: true } },
     eom: { notificationHour: 18, notificationEnabled: true },
 }));
+
+// Fase 20.5: este archivo ejecuta el createPurchaseOrders REAL por caminos de fallo del POST con
+// fixtures cuyo errorCount es 0 — que es exactamente la condición de primer fallo. Sin este mock la
+// suite intentaría envíos SMTP salientes de verdad contra un host inventado, y una suite que hoy es
+// hermética pasaría a depender de la latencia de la red.
+jest.mock('../../src/utils/EmailSender', () => ({ sendMail: jest.fn(), sendOperatorReport: jest.fn().mockResolvedValue(undefined) }));
 
 const mockLogGenerator = jest.fn();
 jest.mock('../../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }));

@@ -49,8 +49,17 @@ jest.mock('../../src/config', () => ({
     // scope stays 'current_month' here so the DATEFROMPARTS SQL-shape assertions below keep
     // their meaning; the last_n_days default flip is proven in tests/utils/RetryPolicy.test.js.
     retry: { scope: 'current_month', lookbackDays: 30, interval: { payment: 30, po: 240 } },
+    // Fase 20.5: omitir esta clave dejaría config.notifications.poAlert.enabled leyendo undefined y
+    // desactivaría en silencio la alerta inmediata en toda la suite — el mismo agujero de
+    // desactivación silenciosa que la fase 20.4 cerró en dos de estos mismos mocks.
+    notifications: { poAlert: { enabled: true } },
     eom: { notificationHour: 18, notificationEnabled: true },
 }));
+
+// Fase 20.5: este archivo ejecuta el createPurchaseOrders REAL y su caso 4 lleva una OC con
+// errorCount 0 cuyo POST falla — que es exactamente la condición de primer fallo. Sin este mock la
+// suite intentaría un envío SMTP saliente de verdad contra un host inventado.
+jest.mock('../../src/utils/EmailSender', () => ({ sendMail: jest.fn(), sendOperatorReport: jest.fn().mockResolvedValue(undefined) }));
 
 const mockLogGenerator = jest.fn();
 jest.mock('../../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }));

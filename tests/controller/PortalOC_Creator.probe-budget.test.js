@@ -111,9 +111,18 @@ const mockConfig = {
     security: { apiKey: 'test-key' },
     schedule: { cronExpression: '*/15 * * * *', operationDelayMs: 0, lockTimeoutMs: 14 * 60 * 1000, childProcessTimeoutMs: 600000, stepTimeoutMs: 300000 },
     retry: { scope: 'current_month', lookbackDays: 30, interval: { payment: 30, po: 240 } },
+    // Fase 20.5: omitir esta clave dejaría config.notifications.poAlert.enabled leyendo undefined y
+    // desactivaría en silencio la alerta inmediata en toda la suite — el mismo agujero de
+    // desactivación silenciosa que la fase 20.4 cerró en dos de estos mismos mocks.
+    notifications: { poAlert: { enabled: true } },
     eom: { notificationHour: 18, notificationEnabled: true },
 };
 jest.mock('../../src/config', () => mockConfig);
+
+// Fase 20.5: este archivo ejecuta el createPurchaseOrders REAL por caminos de fallo del POST con
+// fixtures cuyo errorCount es 0 — que es exactamente la condición de primer fallo. Sin este mock la
+// suite intentaría envíos SMTP salientes de verdad contra un host inventado.
+jest.mock('../../src/utils/EmailSender', () => ({ sendMail: jest.fn(), sendOperatorReport: jest.fn().mockResolvedValue(undefined) }));
 
 const mockLogGenerator = jest.fn();
 jest.mock('../../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }));
