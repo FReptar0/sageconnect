@@ -197,13 +197,41 @@ function shouldDispatchPaymentReport(now, sentinelPath, reportConfig) {
  * "Sin pendientes" payments cases — the empty case is precisely when an operator might
  * otherwise conclude that nothing failed.
  *
+ * 20.5 / Q3-01 / Q3-05 / D-12: `variant` exists because the immediate PO-failure
+ * alert needs exactly this table — six columns, the same escaping, the same
+ * truncation — but must NOT carry the month-close wording. Reusing the function
+ * verbatim would mail the operator a message titled "Pendientes fin de mes" on
+ * the 3rd of the month, on the one email that is supposed to read as urgent;
+ * rebuilding the table inside the controller would put the T-20-14 escaping in a
+ * second, untested place. So the parameter defaults to `'eom'` and the default
+ * path is byte-identical to what shipped in 20.2 — that is what keeps
+ * `tests/fixtures/eom-email-sample.html` valid and every Q3-05 assertion passing
+ * unchanged. Only three literals move under `'po-alert'`: the heading, the intro
+ * sentence and the fourth column header.
+ *
+ * The column COUNT is deliberately identical in both variants, so the D-11 rule
+ * that "el encabezado y el cuerpo DEBEN ramificar juntos" is not in play here —
+ * that rule guards against six headers over five cells, and both variants are six
+ * over six. `variant` is orthogonal to `category` in the signature, but the only
+ * supported combination beyond the default is `('pos', 'po-alert')`: the variant is
+ * INERT on the payments branch — `('payments', 'po-alert')` returns exactly what
+ * `('payments')` returns, footnote included — and it must never be used to branch
+ * that footnote.
+ *
  * @param {Array<object>} rows - Pending-document rows for one category.
  * @param {'pos'|'payments'} category - Drives the table title AND the table shape.
+ * @param {'eom'|'po-alert'} [variant='eom'] - Wording only. Defaults to the month-close form.
  * @returns {string} HTML string.
  */
-function buildEomEmailHtml(rows, category) {
+function buildEomEmailHtml(rows, category, variant = 'eom') {
     const safeRows = Array.isArray(rows) ? rows : [];
     const isPos = category !== 'payments';
+    // El variant se conjuga con `isPos` a propósito: fuera de la rama POs es INERTE,
+    // de modo que ('payments', 'po-alert') devuelve exactamente lo mismo que
+    // ('payments'). Si se leyera solo `variant`, una llamada no soportada mandaría la
+    // tabla de PAGOS bajo el título "OCs que fallaron" — un encabezado que miente
+    // sobre su propio cuerpo. Degradar al camino de pagos ya probado es lo correcto.
+    const isPoAlert = isPos && variant === 'po-alert';
 
     // YYYY-MM derived from the first row's authorization date, else current month.
     let monthLabel;
@@ -215,12 +243,25 @@ function buildEomEmailHtml(rows, category) {
     }
 
     const baseUrl = (config.app && config.app.baseUrl) ? config.app.baseUrl : 'http://localhost:3030';
-    const intro = isPos
-        ? 'Resumen de POs pendientes de subir al portal al cierre del mes.'
-        : 'Resumen de pagos pendientes de subir al portal al cierre del mes.';
+    // Literal 1 de 3 que cambia con el variant. Los dos textos de cierre de mes
+    // quedan intactos, byte a byte, en su ternaria de siempre.
+    let intro;
+    if (isPoAlert) {
+        intro = 'Estas OCs fallaron su primer intento de subida al portal en este ciclo. Revise el error de cada una y corríjala en Sage o en el portal.';
+    } else {
+        intro = isPos
+            ? 'Resumen de POs pendientes de subir al portal al cierre del mes.'
+            : 'Resumen de pagos pendientes de subir al portal al cierre del mes.';
+    }
 
     const lines = [];
-    lines.push(`<h1>SageConnect: Pendientes fin de mes — ${monthLabel}</h1>`);
+    // Literal 2 de 3. La alerta inmediata habla de AHORA, no de un periodo: colgarle
+    // un mes invitaría al operador a archivarla junto al correo de cierre de mes.
+    if (isPoAlert) {
+        lines.push('<h1>SageConnect: OCs que fallaron al subir al portal</h1>');
+    } else {
+        lines.push(`<h1>SageConnect: Pendientes fin de mes — ${monthLabel}</h1>`);
+    }
     lines.push(`<p>${intro}</p>`);
 
     if (safeRows.length === 0) {
@@ -233,7 +274,13 @@ function buildEomEmailHtml(rows, category) {
         // queda desalineada (6 encabezados sobre 5 celdas). La rama `pos` es byte a byte
         // la de siempre — tests/fixtures/eom-email-sample.html la fija (D-11).
         if (isPos) {
-            lines.push('      <th>#</th><th>Tenant</th><th>PO / ID</th><th>Fecha autorización</th><th>Intentos</th><th>Último error</th>');
+            // Literal 3 de 3. En los sitios de fallo el controlador no tiene a la vista
+            // la fecha de autorización, y rotular la fecha del fallo como fecha de
+            // autorización sería una mentira impresa en la tabla con la que el operador
+            // persigue proveedores. Se interpola una sola celda para que el CONTEO de
+            // columnas no pueda separarse entre variantes.
+            const fechaHeader = isPoAlert ? 'Fecha del fallo' : 'Fecha autorización';
+            lines.push(`      <th>#</th><th>Tenant</th><th>PO / ID</th><th>${fechaHeader}</th><th>Intentos</th><th>Último error</th>`);
         } else {
             lines.push('      <th>#</th><th>Tenant</th><th>PO / ID</th><th>Fecha autorización</th><th>Intentos</th>');
         }
