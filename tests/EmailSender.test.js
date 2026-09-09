@@ -39,6 +39,11 @@ jest.mock('nodemailer', () => ({
 const mockLogGenerator = jest.fn();
 jest.mock('../src/utils/LogGenerator', () => ({ logGenerator: mockLogGenerator }));
 
+// fs/path: la guarda estructural del ultimo describe lee el fuente de EmailSender.js
+// en vez de su comportamiento, para volver permanentes D-02 y D-03.
+const fs = require('fs');
+const path = require('path');
+
 // EmailSender loads its own config internally via require('../config')
 const { sendMail, sendOperatorReport } = require('../src/utils/EmailSender');
 
@@ -119,14 +124,14 @@ describe('sendOperatorReport', () => {
         }
     });
 
-    test('(e) REQ EOM-06: SMTP failure → warn log + Promise resolves (no throw)', async () => {
+    test('(e) REQ EOM-06 + requisito 4 de la 20.6: SMTP failure → warn log + la promesa resuelve al resultado fail-closed (no throw)', async () => {
         mockTransportSendMail.mockRejectedValueOnce(new Error('SMTP connection refused'));
-        // Must NOT throw
+        // Must NOT throw — y ademas el resultado tiene que DISTINGUIR el fallo.
         await expect(sendOperatorReport({
             subject: '[SageConnect] Will fail',
             html: '<p>x</p>',
             callerLogFile: 'TestCaller',
-        })).resolves.toBeUndefined();
+        })).resolves.toEqual({ delivered: false, error: 'SMTP connection refused' });
         // warn log emitted with [OPERATOR-EMAIL] prefix and the error message
         const warnCall = mockLogGenerator.mock.calls.find(c => c[1] === 'warn' && /\[OPERATOR-EMAIL\]/.test(c[2]));
         expect(warnCall).toBeDefined();
@@ -227,5 +232,115 @@ describe('MAIL_TIMEOUT_MS wiring (Q3-06)', () => {
         const transportConfig = nodeMailer.createTransport.mock.calls[0][0];
         expect(transportConfig.socketTimeout).toBeDefined();
         expect(transportConfig.socketTimeout).not.toBe(600000);
+    });
+});
+
+describe('contrato de entrega de sendOperatorReport (fase 20.6, D-01 / D-02 / D-03 / D-14)', () => {
+    // D-14: el contrato se fija por el VALOR DE RETORNO, no por un rechazo simulado.
+    // WR-09 de la revision de la 20.5 senalo que las pruebas de esa fase simulaban a
+    // sendOperatorReport RECHAZANDO, un estado que produccion no puede alcanzar porque
+    // la funcion nunca lanza: una prueba verde era compatible con el defecto en vivo.
+    beforeEach(() => {
+        jest.clearAllMocks();
+        mockTransportSendMail.mockResolvedValue({ accepted: ['ops1@test.com'], rejected: [] });
+    });
+
+    test('(a) D-01: con el transporte sano el resultado es exactamente { delivered: true, error: null }', async () => {
+        const result = await sendOperatorReport({
+            subject: '[SageConnect] Entrega buena',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+        expect(result).toEqual({ delivered: true, error: null });
+    });
+
+    test('(b) D-01 + D-02: con el transporte caido el resultado trae el mensaje y la llamada RESUELVE', async () => {
+        mockTransportSendMail.mockRejectedValueOnce(new Error('SMTP connection refused'));
+        // .resolves falla si la promesa rechaza, asi que este caso fija las dos mitades del
+        // contrato a la vez: el desenlace Y el hecho de que ninguna via nueva lo vuelva
+        // lanzable. Es la aserta que se pondria roja si alguien agregara un interruptor.
+        await expect(sendOperatorReport({
+            subject: '[SageConnect] Entrega perdida',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        })).resolves.toEqual({ delivered: false, error: 'SMTP connection refused' });
+    });
+
+    test('(c) requisito 4: los dos desenlaces son DISTINGUIBLES por el valor de retorno', async () => {
+        // La casilla literal del requisito 4, y no se deduce de (a) y (b) por separado:
+        // dos casos que assertan formas correctas seguirian verdes si la funcion devolviera
+        // la MISMA constante en las dos ramas. Aqui se comparan los dos desenlaces entre si.
+        const ok = await sendOperatorReport({
+            subject: '[SageConnect] Transporte sano',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+
+        mockTransportSendMail.mockRejectedValueOnce(new Error('SMTP connection refused'));
+        const fail = await sendOperatorReport({
+            subject: '[SageConnect] Transporte caido',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+
+        expect(ok.delivered).not.toBe(fail.delivered);
+        expect(ok.delivered).toBe(true);
+        expect(fail.delivered).toBe(false);
+    });
+
+    test('(d) T-20.6-01: la pila del error NO se filtra al resultado, solo el mensaje', async () => {
+        const err = new Error('Invalid login');
+        // Pila fabricada a mano: es la forma de meter un secreto en el error sin ponerlo en
+        // el mock de config. El texto que sale de esta funcion viaja a un archivo de
+        // bitacora y a un archivo centinela en el servidor del cliente.
+        err.stack = 'Error: Invalid login\n    at SMTPConnection (auth user=noreply@test pass=p4ssw0rd-de-prueba)';
+        mockTransportSendMail.mockRejectedValueOnce(err);
+
+        const result = await sendOperatorReport({
+            subject: '[SageConnect] Con secreto en la pila',
+            html: '<p>x</p>',
+            callerLogFile: 'TestCaller',
+        });
+
+        expect(result.error).toBe('Invalid login');
+        expect(JSON.stringify(result)).not.toContain('p4ssw0rd-de-prueba');
+    });
+
+    test('(e) guarda estructural: D-02 y D-03 vueltos permanentes sobre el fuente', () => {
+        const source = fs.readFileSync(
+            path.join(__dirname, '..', 'src', 'utils', 'EmailSender.js'),
+            'utf8'
+        );
+        const start = source.indexOf('async function sendOperatorReport');
+        const end = source.indexOf('module.exports');
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+
+        const region = source.slice(start, end);
+        // Una guarda que solo asserta ausencias esta a un refactor de pasar por estar
+        // mirando una rebanada vacia (patron adoptado en la 20.5-04). Primero se prueba
+        // que la rebanada NO es vacua.
+        expect(region.length).toBeGreaterThan(500);
+        expect(region).toContain('delivered: true');
+        expect(region).toContain('delivered: false');
+
+        // D-02: nada vuelve lanzable esta funcion, ni siquiera bajo un parametro.
+        // D-03: nada retiene estado entre ticks para transportar el resultado.
+        expect(region).not.toContain('throw');
+        expect(region).not.toContain('throwOnFailure');
+        expect(region).not.toContain('EventEmitter');
+
+        // T-20.6-01. El criterio escrito del plan pedia que la region ENTERA no mencionara
+        // la clave de correo, pero la funcion la lee de forma legitima para armar `auth` y
+        // el plan prohibe tocar ese bloque: el criterio literal es insatisfacible. La region
+        // que de verdad importa para la fuga es la que PRODUCE el campo `error`, y ahi la
+        // guarda queda mas fuerte que la pedida: no menciona NINGUN campo del servidor de
+        // correo, no solo la clave, ni lee propiedad alguna de la excepcion mas alla del
+        // mensaje.
+        const catchRegion = region.slice(region.indexOf('} catch (err) {'));
+        expect(catchRegion.length).toBeGreaterThan(50);
+        expect(catchRegion).toContain('delivered: false');
+        expect(catchRegion).not.toContain('config.mailing');
+        expect(catchRegion).not.toContain('.stack');
     });
 });
