@@ -408,4 +408,78 @@ describe('Reporte quincenal de pagos pendientes (Fase 20.5, Q3-03)', () => {
             expect(mockRunQuery).not.toHaveBeenCalled();
         });
     });
+
+    // -------------------------------------------------------------------------------
+    // Fase 20.6 / WR-04 — la lectura en cerrado del desenlace, fijada por aserción.
+    //
+    // Gemelos de los dos casos de tests/integration/eom-dispatch.test.js, sobre el segundo de
+    // los tres sitios de llamada. La frase «un valor ausente o malformado cae del lado de la no
+    // entrega» está escrita VERBATIM en cuatro comentarios del código —src/background.js:412 y
+    // :517, src/controller/PortalOC_Creator.js:778-779 y src/utils/EmailSender.js:118-120— y
+    // hasta este bloque no la sostenía NINGUNA aserción: todos los dobles de la fase resolvían
+    // dentro de las dos formas canónicas, así que la lectura fail-closed no la ejercitaba nadie.
+    //
+    // La medida exacta de lo que faltaba: mutar los sitios de llamada a
+    //     if (!delivery || delivery.delivered !== false)
+    // —un undefined contado como ENTREGADO— dejaba las 120 pruebas de la fase EN VERDE, y con
+    // ellas reinstalado el centinela mentiroso que esta fase existe para quitar.
+    //
+    // Hacen falta DOS dobles porque el segundo mutante —cambiar el === por ==, que es lo que
+    // produce un refactor cosmético— sobrevive a un undefined: con igualdad laxa
+    // { delivered: 1 } pasa por entregado, ya que 1 == true es verdadero en JavaScript. El ===
+    // del código lo rechaza, y el segundo caso del par es lo único que lo fija.
+    //
+    // La aserción NEGATIVA sobre el buzón de administración va en los dos: D-12 mantiene el
+    // reporte quincenal sin ese respaldo —LICENSE_ADMIN_EMAIL sigue reservado al timeout del
+    // proceso hijo, D-15 de la 20.5— y este bloque lo fija también en el camino del valor
+    // ausente, que es por donde entraría una copia distraída del despachador de cierre de mes.
+    //
+    // De paso vuelven alcanzable por prueba el respaldo 'unknown delivery failure'
+    // (src/background.js:583), que hasta hoy era rama muerta: es IN-05 de la revisión, que pide
+    // conservarlo y volverlo alcanzable para que nadie lo borre confundiéndolo con el código
+    // muerto que esta fase sí eliminó.
+    // -------------------------------------------------------------------------------
+    describe('Fase 20.6 / WR-04 — ausente o malformado cuenta como NO entregado', () => {
+        test('resultado AUSENTE: centinela success:false con el respaldo exacto, y el buzón de administración intacto', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00007001', '2026-05-14')] });
+            // El doble del mutante literal de la revisión: el canal resuelve sin decir nada.
+            mockSendOperatorReport.mockResolvedValueOnce(undefined);
+
+            // RESUELVE: la notificación jamás reprueba el paso, tampoco por esta puerta.
+            await expect(dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config)).resolves.toBeUndefined();
+
+            const payload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'payment-report-2026-05-2.sent'), 'utf8'));
+            expect(payload.success).toBe(false);
+            // El respaldo EXACTO, no un toMatch laxo: es la rama que este caso vuelve alcanzable.
+            expect(payload.error).toBe('unknown delivery failure');
+            expect(payload.rowCount).toBe(1);
+
+            // D-12: aquí NO va respaldo al buzón de administración, tampoco por el valor ausente.
+            expect(mockSendAdminAlert).not.toHaveBeenCalled();
+
+            expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+                expect.stringMatching(/^\[PAYREPORT-DISPATCH\] period=2 rows=1 sent=false err=unknown delivery failure$/));
+        });
+
+        test('resultado MALFORMADO-VERDADERO: un 1 no cuenta como entregado', async () => {
+            mockRunQuery.mockResolvedValue({ recordset: [ROW('PAY00007002', '2026-05-15')] });
+            // Por qué 1 y no 'true' ni {}: 1 == true es VERDADERO en JavaScript, así que éste es
+            // justo el valor que la igualdad laxa dejaría pasar por entregado y que el === del
+            // código rechaza. Es el único doble que mata ese mutante; el de arriba no lo toca.
+            mockSendOperatorReport.mockResolvedValueOnce({ delivered: 1, error: null });
+
+            await expect(dispatchPaymentReportIfDue(new Date(2026, 4, 16, 18, 5, 0), config)).resolves.toBeUndefined();
+
+            const payload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'payment-report-2026-05-2.sent'), 'utf8'));
+            expect(payload.success).toBe(false);
+            // El error:null no es adorno: hace entrar el mismo respaldo que en el caso de arriba.
+            expect(payload.error).toBe('unknown delivery failure');
+            expect(payload.rowCount).toBe(1);
+
+            expect(mockSendAdminAlert).not.toHaveBeenCalled();
+
+            expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+                expect.stringMatching(/^\[PAYREPORT-DISPATCH\] period=2 rows=1 sent=false err=unknown delivery failure$/));
+        });
+    });
 });

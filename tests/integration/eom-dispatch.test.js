@@ -238,6 +238,86 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
         expect(posPayload.error).toBe('mailbox unavailable');
         expect(posPayload.rowCount).toBe(1);
     });
+
+    // -------------------------------------------------------------------------------
+    // Fase 20.6 / WR-04 — la lectura en cerrado del desenlace, fijada por aserción.
+    //
+    // La frase «un valor ausente o malformado cae del lado de la no entrega» está escrita
+    // VERBATIM en cuatro comentarios del código — src/background.js:412 y :517,
+    // src/controller/PortalOC_Creator.js:778-779 y src/utils/EmailSender.js:118-120 — y hasta
+    // este bloque no la sostenía NINGUNA aserción. Todos los dobles de la fase resolvían o
+    // { delivered: true, error: null } o { delivered: false, error: '…' }: ninguno salía de las
+    // dos formas canónicas, así que la lectura fail-closed no la ejercitaba nadie.
+    //
+    // Lo que eso costaba, y no es una hipótesis: mutar los sitios de llamada a
+    //     if (!delivery || delivery.delivered !== false)
+    // —que trata un undefined como ENTREGADO— dejaba las 120 pruebas de la fase EN VERDE y
+    // reinstalaba exactamente el centinela mentiroso que esta fase existe para quitar.
+    //
+    // Por qué hacen falta DOS dobles y no uno. Ese mutante lo mata un resultado ausente. Pero
+    // hay un segundo, que un refactor cosmético produce con toda naturalidad —cambiar el ===
+    // por ==— y que un undefined NO distingue: con la igualdad laxa, { delivered: 1 } pasa por
+    // entregado, porque 1 == true es verdadero en JavaScript, mientras que el === del código lo
+    // rechaza. De ahí el segundo caso del par.
+    //
+    // De paso, los dos vuelven ALCANZABLE POR PRUEBA el texto de respaldo
+    // 'unknown delivery failure' (src/background.js:466), que hasta hoy era rama muerta. Es
+    // IN-05 de la revisión: el respaldo se conserva a propósito como defensa fail-closed barata,
+    // y volverlo alcanzable es lo que lo protege de una futura auditoría de código muerto que lo
+    // confunda con el patrón que esta fase sí eliminó.
+    // -------------------------------------------------------------------------------
+    describe('Fase 20.6 / WR-04 — ausente o malformado cuenta como NO entregado', () => {
+        // Misma técnica que el caso del requisito 7: la compuerta de payments se cierra con su
+        // propio centinela para que sólo pos quede en juego y, si el caso se pone rojo, el dedo
+        // apunte a la rama y no al arnés.
+        const cerrarCompuertaDePayments = () => {
+            fs.writeFileSync(path.join(tmpRoot, 'eom-2026-05-payments.sent'),
+                JSON.stringify({ timestamp: '2026-05-31T18:00:00.000Z', success: true, rowCount: 0 }));
+        };
+
+        test('resultado AUSENTE: centinela success:false, respaldo exacto y escalamiento igual', async () => {
+            cerrarCompuertaDePayments();
+            // El doble del mutante literal de la revisión: el canal resuelve sin decir nada.
+            mockSendOperatorReport.mockResolvedValue(undefined);
+            mockRunQuery.mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083501', fechaAuth: '2026-05-09', attempts: 4, lastError: 'X' }] });
+
+            // RESUELVE: la notificación jamás reprueba el paso, tampoco por esta puerta.
+            await expect(dispatchEomIfDue(new Date(2026, 4, 31, 18, 5, 0), config)).resolves.toBeUndefined();
+
+            const posPayload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'eom-2026-05-pos.sent'), 'utf8'));
+            expect(posPayload.success).toBe(false);
+            // El respaldo EXACTO, no un toMatch laxo: es la rama que este caso vuelve alcanzable.
+            expect(posPayload.error).toBe('unknown delivery failure');
+
+            // El escalamiento de REQ EOM-04 corre igual: una no entrega es una no entrega.
+            expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+
+            // Y el sistema no afirma una entrega que no consta.
+            expect(mockLogGenerator).not.toHaveBeenCalledWith('EomNotification', 'info',
+                expect.stringMatching(/sent=true/));
+        });
+
+        test('resultado MALFORMADO-VERDADERO: un 1 no cuenta como entregado', async () => {
+            cerrarCompuertaDePayments();
+            // Por qué 1 y no 'true' ni {}: 1 == true es VERDADERO en JavaScript, así que éste es
+            // justo el valor que la igualdad laxa dejaría pasar por entregado y que el === del
+            // código rechaza. Es el único doble que mata ese mutante; el de arriba no lo toca.
+            mockSendOperatorReport.mockResolvedValue({ delivered: 1, error: null });
+            mockRunQuery.mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083502', fechaAuth: '2026-05-10', attempts: 2, lastError: 'X' }] });
+
+            await expect(dispatchEomIfDue(new Date(2026, 4, 31, 18, 5, 0), config)).resolves.toBeUndefined();
+
+            const posPayload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'eom-2026-05-pos.sent'), 'utf8'));
+            expect(posPayload.success).toBe(false);
+            // El error:null no es adorno: hace entrar el mismo respaldo que en el caso de arriba.
+            expect(posPayload.error).toBe('unknown delivery failure');
+
+            expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+
+            expect(mockLogGenerator).not.toHaveBeenCalledWith('EomNotification', 'info',
+                expect.stringMatching(/sent=true/));
+        });
+    });
 });
 
 describe('buildEomDataQuery SQL shape (Phase 20.2, SPEC RETRY-S3)', () => {
