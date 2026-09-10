@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
 status: executing
-stopped_at: Phase 20.6 — CR-01 CERRADO por el plan 20.6-06. Quedan 20.6-07 (WR-01) y 20.6-08, separables. Aprobación de archivo crítico ya concedida para el 07.
-last_updated: "2026-09-10T16:45:00.000Z"
-last_activity: 2026-09-10 -- 20.6-06 EJECUTADO: CR-01 cerrado. sendAdminAlert acotado al tier SMTP desde config.notifications.mailTimeoutMs; el modulo estreno sus primeras 9 pruebas en dos archivos. Commits 77489b0, d68992a, 4501678
+stopped_at: Phase 20.6 — CR-01 y WR-04 CERRADOS (planes 06 y 08). Queda 20.6-07 (WR-01), separable. Aprobación de archivo crítico ya concedida para el 07.
+last_updated: "2026-09-10T18:30:00.000Z"
+last_activity: 2026-09-10 -- 20.6-08 EJECUTADO: WR-04 cerrado. Seis casos fijan por asercion la lectura fail-closed en los TRES sitios de llamada; cinco mutaciones en vivo, cero lineas de src/ tocadas. Commits 9b884a0, c75e919
 progress:
   total_phases: 8
   completed_phases: 6
   total_plans: 40
-  completed_plans: 38
-  percent: 95
+  completed_plans: 39
+  percent: 98
 ---
 
 # Project State
@@ -25,8 +25,11 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 ## Current Position
 
-Phase: 20.6 (correo-quincenal-con-variante-propia-y-entrega-de-correo-sen) — CR-01 CERRADO. Quedan los planes 07 y 08, separables.
-Plan: 6 of 8 ejecutados
+Phase: 20.6 (correo-quincenal-con-variante-propia-y-entrega-de-correo-sen) — CR-01 y WR-04 CERRADOS. Queda el plan 07 (WR-01), separable.
+Plan: 7 of 8 ejecutados
+
+**Cierre de huecos — 20.6-08 EJECUTADO. CIERRA WR-04, y sin tocar una sola linea de `src/`.** La propiedad central de la fase —«un valor ausente o malformado cae del lado de la no entrega»— estaba escrita **verbatim en cuatro comentarios** del codigo (`src/background.js:412` y `:517`, `src/controller/PortalOC_Creator.js:778-779`, `src/utils/EmailSender.js:118-120`) y **no la sostenia ninguna asercion**: todos los dobles de la fase resolvian dentro de las dos formas canonicas, asi que la lectura en cerrado no la ejercitaba nadie. Seis casos nuevos, **dos por cada uno de los tres sitios de llamada** — un doble AUSENTE (`undefined`) y uno MALFORMADO-VERDADERO (`{delivered:1}`) —, todos APPEND: 0 borrados en los dos commits. De paso vuelven **alcanzables por prueba** los tres textos de respaldo (`unknown delivery failure` dos veces, `sin detalle` una), que eran ramas muertas: es IN-05, que pide conservarlos y hacerlos alcanzables para que una auditoria de codigo muerto no los borre.
+**Lo que hay que saber para no romperlo:** (1) **Se corrieron CINCO mutaciones en vivo, no las cuatro del plan.** Las dos del plan no bastaban para demostrar lo que el plan afirmaba: bajo M-1 (`!delivery || delivered !== false`) caen **tambien** los casos malformados —`1 !== false` es verdadero—, asi que M-1 y M-2 juntos no prueban que el doble AUSENTE haga falta. Se anadio **M-3** (quitar la guarda de nulidad, `if (delivery.delivered === true)`), que mata **A1, B1 y C1 y solo esos**. Resultado: cada doble mata un mutante que el otro deja vivo, y **ninguno de los dos sobra** — demostrado, no afirmado. (2) **Ningun fuente mutado se commiteo ni quedo mutado:** restauracion comprobada por **SHA-256** y `git diff --quiet` en las cinco; `git diff --name-only | grep -c '^src/'` = **0** en las tres mediciones. (3) **D-03 de la 20.5 sigue intacto:** los casos no agregan estado, no re-alertan y no tocan el `catch`. Lo que fijan es la **afirmacion** —que la bitacora no diga que salio cuando no salio—, no la perdida. (4) **Guarda 7 en 4 y verde**, y las otras ocho tambien: este plan no toca el fuente del controlador. (5) **Octava ocurrencia del defecto de `grep` de la fase**, y otra vez con un modo nuevo: no fue un criterio sino una **tabla predictiva** que contradecia al `<behavior>` del mismo plan (`mockResolvedValueOnce` rompe el ancla de `mockResolvedValue(`). La regla hay que extenderla **tambien a las cifras predictivas**, porque una prediccion falsa manda al ejecutor a "arreglar" un archivo que estaba bien. Nada se debilito: ese conteo no gateaba nada, y el plan prohibia expresamente gatear en el.
 
 **Cierre de huecos — 20.6-06 EJECUTADO (requisito 7). CIERRA CR-01, el unico hueco BLOQUEANTE de la verificacion.** `src/utils/AdminEmailSender.js` — el `transportConfig` de `sendAdminAlert` fija ahora los tres timeouts de nodemailer desde un accesor privado respaldado por `config.notifications.mailTimeoutMs`, leido **por envio**. Antes heredaba los defaults de la libreria: 600000 ms de inactividad de socket contra un `STEP_TIMEOUT_MS` de 300000. Mientras el `catch` de `dispatchEomIfDue` fue codigo muerto la invariante de CLAUDE.md §9 se sostenia **por vacio**; el plan 20.6-05 lo volvio alcanzable y la puso en produccion. La cota vive en el **remitente**, no en el llamador, asi que un solo diff cierra los **siete** sitios de llamada — incluido `src/services/CronScheduler.js:246`, el **segundo `await`** que el `20.6-REVIEW.md` no habia contado, dentro del listener de `lock:timeout`. El modulo estreno sus **primeras pruebas**: `tests/AdminEmailSender.test.js` (6 casos, cableado) y `tests/AdminEmailSender.timeout.test.js` (3 casos, contra un SMTP real que acepta y jamas saluda). Linea base sin fallas nuevas.
 
@@ -101,6 +104,10 @@ Test suite baseline for Phase 20.3 execution — **measured fresh 2026-07-28 by 
 ## Decisions
 
 Decisions recorded during v2.4 execution (milestone-level history lives in `.planning/PROJECT.md`).
+
+- **20.6-08 (la necesidad de un doble se DEMUESTRA con el mutante que solo el mata):** el plan justificaba el segundo doble diciendo que M-1 no mataba a `{delivered:1}`. La medicion lo desmiente — bajo M-1 caen tambien los malformados —, y eso dejaba al doble AUSENTE sin justificar. Se anadio **M-3** (quitar la guarda de nulidad), que mata **solo** los ausentes: `undefined.delivered` lanza, `{delivered:1}` ni se entera. La tabla resultante (ausente mata M-1 y M-3; malformado mata M-1 y M-2) es lo que prueba que ninguno sobra. **Regla:** cuando un plan afirma que un doble hace falta, la afirmacion se prueba con el mutante que solo ese doble mata; si no existe tal mutante, el doble puede sobrar y hay que decirlo.
+- **20.6-08 (un hueco de PRUEBAS se cierra sin tocar `src/`):** la restriccion rectora del plan era cero lineas de `src/` en el diff, y es lo que le da sentido: el codigo era correcto —la verificacion lo declaro VERIFIED en las verdades 4, 5 y 6— y el plan existe para **demostrarlo**. Si el codigo cambia, la demostracion pierde su objeto. Las advertencias de la revision que se cruzaron en el camino (WR-02, WR-03, WR-05, IN-01 a IN-04, IN-06) **no se tocaron**: siguen abiertas en `20.6-REVIEW.md`.
+- **20.6-08 (octava ocurrencia del defecto de `grep`, y la primera en una tabla PREDICTIVA):** el plan anunciaba que `mockResolvedValue(undefined)` subiria de 1 a 2 en `payment-report-dispatch.test.js`; se quedo en **1**, porque el `<behavior>` del propio plan prescribe `mockResolvedValueOnce` para ese caso y el `Once` rompe el ancla del `grep`. **Las dos secciones del plan se contradicen entre si.** Se conservo el comportamiento prescrito y se reporto el conteo real. Las seis primeras ocurrencias fueron `grep -c` contando lineas donde se querian ocurrencias; la septima, un ancla `$` contra un formato no verificado; esta, una cifra predictiva. La regla se extiende: **tambien las cifras predictivas se verifican, no solo los criterios de aceptacion.**
 
 - **20.6-06 (la aprobacion de archivo critico, y su alcance):** el usuario respondio **`aprobar-ambos-06-07`** al punto de control de la tarea 1. Cubre `src/utils/AdminEmailSender.js` para el plan **20.6-06** (alcance: el `transportConfig` de `sendAdminAlert` y un accesor privado) **y** `src/background.js` para el plan **20.6-07** (alcance: la linea 478 y la linea del `require` de `./utils/EomNotification`), con el bypass del hook acotado **por comando individual**. Transcrita literalmente en `20.6-06-SUMMARY.md`, seccion «La aprobacion del usuario» — el plan 07 la cita en vez de volver a preguntar, y se detiene si no la encuentra. Hizo falta un punto de control NUEVO porque la aprobacion del 2026-09-09 quedo acotada por escrito a `src/background.js` y a los planes 04 y 05: son dos entradas distintas de `CRITICAL_PATTERNS` y una aprobacion por archivo no se extiende sola al vecino.
 - **20.6-06 (opcion A y no B — la cota vive en el remitente):** CR-01 se cierra poniendo los tres timeouts en `AdminEmailSender.js` y no sacando `sendAdminAlert` de la ruta del paso. La A cubre los **siete** sitios de llamada de golpe; la B arreglaba uno y dejaba seis colgando un socket de diez minutos en un proceso que nunca sale, que es exactamente CLAUDE.md §3. El accesor se copio **EN FORMA** de `EmailSender.js:33-36`, conjuncion `&&` incluida: es lo unico que mantiene verde a `tests/controller/Providers_Downloader.xml-error.test.js`, cuyo mock de config no declara la llave `notifications` y que carga el modulo REAL.

@@ -241,9 +241,9 @@ Plans:
 - [x] 20.6-03-PLAN.md (wave 2, dep 01) — la linea de la alerta de OCs distingue entregado de no entregado; el caso perdido sube a `warn` con el conteo y las claves de las OCs afectadas (D-13). El bloque sigue sin relanzar; Guarda 7 pasa de tres a cuatro sitios de emision [REQ 6]
 - [x] 20.6-04-PLAN.md (wave 2, dep 01+02) — `dispatchPaymentReportIfDue` con cuerpo de quincena y un rotulo unico compartido con su asunto (D-08), y payload de centinela honesto. El centinela se sigue escribiendo SIEMPRE (D-10) y sigue sin respaldo al buzon de administracion (D-12). Incluye el punto de control de archivo critico para `src/background.js` [REQ 1, 2, 5]
 - [x] 20.6-05-PLAN.md (wave 3, dep 04) — la rama de fallo de `dispatchEomIfDue` se vuelve alcanzable y con ella el escalamiento de REQ EOM-04, que hoy es codigo muerto (D-11); una prueba la observa correr con un doble por valor de retorno (D-14) [REQ 3, 7]
-- [ ] 20.6-06-PLAN.md (wave 1, gap_closure, **OBLIGATORIO**) — CR-01: `src/utils/AdminEmailSender.js` fija los tres timeouts de nodemailer desde `config.notifications.mailTimeoutMs`, igual que `EmailSender.js` desde la 20.5/Q3-06. Cierra el hueco para los siete sitios de llamada, no solo el que esta fase volvio alcanzable. Tarea 1 = punto de control bloqueante de archivo critico. Dos archivos de prueba nuevos: cableado + timeout real [SPEC 7]
+- [x] 20.6-06-PLAN.md (wave 1, gap_closure, **OBLIGATORIO**) — CR-01: `src/utils/AdminEmailSender.js` fija los tres timeouts de nodemailer desde `config.notifications.mailTimeoutMs`, igual que `EmailSender.js` desde la 20.5/Q3-06. Cierra el hueco para los siete sitios de llamada, no solo el que esta fase volvio alcanzable. Tarea 1 = punto de control bloqueante de archivo critico. Dos archivos de prueba nuevos: cableado + timeout real [SPEC 7]
 - [ ] 20.6-07-PLAN.md (wave 2, dep 06, gap_closure, separable) — WR-01: `escapeHtml` se exporta de `EomNotification.js` y envuelve las cuatro interpolaciones del cuerpo del escalamiento (`src/background.js:478`), donde hoy entra cruda la respuesta del servidor SMTP. Cita la aprobacion del 20.6-06 en vez de abrir un segundo punto de control [WR-01]
-- [ ] 20.6-08-PLAN.md (wave 1, gap_closure, separable) — WR-04: seis casos que fijan por asercion la propiedad «ausente o malformado = no entregado» en los tres sitios de llamada. Cero lineas de `src/` tocadas; se verifica por mutacion (M-1 ausente-como-entregado y M-2 igualdad laxa) [WR-04]
+- [x] 20.6-08-PLAN.md (wave 1, gap_closure, separable) — WR-04: seis casos que fijan por asercion la propiedad «ausente o malformado = no entregado» en los tres sitios de llamada. Cero lineas de `src/` tocadas; verificado por **cinco** mutaciones en vivo — las dos del plan (M-1 ausente-como-entregado, M-2 igualdad laxa) mas **M-3** (sin guarda de nulidad), anadida porque sin ella no quedaba demostrado que el doble ausente hiciera falta [WR-04]
 
 
 ### Phase 21: Partial payment completion policy
@@ -287,5 +287,5 @@ Plans:
 | 20.3 Cross-system 409 detect  | v2.4      | 4/4 | Complete   | 2026-07-29 |
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
-| 20.6 Correo quincenal + entrega senalizada | v2.4 | 6/8 | In progress | 2026-09-10 |
+| 20.6 Correo quincenal + entrega senalizada | v2.4 | 7/8 | In progress | 2026-09-10 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
