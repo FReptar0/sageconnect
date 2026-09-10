@@ -410,7 +410,7 @@ function readSentinelPayload(sentinelPath) {
     }
 }
 
-module.exports = { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, readSentinelPayload };
+module.exports = { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, readSentinelPayload, escapeHtml };
 
 // LOG_FILE retained for future callers routing entries via logGenerator(LOG_FILE, ...).
 void LOG_FILE;
