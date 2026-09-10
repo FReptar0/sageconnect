@@ -318,6 +318,100 @@ describe('EOM dispatch integration (Phase 20, SPEC EOM-04)', () => {
                 expect.stringMatching(/sent=true/));
         });
     });
+
+    // -------------------------------------------------------------------------------
+    // Fase 20.6 / WR-01 — el sumidero de inyección de HTML del escalamiento, cerrado.
+    //
+    // `deliveryError` es el `message` que devuelve el canal de correo, y ese texto incluye
+    // TEXTUALMENTE la respuesta del servidor SMTP. Hasta esta fase entraba crudo al cuerpo
+    // HTML de la alerta al buzón de administración (src/background.js:478), que es un
+    // documento que un humano abre en su cliente de correo. Igual que el hallazgo CR-01, la
+    // línea existía desde antes pero era INALCANZABLE: fue esta fase la que la puso en
+    // producción, al convertir en un `else` sobre el valor de retorno el `catch` que nunca
+    // podía ejecutarse. La precondición de explotación es un servidor de correo hostil o
+    // comprometido, o un intermediario sobre una conexión sin cifrar.
+    //
+    // El mecanismo que se prueba es `escapeHtml` de src/utils/EomNotification.js — el mismo
+    // escapador que ya cierra cada celda de la tabla y el rótulo del periodo, ligado al
+    // modelo de amenazas T-20-14 (inyección de HTML vía el texto de último error). No es una
+    // función nueva: la fase sólo la exportó, para que el sitio de llamada la use en vez de
+    // fabricarse una segunda copia que con el tiempo divergiría de la primera.
+    //
+    // El texto de ataque ejercita CUATRO de los cinco caracteres significativos — <, >, & y
+    // la comilla doble — a la vez. Uno que sólo probara `<` no distinguiría un escapado
+    // completo de uno a medias.
+    // -------------------------------------------------------------------------------
+
+    // Misma técnica que el caso del requisito 7 y que los dos de WR-04: la compuerta de
+    // payments se cierra con su propio centinela para que sólo pos quede en juego y las
+    // aserciones sobre mock.calls[0] sean inequívocas.
+    const soloPosEnJuego = () => {
+        fs.writeFileSync(path.join(tmpRoot, 'eom-2026-05-payments.sent'),
+            JSON.stringify({ timestamp: '2026-05-31T18:00:00.000Z', success: true, rowCount: 0 }));
+    };
+    const ATAQUE = '<script>alert(1)</script> & "quotes"';
+
+    test('WR-01: el marcado que llega del transporte sale INERTE en el cuerpo del escalamiento', async () => {
+        soloPosEnJuego();
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ATAQUE });
+        mockRunQuery.mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083601', fechaAuth: '2026-05-11', attempts: 3, lastError: 'X' }] });
+
+        // RESUELVE, no rechaza: la restricción rectora de la fase sigue en pie.
+        await expect(dispatchEomIfDue(new Date(2026, 4, 31, 18, 5, 0), config)).resolves.toBeUndefined();
+
+        expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+        const cuerpo = mockSendAdminAlert.mock.calls[0][1];
+
+        // Las DOS direcciones, porque una sola se satisface por accidente: la presencia de la
+        // forma escapada la daría también un cuerpo que llevara las dos formas a la vez, y la
+        // ausencia de la cruda la daría un cuerpo que hubiera perdido el error entero.
+        expect(cuerpo).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+        expect(cuerpo).toContain('&amp;');
+        expect(cuerpo).toContain('&quot;quotes&quot;');
+        expect(cuerpo).not.toContain('<script>');
+        expect(cuerpo).not.toContain('</script>');
+
+        // Las otras tres interpolaciones del cuerpo también van envueltas, y el escapador las
+        // devuelve idénticas: ninguna categoría, ningún año-mes y ningún entero contiene uno
+        // de los cinco caracteres. Envolverlas cuesta cero y a cambio la propiedad «toda
+        // interpolación de este cuerpo va envuelta» se audita de un vistazo, en vez de exigir
+        // razonar caso por caso cuál entrada es confiable — que es como entra el quinto
+        // sumidero sin que nadie lo note.
+        expect(cuerpo).toContain('<p>EOM dispatch failed for category pos on 2026-05.</p>');
+        expect(cuerpo).toContain('<p>Row count was 1.</p>');
+    });
+
+    test('WR-01: el escalamiento sigue siendo el mismo — asunto y centinela NO se escapan', async () => {
+        soloPosEnJuego();
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ATAQUE });
+        mockRunQuery.mockResolvedValueOnce({ recordset: [{ tenant: 'COPDAT', idOrPo: 'PO0083602', fechaAuth: '2026-05-12', attempts: 5, lastError: 'X' }] });
+
+        await expect(dispatchEomIfDue(new Date(2026, 4, 31, 18, 5, 0), config)).resolves.toBeUndefined();
+
+        // El escalamiento no cambió de forma: un solo envío, al mismo canal de bitácora.
+        expect(mockSendAdminAlert).toHaveBeenCalledTimes(1);
+        expect(mockSendAdminAlert.mock.calls[0][2]).toBe('EomNotification');
+
+        // El ASUNTO va en texto plano a propósito: es una cabecera de correo, no marcado, y
+        // envolverlo metería entidades visibles en la bandeja del administrador. Se fija con
+        // igualdad exacta y no con un toMatch laxo, que es la cobertura más fuerte que ese
+        // lado admite: con las entradas reales —una categoría y un año-mes— el escapador es
+        // la identidad, así que envolver el asunto no cambia ni un byte de la salida y
+        // ninguna aserción de comportamiento puede distinguirlo. La mitad observable de la
+        // asimetría es la de abajo.
+        const asunto = mockSendAdminAlert.mock.calls[0][0];
+        expect(asunto).toMatch(/EOM email FAILED for 2026-05 - pos/);
+        expect(asunto).not.toMatch(/&(amp|lt|gt|quot|#39);/);
+
+        // El CENTINELA guarda el error CRUDO, también a propósito: el payload sale por
+        // JSON.stringify, que ya escapa lo que ese formato necesita, y meterle entidades de
+        // HTML ensuciaría un archivo que el operador lee a ojo. Ésta es la aserción que se
+        // pone roja si alguien "arregla" el escapado aplicándolo de más.
+        const posPayload = JSON.parse(fs.readFileSync(path.join(tmpRoot, 'eom-2026-05-pos.sent'), 'utf8'));
+        expect(posPayload.success).toBe(false);
+        expect(posPayload.error).toBe(ATAQUE);
+        expect(posPayload.rowCount).toBe(1);
+    });
 });
 
 describe('buildEomDataQuery SQL shape (Phase 20.2, SPEC RETRY-S3)', () => {
