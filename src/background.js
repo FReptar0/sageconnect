@@ -15,7 +15,7 @@ const notifier = require('node-notifier');
 const fs = require('fs');
 const path = require('path');
 const { runQuery } = require('./utils/SQLServerConnection');
-const { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically } = require('./utils/EomNotification');
+const { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, escapeHtml } = require('./utils/EomNotification');
 const { sendOperatorReport } = require('./utils/EmailSender');
 const { sendAdminAlert } = require('./utils/AdminEmailSender');
 const { buildScopeWhere } = require('./utils/RetryPolicy');
@@ -475,7 +475,7 @@ async function dispatchEomIfDue(now, cfg) {
             // Respaldo al buzón de administración por REQ EOM-04, hoy alcanzable (D-11).
             await sendAdminAlert(
                 `[SageConnect] EOM email FAILED for ${yyyyMm} - ${category}`,
-                `<p>EOM dispatch failed for category ${category} on ${yyyyMm}.</p><p>Error: ${deliveryError}</p><p>Row count was ${allRows.length}.</p>`,
+                `<p>EOM dispatch failed for category ${escapeHtml(category)} on ${escapeHtml(yyyyMm)}.</p><p>Error: ${escapeHtml(deliveryError)}</p><p>Row count was ${escapeHtml(allRows.length)}.</p>`,
                 'EomNotification'
             );
         }
