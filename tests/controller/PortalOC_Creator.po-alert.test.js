@@ -429,6 +429,79 @@ describe('PortalOC_Creator — alerta inmediata de OCs con fallo de carga (fase 
         expect(second.html).toContain('OC-LLL-DOS');
         expect(second.html).not.toContain('OC-LLL-UNO');
     });
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    // Fase 20.6 / WR-04 — la lectura en cerrado del desenlace, fijada por aserción.
+    //
+    // Éste es el TERCER sitio de llamada de sendOperatorReport, y su expresión es IDÉNTICA a la
+    // de los dos despachadores de src/background.js — lo verificó la revisión y lo re-verificó la
+    // verificación leyendo cada uno directamente. La frase «un valor ausente o malformado cae del
+    // lado de la no entrega» está escrita VERBATIM en cuatro comentarios del código
+    // —src/background.js:412 y :517, src/controller/PortalOC_Creator.js:778-779 y
+    // src/utils/EmailSender.js:118-120— y hasta este bloque no la sostenía NINGUNA aserción:
+    // todos los dobles de la fase resolvían dentro de las dos formas canónicas.
+    //
+    // La medida de lo que faltaba: mutar los sitios de llamada a
+    //     if (!delivery || delivery.delivered !== false)
+    // —un undefined contado como ENTREGADO— dejaba las 120 pruebas de la fase EN VERDE, y con
+    // ellas reinstalado el centinela mentiroso que esta fase existe para quitar.
+    //
+    // Hacen falta DOS dobles porque el segundo mutante —cambiar el === por ==, que es lo que
+    // produce un refactor cosmético— sobrevive a un undefined: con igualdad laxa
+    // { delivered: 1 } pasa por entregado, ya que 1 == true es verdadero en JavaScript.
+    //
+    // El respaldo 'sin detalle' que estos casos vuelven ALCANZABLE POR PRUEBA es IN-05 de la
+    // revisión: se conserva a propósito como defensa fail-closed barata, y volverlo alcanzable es
+    // lo que lo protege de una auditoría futura de código muerto.
+    //
+    // D-03 de la 20.5 sigue intacto: estos casos no agregan estado, no re-alertan y no tocan el
+    // catch. Lo que fijan es la AFIRMACIÓN, no la pérdida — una OC cuya alerta se perdió sigue
+    // sin re-alertar y reaparece en el correo consolidado de cierre de mes.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    describe('Fase 20.6 / WR-04 — ausente o malformado cuenta como NO entregado', () => {
+        test('resultado AUSENTE: la bitacora no dice que si, y el respaldo del texto de error entra', async () => {
+            // Mismo montaje que el caso de la no entrega; lo único que cambia es lo que resuelve el
+            // doble. El del mutante literal de la revisión: el canal resuelve sin decir nada.
+            primeTick([poRow('OC-PPP-001', 0), poRow('OC-PPP-002', 0)]);
+            mockPortalPost.mockRejectedValue(portalError('EF00', 'rechazo'));
+            mockSendOperatorReport.mockResolvedValue(undefined);
+
+            // La notificación jamás reprueba el paso del tenant: la restricción rectora de la fase.
+            await expect(createPurchaseOrders(0)).resolves.toBeUndefined();
+
+            expect(logLines().filter((l) => /sent=true/.test(l))).toHaveLength(0);
+            // El nivel se asegura sobre los TRES argumentos y NO con logLines(), que mapea sólo c[2]
+            // y pierde justo el dato que el requisito 6 exige: que la línea sea encontrable en warn.
+            expect(mockLogGenerator).toHaveBeenCalledWith(
+                'PortalOC_Creator',
+                'warn',
+                expect.stringMatching(
+                    /^\[PO-ALERT\] tenant=DBALFA pos=2 sent=false reason=undelivered ocs=OC-PPP-001,OC-PPP-002 err=sin detalle$/
+                ),
+            );
+        });
+
+        test('resultado MALFORMADO-VERDADERO: un 1 no cuenta como entregado', async () => {
+            primeTick([poRow('OC-QQQ-001', 0), poRow('OC-QQQ-002', 0)]);
+            mockPortalPost.mockRejectedValue(portalError('EF01', 'rechazo'));
+            // Por qué 1 y no 'true' ni {}: 1 == true es VERDADERO en JavaScript, así que éste es
+            // justo el valor que la igualdad laxa dejaría pasar por entregado y que el === del
+            // código rechaza. Es el único doble que mata ese mutante; el de arriba no lo toca.
+            // El error:null no es adorno: hace entrar el mismo respaldo que en el caso de arriba.
+            mockSendOperatorReport.mockResolvedValue({ delivered: 1, error: null });
+
+            await expect(createPurchaseOrders(0)).resolves.toBeUndefined();
+
+            expect(logLines().filter((l) => /sent=true/.test(l))).toHaveLength(0);
+            expect(mockLogGenerator).toHaveBeenCalledWith(
+                'PortalOC_Creator',
+                'warn',
+                expect.stringMatching(
+                    /^\[PO-ALERT\] tenant=DBALFA pos=2 sent=false reason=undelivered ocs=OC-QQQ-001,OC-QQQ-002 err=sin detalle$/
+                ),
+            );
+        });
+    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
