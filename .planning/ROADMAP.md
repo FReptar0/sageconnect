@@ -18,7 +18,7 @@
 - [ ] **Phase 20.3: Cross-system detection query (409 / portal existence)** (INSERTED) — Before the cron re-POSTs a PO that has already failed at least once (`ef.errorCount > 0`), ask the portal whether it already holds it (`GET .../purchase-orders?external_ids=<ocSage>&pageSize=1&offset=0`, one OC per call). Found → INSERT a `POSTED`/`CLOSED` row carrying the portal's `idFocaltec` and skip the POST; not found → create as today; undetermined → fail-closed, write nothing, retry next tick. Resolves the repeated 409 / lost-ack deadlock. First portal GET for POs in the codebase; pattern copied from `GetProviders.getProviderByExternalId`. Self-contained — independent of Q3, CR-03 and CR-04.
 - [ ] **Phase 20.4: Bound the portal existence probe per tick** (INSERTED) — Tope doble (presupuesto de tiempo + tope de conteo, lo que ocurra primero) sobre la sonda de la fase 20.3, para que no pueda consumir los 5 min del paso `createPurchaseOrders`. Lo que rebase el tope se difiere fail-closed al siguiente tick y aparece como `deferred=` en `[PORTAL-CHECK-SUMMARY]`. Cierra WR-05.
 - [ ] **Phase 20.5: Q3 differentiated alerts** (INSERTED) — Cierra la desviacion Q3 del acta del 2026-05-20: **POs con alerta inmediata** al detectar el fallo de carga (agrupada por tick, una sola alerta por OC derivada de `errorCount` — sin estado nuevo) y **pagos con reporte quincenal** de pendientes acumulados (periodos naturales 1-15 / 16-fin). El correo de cierre de mes de la fase 20 se conserva: responde una pregunta distinta (Q1).
-- [ ] **Phase 20.6: Correo quincenal con variante propia y entrega de correo senalizada** (INSERTED) — Cierra los dos BLOCKER de la revision de codigo de la 20.5: el reporte quincenal sale con el texto del cierre de mes (CR-02), y «enviado» se registra aunque SMTP falle, lo que apaga para siempre la alerta de esa OC (CR-03).
+- [x] **Phase 20.6: Correo quincenal con variante propia y entrega de correo senalizada** (completed 2026-09-10) — Cierra los dos BLOCKER de la revision de codigo de la 20.5: el reporte quincenal sale con el texto del cierre de mes (CR-02), y «enviado» se registra aunque SMTP falle, lo que apaga para siempre la alerta de esa OC (CR-03).
 - [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
 <details>
@@ -287,5 +287,5 @@ Plans:
 | 20.3 Cross-system 409 detect  | v2.4      | 4/4 | Complete   | 2026-07-29 |
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
-| 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete | 2026-09-10 |
+| 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |

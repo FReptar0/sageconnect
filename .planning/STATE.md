@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.4
 milestone_name: Retry policies
-status: executing
+status: ready_to_plan
 stopped_at: Phase 20.6 — CIERRE DE HUECOS COMPLETO. CR-01, WR-04 y WR-01 cerrados (planes 06, 08 y 07). Siguiente: /gsd-verify-work 20.6.
 last_updated: "2026-09-10T19:45:00.000Z"
 last_activity: 2026-09-10 -- 20.6-07 EJECUTADO: WR-01 cerrado. escapeHtml exportado y las cuatro interpolaciones del escalamiento envueltas; dos lineas de src/background.js y ni una mas. Commits 2dfeb99, 084e652, 03a254d
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 40
   completed_plans: 40
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 ## Current Position
 
-Phase: 20.6 (correo-quincenal-con-variante-propia-y-entrega-de-correo-sen) — CIERRE DE HUECOS COMPLETO. CR-01, WR-04 y WR-01 cerrados.
-Plan: 8 of 8 ejecutados
+Phase: 21
+Plan: Not started
 
 **Cierre de huecos — 20.6-07 EJECUTADO. CIERRA WR-01, el ultimo hueco de la revision que el cierre planeo.** `deliveryError` —que es `err.message` de nodemailer y por tanto **incluye textualmente la respuesta del servidor SMTP**— se interpolaba **sin escapar** en el cuerpo HTML del escalamiento al buzon de administracion (`src/background.js:478`). Es la instancia nueva de **T-20-14** del modelo de amenazas, el sumidero que `escapeHtml` existe para cerrar y que los otros tres cuerpos de correo del proyecto **si** cierran. Como CR-01, la linea existia desde antes pero era **inalcanzable**: la fase la puso en produccion. El arreglo son **dos lineas** de `src/background.js` —el `require` de L18 y el cuerpo de L478— mas la llave del `module.exports` de `EomNotification.js`. `tests/integration/eom-dispatch.test.js` pasa de 8 a **10** casos, todos APPEND.
 **Lo que hay que saber para no romperlo:** (1) **Se envolvieron las CUATRO interpolaciones, no solo la no confiable.** Las otras tres son benignas y `escapeHtml` las devuelve byte a byte identicas —coacciona con `String()` y solo toca cinco caracteres, ninguno de los cuales aparece en `'pos'`/`'payments'`, en un `YYYY-MM` ni en un entero—, asi que el costo es cero y a cambio la propiedad se vuelve **auditable de un vistazo** en vez de exigir razonar caso por caso cual entrada es confiable. Un escapado selectivo es como entra el quinto sumidero sin que nadie lo note. (2) **El ASUNTO y el CENTINELA quedan deliberadamente SIN escapar, y hay un caso que lo fija:** el asunto es texto plano de una cabecera de correo, no marcado, y el payload del centinela sale por `JSON.stringify`, que ya escapa lo que ese formato necesita. **No lo "arregles"**: el caso (2) de la suite se pone rojo si lo haces. (3) **La aprobacion de archivo critico se CITO, no se volvio a pedir** — `aprobar-ambos-06-07` del `20.6-06-SUMMARY.md`, con alcance acotado por escrito a la linea 478 y a la del `require`. Los cinco puntos del hook se declararon igual para este diff, con los cuatro primeros verificados. (4) **El plan pedia un comentario de una linea sobre la llamada y NO se escribio**, a proposito: habria tocado una tercera linea de un archivo critico, fuera del alcance aprobado. Gana el alcance; la razon quedo fijada por un caso de prueba, que es mas fuerte que prosa porque puede caer. (5) **NOVENA ocurrencia del defecto de conteo de la fase, y la mas ancha hasta ahora:** no fue un `grep` sino una **mutacion prescrita** cuyo rojo predicho es **imposible** — envolver el asunto en `escapeHtml` es la identidad sobre las entradas reales, asi que ninguna asercion puede distinguirlo. Se pre-midio antes de escribir el caso, se corrio igual (10/10 verdes, cero rojos) y se sustituyo por una mutacion sobre el centinela, que si discrimina. La regla ya no es «verifica tus `grep`»: es **«pre-mide toda prediccion de un criterio, incluido el ROJO de una mutacion»**. (6) `await withStepTimeout(` sigue en **9** y `dispatchPaymentReportIfDue` quedo byte a byte identica, demostrado por `diff` y SHA-256 en las dos direcciones.
@@ -95,7 +95,7 @@ Total phases: 21 (Phases 20-21 active this milestone)
 Next: `/gsd-verify-work 20.4` — la fase 20.4 tiene sus **cuatro** planes en tierra y los cuatro SUMMARY escritos. El 20.4-04-SUMMARY trae la tabla de mapeo SPEC↔aceptación de las 14 casillas y la evidencia de los cuatro controles negativos, escrita para ese comando. **Lo que queda vivo de la fase, para quien la verifique:** (1) confirmación en vivo en el servidor de pruebas antes de la migración de octubre — HANDOFF §6, no hay staging que ejercite el portal real; (2) el criterio de escalamiento que fija el propio SPEC: si `deferred=` se mantiene distinto de cero en ticks consecutivos, la programación justa de las OCs diferidas se vuelve un hallazgo con su propia fase; (3) `D-ITEM-01` y `D-ITEM-02` en `deferred-items.md` siguen abiertos y son decisión del usuario.
 **Hallazgo de la ola 2, SALDADO por la ola 4:** el punto ciego de D-07 —revertir la condición ensanchada de emisión del resumen a la anterior— pasaba los **55** tests de los tres archivos de este controlador y no lo tocaba ninguna de las 14 casillas del SPEC. La ola 4 lo cerró con **dos** casos, no uno: el del presupuesto consumido por el SELECT (cero sondas y aun así se emite resumen) y su **control complementario** (nada sondeado y nada diferido ⇒ no se emite nada). El par se midió diferencial: revertir la condición pone roja **sólo** la primera, ensancharla hasta emitir siempre pone roja **sólo** la segunda. Ya no hay ningún comportamiento de esta fase que pueda revertirse en silencio.
 También pendiente: `/gsd-verify-work 20.3` — la fase 20.3 tiene sus cuatro planes en tierra y el 20.3-04-SUMMARY trae la tabla de mapeo SPEC↔aceptación escrita para ese comando. No lo cierra este plan.
-Last activity: 2026-09-09 -- Phase 20.6 execution started
+Last activity: 2026-09-10
 Test suite baseline for Phase 20.3 execution — **measured fresh 2026-07-28 by the plan-checker**: `npm test` reports **6 failed suites / 7 failed tests of 500** (492 passed). Same failing-suite set as always (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes) — the CLAUDE.md §6 baseline. **This is the pass bar for 20.3: the same set, no NEW failures.** (Prior reading after 20.2-01 was 6/7 of 485 with 477 passed; the totals grew with 20.2's added suites, the failing set did not.)
 **Reading after 20.3-01 (2026-07-29): 6 failed suites / 7 failed tests of 522** (514 passed, 1 skipped) — same failing set, verified by name; **35 passed suites vs 34**, i.e. one new green suite and +22 tests. This is the new comparison point for 20.3-02.
 **Reading after 20.3-02 (2026-07-29): identical — 6 failed suites / 35 passed / 41 total, 7 failed / 1 skipped / 514 passed / 522 total.** By design: that plan added assertions, not tests. Failing set re-verified by name (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` worker crashes). Still the comparison point for 20.3-03 — but note that 20.3-03 legitimately CHANGES it, since it lands the D-07b mock repair and a new structural-guard suite.
@@ -242,7 +242,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Executing Phase 20.6
+**Status:** Ready to plan
 
 ## Deferred Items
 
