@@ -287,5 +287,5 @@ Plans:
 | 20.3 Cross-system 409 detect  | v2.4      | 4/4 | Complete   | 2026-07-29 |
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
-| 20.6 Correo quincenal + entrega senalizada | v2.4 | 5/5 | Complete   | 2026-09-09 |
+| 20.6 Correo quincenal + entrega senalizada | v2.4 | 6/8 | In progress | 2026-09-10 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
