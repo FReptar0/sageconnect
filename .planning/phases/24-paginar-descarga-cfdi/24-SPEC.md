@@ -1,7 +1,7 @@
 # Phase 24: Paginar la descarga de CFDIs (corregir el tope de 200) — Specification
 
 **Created:** 2026-10-08
-**Ambiguity score:** 0.09 (gate: ≤ 0.20)
+**Ambiguity score:** 0.08 (gate: ≤ 0.20)
 **Requirements:** 15 locked
 **Branch:** `feat/paginar-descarga-cfdi` (sale de `origin/master` `dde4bd0`; **nunca** de `master` local, que trae la fase 20 sin publicar)
 
@@ -15,7 +15,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 
 **Por qué sólo muerde a las autorizadas tarde.** El portal ordena por fecha de emisión, de la más nueva a la más vieja. Una factura entra a PENDING_TO_PAY al autorizarse pero conserva el lugar de su fecha de emisión; si se autoriza con más de ~2 semanas de retraso cae debajo de la posición 200 y nunca baja. Prueba del 05-oct: `total=575`, recibidas 200; pidiendo por páginas de 200 llegaron las 575 y la factura buscada estaba en la posición 512. La hipótesis predijo exactamente cuáles 3 de 19 entraron. Volumen: 575 el 05-oct, **772 el 07-oct**. Complementos de pago: 200 de 244. Notas de crédito: 87 de 87.
 
-**Por qué paginar sólo no alcanza (verificado en logs de producción del 16-17 de julio, 135 ciclos, con el tope vigente).** downloadCFDI: mediana 2m28s, **máximo 4m45s**; el 17-jul 00:50 hubo `[TIMEOUT] step=downloadCFDI ... Step timeout after 5m` **con una sola página**, y el `catch` por tenant (`src/background.js:296`) se saltó pagos y OCs de ese ciclo. Hoy `getTypeI` hace **3 consultas SQL en serie por factura** (RFC en `fesaParam`, CxP en `APIBH/APIBHO`, OC en `POINVH1/POINVHO`): con 772 son ~2,300 viajes a SQL por ciclo. El script de rescate usado en producción el 05 y el 07-oct (`filtrosSage`) filtra en bloque —2 consultas por cada 200 UUID más 1 por RFC distinto— con la misma semántica, y funcionó.
+**Por qué paginar sólo no alcanza (verificado en logs de producción del 16-17 de julio, 135 ciclos, con el tope vigente).** downloadCFDI: mediana 2m28s, **máximo 4m45s**; el 17-jul 00:50 hubo `[TIMEOUT] step=downloadCFDI ... Step timeout after 5m` **con una sola página**, y el `catch` por tenant (`src/background.js:296`) se saltó pagos y OCs de ese ciclo. Hoy `getTypeI` hace **3 consultas SQL en serie por factura** (RFC en `fesaParam`, CxP en `APIBH/APIBHO`, OC en `POINVH1/POINVHO`): con 772 son ~2,300 viajes a SQL por ciclo. El script de rescate usado en producción el 05 y el 07-oct (`filtrosSage`) filtra en bloque —2 consultas por cada 200 UUID más 1 por RFC distinto— con la misma semántica, y funcionó. **Agosto de 2026 lo confirma a escala** (medido el 08-oct con `data-sageconnect/casos/medir-carga-historica.sh`): con el filtro por factura hubo 91 `[TIMEOUT]` de downloadCFDI y 104 ciclos abortados en el mes, sin que entraran más facturas que en octubre; lo que cambió fue el costo de cada consulta SQL (detalle en `24-CONTEXT.md`).
 
 **Lo que existe y se reutiliza.** `requestPendingToPayPage` + `getPendingToPayInvoices` (GetTypesCFDI.js:440-559) ya paginan con reintento ante 429/502/503/504 y errores de red, y deduplican por UUID; hoy sólo los usan scripts (`payment-reconciliation.js`, `pending-payments-diagnostic.js`; el primero también lo carga `payment-routes.js`). Su contrato actual es "todo o nada": ante un error devuelven `[]`.
 
@@ -56,7 +56,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 
 6. **REQ-24-06 — Tiempo de listado acotado (D13)**: cada consulta paginada de `getTypeI`, `getTypeE` y `getCfdisByProvider` deja de pedir páginas nuevas (y de reintentar) cuando su tiempo transcurrido supera un presupuesto derivado de `config.schedule.stepTimeoutMs`, sin variable nueva en el `.env`; en ese caso devuelve lo recibido y registra un `warn` que dice explícitamente que se agotó el presupuesto. No aplica a `getPendingToPayInvoices` (REQ-24-03).
    - Current: no aplica (una sola petición, ≤ 30 s por el timeout de axios).
-   - Target: el presupuesto por consulta es como máximo **25 % de `stepTimeoutMs`** (75 s con el default de 5 min). Peor caso: `getTypeE` + `getTypeI` en el mismo paso no consumen más de 2 × (presupuesto + 30 s de una petición en vuelo) = 210 s de los 300 s del paso. Sin el presupuesto, 4 páginas × 3 intentos × 30 s rebasarían el paso. Es una válvula para cuando el portal está enfermo: en operación normal no debe dispararse. Si se disparara ciclo tras ciclo, las últimas páginas —justo las autorizadas tarde— nunca llegarían; por eso su `warn` es distinguible y se vigila después de desplegar. Si apareciera en operación normal, la medida siguiente es reanudar entre ciclos desde la página donde se quedó (un cursor por tenant y tipo), para que ninguna página quede fuera de forma sistemática; no se construye en esta fase porque agrega estado entre ciclos y, sin el costo del filtro por factura, se espera que el listado quede muy por debajo del presupuesto (se confirma con los ms del log nuevo). Se preserva la invariante `axios (30s) < paso (5m) < hijo (10m) < candado (14m)`.
+   - Target: el presupuesto por consulta es como máximo **25 % de `stepTimeoutMs`** (75 s con el default de 5 min). Peor caso: `getTypeE` + `getTypeI` en el mismo paso no consumen más de 2 × (presupuesto + 30 s de una petición en vuelo) = 210 s de los 300 s del paso. Sin el presupuesto, 4 páginas × 3 intentos × 30 s rebasarían el paso. Es una válvula para cuando el portal está enfermo: en operación normal no debe dispararse. Si se disparara ciclo tras ciclo, las últimas páginas —justo las autorizadas tarde— nunca llegarían; por eso su `warn` es distinguible y se vigila después de desplegar. Si apareciera en operación normal, la medida siguiente es reanudar entre ciclos desde la página donde se quedó (un cursor por tenant y tipo), para que ninguna página quede fuera de forma sistemática; no se construye en esta fase porque agrega estado entre ciclos y no hace falta: medido en producción el 08-oct, la ventana de hoy (822 pendientes, 5 páginas) se lee en 4.2 s y la de fin de mes (969) en 4.8 s, unas 16 veces por debajo del presupuesto (se sigue vigilando con los ms del log nuevo). Se preserva la invariante `axios (30s) < paso (5m) < hijo (10m) < candado (14m)`.
    - Acceptance: test con reloj simulado — una vez superado el presupuesto no se emite ninguna petición nueva ni ningún reintento, el resultado contiene lo recibido y hay una línea `warn` de presupuesto agotado; `src/config.js` y `.env.example` sin cambios.
 
 7. **REQ-24-07 — Filtro "ya está en Sage" en bloque, misma semántica (D4)**: para toda factura con UUID y RFC válidos (REQ-24-09), el filtro de `getTypeI` y `getTypeE` decide, para el mismo estado de la base, exactamente lo mismo que el filtro por factura actual.
@@ -87,7 +87,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 12. **REQ-24-12 — `getCfdisByProvider` paginado y con filtro en el portal (D10)**: la consulta manda `providerId` (codificado para URL) al portal, pagina igual que REQ-24-01 y conserva el filtro local por `metadata.provider_id` como red de seguridad.
     - Current: pide ≤ 200 facturas de todos los proveedores y filtra en JS; las facturas fuera de las 200 nunca se encuentran.
     - Target: la URL incluye `providerId=<id>`; el resultado sólo contiene items con `metadata.provider_id === providerId` aunque el portal ignorara el parámetro. Si en la verificación en vivo el portal rechazara `providerId`, se quita el parámetro y queda sólo el filtro local: la paginación sigue dando el resultado correcto, sólo más lento.
-    - Acceptance: test — la URL pedida contiene `providerId=`; con un mock que devuelve items de dos proveedores, sólo regresan los del pedido. Verificado en vivo contra el sandbox (consulta de sólo lectura): el portal acepta `providerId` (HTTP 200) y `total` corresponde sólo a ese proveedor.
+    - Acceptance: test — la URL pedida contiene `providerId=`; con un mock que devuelve items de dos proveedores, sólo regresan los del pedido. Verificado en vivo (consulta de sólo lectura) — **hecho el 08-oct en producción**: el portal acepta `providerId` y, para un proveedor con 108 de 822 pendientes, reporta y entrega 108, ninguna de otro proveedor.
 
 13. **REQ-24-13 — `getTypeP`: sólo la línea de log (D11)**: `getTypeP` registra `total` reportado vs recibidas (`warn` si recibidas < `total`), sin paginar y sin cambiar lo que devuelve.
     - Current: no registra el corte (200 de 244 el 05-oct).
@@ -97,7 +97,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 14. **REQ-24-14 — `hideValidations=true` sin perder campos (D8)**: las consultas paginadas de `getTypeI`, `getTypeE` y `getCfdisByProvider` mandan `hideValidations=true`, y cada item sigue trayendo `id`, `metadata.provider_id`, `metadata.additional_info`, `metadata.additional_amount`, `cfdi.receptor.rfc`, `cfdi.timbre.uuid` (y `cfdi.folio`/`cfdi.serie` para `getCfdisByProvider`).
     - Current: el nodo de validaciones viaja en cada item sin que nadie lo use.
     - Target: respuestas más ligeras con los mismos campos consumidos. Es una optimización, no parte de la corrección: si la verificación en vivo muestra que falta cualquiera de esos campos, se quita el parámetro.
-    - Acceptance: test — la URL contiene `hideValidations=true`. Verificado en vivo contra el sandbox (consulta de sólo lectura): la única diferencia entre la respuesta con y sin `hideValidations=true` es la ausencia del nodo de validaciones.
+    - Acceptance: test — la URL contiene `hideValidations=true`. Verificado en vivo (consulta de sólo lectura) — **hecho el 08-oct en producción**: en la misma página de 50, la única diferencia con y sin `hideValidations=true` es `metadata.validations` (llega recortado); los campos que usa SageConnect llegan con el mismo valor, y la respuesta pesa 60 % menos.
 
 15. **REQ-24-15 — Alcance de código y regresión**: la fase sólo modifica `src/utils/GetTypesCFDI.js` y agrega tests; la API exportada (nombres, firmas y forma de lo que devuelve) no cambia, así que ningún llamador del repo se toca.
     - Current: —
@@ -113,7 +113,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 - Líneas de log resumen por consulta y por filtro, una línea por factura a descargar o con anomalía, y la línea de corte en `getTypeP`.
 - `providerId` y filtro local en `getCfdisByProvider`; `hideValidations=true` en las consultas paginadas.
 - Suite Jest nueva con mocks de `PortalClient.get` y `runQuery` que ejercite la lógica real.
-- Verificación sin regresión en `zcl-rds-test` (una página: el sandbox tiene pocas facturas) y verificación en vivo de `providerId` y `hideValidations`.
+- Verificación sin regresión en `zcl-rds-test` (una página: el sandbox tiene pocas facturas) y verificación en vivo de `providerId` y `hideValidations` (esta última ya hecha en producción el 08-oct).
 
 **Out of scope:**
 - Botón "Descargar XML pendientes o antiguos" — acordado en la reunión como segunda entrega; fase propia.
@@ -159,7 +159,7 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 - [ ] `getCfdisByProvider` manda `providerId` y conserva el filtro local por `metadata.provider_id`.
 - [ ] `getTypeP` devuelve lo mismo que hoy y registra `warn` con `total=244 recibidas=200` en el caso de prueba.
 - [ ] Las consultas paginadas del ciclo mandan `hideValidations=true`.
-- [ ] Verificado en vivo contra el sandbox (sólo lectura): `providerId` aceptado y filtra; con `hideValidations=true` sólo desaparece el nodo de validaciones.
+- [x] Verificado en vivo (sólo lectura; producción, 08-oct, `medir-carga-historica.sh`): `providerId` filtra (108 de 108, 0 ajenos); con `hideValidations=true` sólo cambia `metadata.validations` y los campos que usa SageConnect llegan idénticos.
 - [ ] `git diff origin/master...HEAD --stat -- src/` muestra sólo `src/utils/GetTypesCFDI.js`; `config.js` y `.env.example` sin cambios.
 - [ ] `npm test`: mismo conjunto de fallos que la línea base medida en esta rama y todos los tests nuevos en verde.
 - [ ] En `zcl-rds-test`, un ciclo completo corre sin `[TIMEOUT]`, sin `error` del filtro (las consultas en bloque corren contra el esquema real de Sage) y sin `warn` de presupuesto agotado; aparecen las líneas nuevas y los XML descargados llevan la addenda completa.
@@ -170,9 +170,9 @@ Las consultas de facturas y notas de crédito que alimentan la descarga (`getTyp
 |--------------------|-------|------|--------|-------|
 | Goal Clarity       | 0.92  | 0.75 | ✓      | Causa raíz verificada en prod; objetivo medible (recibidas = `total`) |
 | Boundary Clarity   | 0.92  | 0.70 | ✓      | Alcance limitado a un archivo; lista explícita de lo que no se toca y por qué |
-| Constraint Clarity | 0.88  | 0.65 | ✓      | Presupuesto de 5 min medido en julio; octubre sin medir (se mide con el log nuevo); riesgos residuales nombrados |
+| Constraint Clarity | 0.92  | 0.65 | ✓      | Tiempos medidos de julio a octubre (agosto: 91 timeouts de downloadCFDI con el filtro por factura; octubre: listado completo 4-5 s, filtro en bloque 1-3 s); parámetros del portal verificados en producción; riesgos residuales nombrados |
 | Acceptance Criteria| 0.90  | 0.70 | ✓      | 19 criterios pasa/falla; las varias páginas se prueban con mocks, no en el sandbox |
-| **Ambiguity**      | 0.09  | ≤0.20| ✓      | |
+| **Ambiguity**      | 0.08  | ≤0.20| ✓      | |
 
 Status: ✓ = met minimum, ⚠ = below minimum (planner treats as assumption)
 

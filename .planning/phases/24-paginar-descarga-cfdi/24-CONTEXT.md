@@ -127,16 +127,11 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 - **D-26 — Línea base.** Se corre `npm test` en esta rama **antes** de tocar `src/` y se registra el conjunto real de fallos (al 07-oct eran 7 tests en 6 suites). Al final se vuelve a correr y debe dar el mismo conjunto.
 
 ### Verificación en vivo y en `zcl-rds-test`
-- **D-27 — Comprobación en vivo de `providerId` y `hideValidations`** (REQ-24-12, REQ-24-14).
-  - Se hace con un script `.sh` de **sólo lectura** (sólo peticiones GET), guardado fuera del repo en `data-sageconnect/casos/`. No se agrega nada a `src/scripts/` (REQ-24-15).
-  - Lo corre Yahir en `zcl-rds-test` contra el sandbox. Si el sandbox no tiene datos para ver el filtro por proveedor, se corre el mismo script de sólo lectura contra producción.
-  - Trampas del servidor que el script debe respetar:
-    - se pega en el Bloc de notas y se guarda en el Escritorio, no dentro del dist;
-    - antes de correrlo se limpia con `sed -i 's/\r$//; 1s/^\xEF\xBB\xBF//'`;
-    - se usa `node.exe < /dev/null` o `curl -A "axios/1.7.7"` (el WAF del portal bloquea el User-Agent de curl);
-    - al leer el `.env` se quita el CRLF con `tr -d '\r'`;
-    - nada de `node -e` en línea.
-- **D-28:** Si una comprobación falla, se quita ese parámetro (cambio de una línea) antes del merge; la corrección no depende de ninguno de los dos.
+- **D-27 — Comprobación en vivo de `providerId` y `hideValidations`** (REQ-24-12, REQ-24-14): **hecha el 08-oct en producción, sólo lectura; las dos salieron OK** (detalle en `<specifics>`).
+  - Herramienta: `data-sageconnect/casos/medir-carga-historica.sh` con `SOLO_PARAMETROS=1`, fuera del repo. No se agregó nada a `src/scripts/` (REQ-24-15).
+  - Respeta las trampas del servidor: se guarda en el Escritorio y se niega a correr dentro del dist; se limpia con `sed -i 's/\r$//; 1s/^\xEF\xBB\xBF//'`; usa `node.exe < /dev/null`; nada de `node -e` en línea.
+  - No hace falta repetirla en `zcl-rds-test`. Se vuelve a correr sólo si el portal cambia de versión o antes de un despliegue que dependa de esos parámetros.
+- **D-28:** No aplicó: las dos comprobaciones salieron OK y la corrección usa ambos parámetros. Si una corrida futura del mismo script diera "NO USARLO", se quita ese parámetro (cambio de una línea); la corrección no depende de ninguno de los dos.
 - **D-29 — Despliegue a `zcl-rds-test`:**
   1. `git push -u origin feat/paginar-descarga-cfdi`; no dispara la CI.
   2. `gh workflow run obfuscate-deploy.yml --ref feat/paginar-descarga-cfdi`, y confirmar que el log dice `(branch: feat/paginar-descarga-cfdi)`.
@@ -158,7 +153,7 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 - **División en planes (sugerencia).** Todos tocan el mismo archivo, así que van en olas secuenciales:
   - 24-01: paginación compartida + `getPendingToPayInvoices` + línea de `getTypeP` + sus tests;
   - 24-02: filtro en bloque + `getTypeI`/`getTypeE`/`getCfdisByProvider` + registro + tests de paridad;
-  - 24-03: verificación (línea base y prueba negativa, comprobaciones en vivo, ciclo en `zcl-rds-test`), con puntos de control humanos.
+  - 24-03: verificación (línea base de `npm test` y prueba negativa, ciclo en `zcl-rds-test`), con puntos de control humanos. Las comprobaciones en vivo de los parámetros ya se hicieron (D-27).
 - Texto exacto del campo `detalle=` y de los mensajes de error.
 
 </decisions>
@@ -172,6 +167,9 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 - `.planning/phases/24-paginar-descarga-cfdi/24-SPEC.md` — Locked requirements — MUST read before planning.
 - `data-sageconnect/handoffs/2026-10-08-paginacion-descarga.md` — caso completo, causa raíz verificada, decisiones de diseño D1-D12, detalle técnico (§5) y pruebas mínimas (§7). Archivo local, fuera de git.
 - `data-sageconnect/evidencia/2026-07-17-forresponse.log` — duraciones reales de los 7 pasos (16-17 jul), base del presupuesto de 5 min.
+- `data-sageconnect/handoffs/2026-10-08-paginacion-descarga.md` § "Medición real de OCTUBRE en producción" — tiempos del 07 y 08-oct (resumidos en `<specifics>`).
+- `data-sageconnect/casos/panorama-rezago.sh` — script de sólo lectura que midió la línea base de octubre; se reutiliza para medir antes y después del despliegue.
+- `data-sageconnect/casos/medir-carga-historica.sh` — script de sólo lectura: ciclos e importador por día con cobertura de logs, costo de paginar (ventana de hoy, de fin de mes y volumen) y la verificación de `hideValidations`/`providerId` (`SOLO_PARAMETROS=1`). Reportes en el servidor: `C:\Users\ydiaz\medir-carga-*.txt`.
 
 ### API del portal
 - `.planning/codebase/swagger-spec-raw.json` — `GET /api/1.0/extern/tenants/{tenantId}/cfdis`: parámetros `pageSize` (obligatorio), `offset` (obligatorio), `from`, `to`, `providerId`, `hideValidations`, `cfdiType`, `stage`, `documentTypes`; respuesta `CfdisExternResponse` = `{ items: CfdiExternResponse[], total: int64 }`.
@@ -222,6 +220,7 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 ### Integration Points
 - `CFDI_Downloader.downloadCFDI` desestructura `{ getTypeE, getTypeI }` al cargar el módulo; lo devuelto debe conservar la forma de los items del portal.
 - `UuidResolver.resolveUuidByFolio` espera un arreglo (vacío si no encuentra).
+- `hideValidations=true` sólo recorta `metadata.validations` (verificado en producción); ningún archivo de `src/` lee ese nodo.
 - Los scripts `payment-reconciliation.js` y `pending-payments-diagnostic.js`, y `payment-routes.js` (que carga el primero), esperan de `getPendingToPayInvoices` un arreglo completo o `[]`.
 
 </code_context>
@@ -229,6 +228,45 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 <specifics>
 ## Specific Ideas
 
+### Línea base medida en producción (08-oct-2026, sólo lectura)
+
+Fuentes: `data-sageconnect/casos/panorama-rezago.sh` (11:25) y `data-sageconnect/casos/medir-carga-historica.sh` (11:55, 12:02 y 12:11). Cobertura de logs completa: 31 de 31 días de agosto, 30 de 30 de septiembre y 8 de 8 de octubre.
+
+**Ciclos por mes** (`ForResponse.log`; límite por paso: 5 min):
+
+| Mes | Ciclos | Ciclo prom / máx | downloadCFDI prom / máx | checkPayments prom / máx | `[TIMEOUT]` (en downloadCFDI) | Ciclos abortados |
+|---|---|---|---|---|---|---|
+| Agosto | 2,973 | 6m31s / 11m46s | 3m07s / 5m00s | 2m37s / 4m58s | 100 (91) | 104 |
+| Septiembre | 2,878 | 4m23s / 10m26s | 1m47s / 4m54s | 1m50s / 4m39s | 20 (15) | 20 |
+| Octubre (1-8) | 721 | 2m24s / 3m52s | 0m33s / 1m17s | 1m09s / 1m58s | 0 | 1 |
+
+- Los peores días fueron del 18 al 21-ago, con 5, 12, 14 y 12 timeouts por día; la descarga tocó 4m58s-5m00s. Un ciclo abortado se salta los pagos y las OCs de ese ciclo.
+- **No fue por más facturas.** El importador metió contra OC 38.2 facturas por día con log en agosto (1,184, más 119 a CxP), 44.2 en septiembre (1,325 + 119) y 43.8 en octubre (350 + 69). Lo que cambió fue el costo de cada consulta SQL: con el mismo trabajo por ciclo (≤ 200 facturas más las notas de crédito, 3 consultas por factura, ~860 consultas), downloadCFDI bajó de ~3 min a ~45 s el 19-sep y a ~33 s el 25-sep. La causa del cambio no está identificada.
+- **Implicación para el diseño** (inferencia con estos datos): a la velocidad de agosto (~0.2 s por consulta), paginar conservando el filtro por factura serían ~2,700 consultas por ciclo, unos 10 min, y el paso de 5 min reventaría en casi todos los ciclos. El filtro en bloque (REQ-24-07, REQ-24-08) hace 11 consultas (1.0-2.8 s medidos) y, con la misma cuenta, habría evitado casi todos los 91 timeouts de downloadCFDI de agosto. No es una optimización opcional.
+- checkPayments también llegó cerca del límite en agosto (4m58s el 26-ago): queda como candidato diferido (paginar `getTypeP` y hacer `checkPayments` en bloque). El ciclo más largo (11m46s) dejó ~2 min de margen contra el candado de 14 min.
+
+**Portal** (12:02):
+
+| Consulta | Reporta | Páginas de 200 | Tiempo | Por página (prom / máx) |
+|---|---|---|---|---|
+| Consulta actual (`pageSize=0`) | 200 de 822 | 1 | 1.3 s | — |
+| A. Ventana de hoy: pendientes desde 01-sep | 822 | 5 | 4.2 s | 0.8 / 1.1 s |
+| B. Ventana de fin de mes: pendientes desde 01-ago | 969 | 5 | 4.8 s | 0.9 / 1.0 s |
+| B2. B con `hideValidations=true` | 969 | 5 | 4.1 s | 0.8 / 1.0 s |
+| C. Todas, de cualquier estatus, desde 01-ago (la corrección **nunca** la hace) | 2,828 | 15 | 40.9 s | 2.7 / 5.0 s |
+
+- Filtro en bloque: 11 consultas, 1.2 s (A) y 1.0 s (B).
+- Sin registrar en Sage: 5 de 969, las mismas en A y en B, así que todas son recientes (sep-oct) y las toma el ciclo normal. A las 11:25, de las 596 fuera de las 200, 0 estaban sin registrar.
+- Presupuesto de 75 s por consulta (D-10): las listas de pendientes tardan ~5 s, así que hay ~16× de margen. Aun con 2,800 pendientes al ritmo de las páginas más pesadas (2.7 s) cabría (~38 s).
+- El daño sigue ocurriendo con cada autorización tardía nueva: en la última semana hubo 300 autorizaciones, 61 con más de 14 días de retraso, y **las 61 quedaron fuera de las 200**.
+
+**Verificación en vivo de REQ-24-12 y REQ-24-14: HECHA** (12:02 y 12:11, en producción, sólo lectura; D-27):
+- `providerId`: con el proveedor de más pendientes (108 de 822), el portal reporta y entrega 108, ninguna de otro proveedor. Filtra.
+- `hideValidations=true`: se comparó la misma página de 50 factura por factura. La única diferencia es `metadata.validations` (el arreglo llega más corto), en las 50. Los 8 campos que usa SageConnect (`id`, `metadata.provider_id`, `metadata.additional_info`, `metadata.additional_amount`, `cfdi.receptor.rfc`, `cfdi.timbre.uuid`, `cfdi.folio`, `cfdi.serie`) llegan con el **mismo valor**, no sólo presentes. La respuesta pesa 60 % menos (1,013,140 → 409,259 bytes por cada 50 facturas): con ~900 facturas por ciclo son ~11 MB menos por ciclo (~1 GB al día) y menos memoria al parsear. Nada en `src/` lee `validations`.
+
+**Criterio después del despliegue** (para la verificación y el reporte al cliente): `[PAGINACION]` reporta recibidas = `total`, y downloadCFDI no tiene `[TIMEOUT]` ni crece más de unos segundos sobre sus ~30 s de octubre. `medir-carga-historica.sh` y `panorama-rezago.sh` miden antes y después.
+
+### Prioridades y peticiones
 - Prioridad de Yahir: **que no vuelva a ocurrir**, y la solución más óptima y escalable. Los scripts operativos del servidor se ajustan aparte, sin condicionar el diseño.
 - La reunión del 07-oct pidió reportar al cliente con cuántas páginas quedó y cuánto tarda: la línea `[PAGINACION]` da exactamente eso (`paginas`, `ms`, `pagina_mas_lenta_ms`).
 - El volumen de log debe crecer con lo que se descarga y con las anomalías, no con el total de pendientes (772 el 07-oct).
