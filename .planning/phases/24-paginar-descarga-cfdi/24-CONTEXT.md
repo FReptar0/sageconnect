@@ -109,7 +109,7 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
 - **D-21 — `getTypeP`:** su lógica por item y sus `console.log` quedan intactos (REQ-24-13, misma salida). Sólo agrega su línea `[PAGINACION] ... paginas=1`: con `corte=completo` si recibidas = `total`, o en `warn` con `corte=sin-paginar` si no.
 
 ### Pruebas
-- **D-22 — Archivo nuevo `tests/utils/GetTypesCFDI.test.js`** con el patrón S-9 de `tests/utils/GetProviders.test.js`. Mockea:
+- **D-22 — Archivos nuevos (actualizada al planear, 08-oct):** `tests/helpers/getTypesCfdiFakes.js` (modelo del portal y de la base, compartido) y una suite por ola: `tests/utils/GetTypesCFDI.paginacion.test.js` (24-01) y `tests/utils/GetTypesCFDI.filtro.test.js` (24-02). Las dos usan el patrón S-9 de `tests/utils/GetProviders.test.js` y el mismo mock que modela la base (D-23). Sustituyen al único `tests/utils/GetTypesCFDI.test.js` que se había previsto: así cada ola commitea y prueba en negativo (D-25) su propia suite sin reabrir la del otro plan. Cada suite mockea:
   - `../../src/config`: `portal.url`, `portal.tenants` con `id/key/secret/database`, y `schedule.stepTimeoutMs`;
   - `../../src/utils/PortalClient` (`get`);
   - `../../src/utils/LogGenerator` (`logGenerator`);
@@ -147,6 +147,12 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
   - Sin trailer de Notion: Yahir pidió no usar Notion en esta fase.
   - Antes de cada commit, el grep de redacción de HANDOFF.md §1 (el comando está en ese archivo; no se copia aquí porque su patrón contiene el nombre que la regla prohíbe escribir en `.planning/`).
   - El ejecutor debe recibir estas reglas por escrito en su prompt.
+
+### Decisiones agregadas al planear (08-oct)
+- **D-31 — `getCfdisByProvider` con `providerId` vacío devuelve `[]` sin consultar el portal** (también con `null`, `undefined` o sólo espacios) y escribe una línea `warn`: `[PAGINACION-OMITIDA] consulta=getCfdisByProvider tenant=<tenantId> motivo=proveedor-vacio`.
+  - Es un hueco que el SPEC no cubría. El único llamador en `src/`, `UuidResolver.resolveUuidByFolio` (`UuidResolver.js:20`), recibe el `providerId` que arma `PortalPaymentController.js:233` (`hdr.PROVIDERID ? hdr.PROVIDERID.trim() : ''`), así que puede llegar `''`.
+  - Para ese llamador el resultado es el mismo que hoy: la petición actual filtra por `provider_id === ''` y no encuentra nada.
+  - Evita que, ya paginada y sin el parámetro `providerId`, recorra toda la lista de pendientes (5 páginas hoy) por cada factura pagada sin UUID.
 
 ### Claude's Discretion
 - Nombres exactos de funciones internas y variables; si `requestPendingToPayPage` se generaliza o se sustituye.
@@ -278,6 +284,7 @@ Fuentes: `data-sageconnect/casos/panorama-rezago.sh` (11:25) y `data-sageconnect
 
 - **Cursor entre ciclos** (reanudar desde la página donde se cortó): sólo si el `warn` de `corte=presupuesto` aparece en operación normal.
 - **Parametrizar el SQL** del filtro cuando `runQuery` acepte parámetros (cambio de utilidad compartida, fase propia).
+- **SQL sin validar que sigue en `getTypeP` y `getTypeIToSend`** (datos del portal interpolados): fase aparte que reutilice las regex de REQ-24-09; aceptado como riesgo residual documentado en los threat_model T-24-08/T-24-16.
 - **Páginas en paralelo:** sólo con evidencia de que el listado en serie no cabe, y con manejo de 429.
 - **Correo de alerta** con límite de frecuencia cuando recibidas < `total`.
 - **Probar `pageSize` > 200** (optimización).
