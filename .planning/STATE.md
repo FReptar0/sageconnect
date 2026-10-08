@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
 milestone: null
-milestone_name: null
-status: executing
-stopped_at: "Fase 23 COMPLETA (4/4): el boton encadena el importador y la cadena Portal -> XML -> .exe -> Cuentas por Pagar de Sage quedo probada end-to-end en zcl-rds-test el 07-sep. El bloqueo del [CORREOAP] Para= en el COPDAT.ini de test fue resuelto por la autora del importador. Siguiente: merge de feat/boton-ejecucion a master (cuidar el orden contra feat/reintentos). Sigue abierto el hallazgo del exit code 0 en fallo del .exe — merece fase propia. Ver .continue-here.md"
-last_updated: "2026-09-08T01:45:18.000Z"
+milestone_name: (TBD)
+status: planning
+stopped_at: Phase 24 context gathered
+last_updated: "2026-10-08T17:31:15.948Z"
 progress:
-  total_phases: 4
-  completed_phases: 2
+  total_phases: 3
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 5
-  percent: 62
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Fase 23 cerrada — pendiente el merge a `master`. Fase 22 (botones por tarea) planeada, sin ejecutar.
+**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. SPEC y CONTEXT listos; siguiente: `/gsd-plan-phase 24`.
 
 ## Current Position
 
-Phase: 23 (boton-invoca-importador) — ✅ COMPLETE (2026-09-07)
-Plan: 4 of 4 completados (23-01, 23-02, 23-03, 23-04)
-Status: fase cerrada. La cadena Portal → XML → `ImportaFacturasFocaltec.exe COPDAT` → Cuentas por Pagar de Sage funciona desde el boton manual, verificada end-to-end en `zcl-rds-test`.
-Siguiente decision: merge de `feat/boton-ejecucion` a `master` — cuidar el orden contra `feat/reintentos` (el boton llega a produccion antes).
+Phase: 24 (paginar-descarga-cfdi) — SPEC (15 requisitos: `813c966`, `02f1f34`) y CONTEXT (`aead972`) listos
+Plan: sin planes todavía — siguiente: `/gsd-plan-phase 24`
+Status: Ready to plan — fase 24 con requisitos y decisiones de implementación fijados; la fase 23 ya está en `master` (PR #27, `dde4bd0`)
+Siguiente decision: `/gsd-plan-phase 24`. `master` sigue congelado hasta que prod tenga el build del botón (`0785a9a`); esta corrección sale después, como build aparte.
 
 ## Deferred Items
 
@@ -82,7 +82,7 @@ Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md
 
 ## Session Continuity
 
-Last session: 2026-09-02T00:37:33.798Z
+Last session: 2026-10-08T17:31:15.944Z
 Session result (23-03): Plan 23-03 CERRADO — la fase 23 queda completa. El 01-sep se verificaron REQ-23-01 (el boton invoca al importador; 3 reproducciones, evidencia en `ChildProcess.log` con marcas de hora imposibles para el cron, que solo corre a las 03:01) y REQ-23-08 (`IMPORT_CFDIS_ROUTE` apunta al `.exe` directo, sin wrapper `.bat`, asi que la trampa de EINVAL en Node 22 no aplica). REQ-23-05 y REQ-23-09 quedaron bloqueados porque el `.exe` abortaba al arrancar con `GetParam, Faltan especificar los parametros de la seccion [CORREOAP]`: `Para=` estaba vacio en `E:\Sage\Sage300\Macros\COPDAT.ini` de zcl-rds-test — archivo de Sage 300, no de SageConnect, roto desde el 13-ene-2026. **Resuelto por la autora del importador**; con eso los dos requisitos se cerraron el 07-sep por confirmacion directa del operador: el tercer estado del boton ("Importando comprobantes a Sage...") ya se ve —no era un fallo de UI, el paso duraba 2 s contra un poll de 3.5 s— y la factura aparece en Cuentas por Pagar de Sage. Tambien se corrigio en el `.env` del servidor de test un desajuste de carpetas real (SageConnect escribia en `E:\sageconnect-dist\downloads`, el `.exe` lee `D:\XMLSFOCALTEC\`); prod ya tenia ambas variables apuntando a la carpeta del importador. **Hallazgo abierto y ahora mas urgente:** el `.exe` devuelve exit code 0 aunque falle, asi que ni el cron ni el boton detectan una importacion rota — tampoco en produccion; el `Para=` invisible durante siete meses mide el costo. Merece fase propia. Cero cambios de codigo en este plan.
 
 Session result (23-04): Plan 23-04 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `5f47a8e` fix, `7598f34` test, `59406f9` test). Cierra el **blocker CR-01** de la revisión de código: `releaseLock` borra el slot y cancela su watchdog sin comparar el `operationId`, así que la cadena manual —que al encadenar el importador pasa de ~13 a ~23 min contra un candado de 14— terminaba liberando el candado del cron, cancelándole el watchdog, dejando el estado en idle y habilitando un tercer ciclo concurrente. Ahora `ownsLock()` protege `releaseLock`, `startStep` y `endStep`; la omisión deja una entrada `[LOCK]` warn en `ScheduleRoutes.log` (la única señal operativa que existirá si esto pasa en producción); y un `.catch` terminal impide que un throw tardío quede como `unhandledRejection` (Node 22 tumbaría el servicio). Tests: 5 casos nuevos que ejercitan el `OperationManager` REAL vía `jest.resetModules` + `jest.unmock` (los 6 previos lo mockean entero — por eso CR-01 pasó desapercibido), incluidos el camino feliz y el orden `startChildProcess → releaseLock`. REQ-23-11: `stripComments` hace que las aserciones de paridad ya no pasen sobre código comentado (se demostró en ambos sentidos). Además se corrigieron los dos comentarios que la fase volvió falsos: `CronScheduler.js` (sólo comentarios, ni una línea ejecutable) y el del literal `'background-cycle'` (WR-06). `npm test` en baseline §6: mismas 6 suites / 7 tests, total 435 → 441 por los 6 casos nuevos. `git diff` vacío para `OperationManager.js`, `background.js` y `config.js`. Sesión con `SAGECONNECT_HOOKS_BYPASS=1`; grep de redacción corrido a mano antes de los 3 commits, limpio. **Siguiente:** 23-03 (verificación end-to-end en `zcl-rds-test`) y el merge a `master`, que era lo que CR-01 bloqueaba.
@@ -90,5 +90,5 @@ Session result (23-04): Plan 23-04 ejecutado completo en `feat/boton-ejecucion` 
 Session result (23-02): Plan 23-02 ejecutado completo en `feat/boton-ejecucion` (2 tareas, 2 commits atómicos: `e746211` feat, `2b4ae1f` feat). `public/ejecucion.html` — único archivo tocado — pasa de dos estados de botón a tres: `applyButtonState(running, importing)` y un `'importing'` en `btn.dataset.uiState` que pinta "Importando comprobantes a Sage..." mientras la última entrada abierta de `stepProgress` sea `startChildProcess`. El dato ya viajaba en el poll de `GET /api/operations/status`; el plan 23-01 es el que hace que esa entrada exista en la ruta manual. Cero backend, cero endpoints, cero recursos always-on nuevos (se reusa el `setInterval` que ya se libera en `beforeunload`). T-LKI-01 preservada: el nombre del paso se COMPARA contra el literal, nunca se interpola. Los cuatro caminos de fail-safe pasan `applyButtonState(false, false)` — el botón nunca queda trabado. Verificación: simulación en Node que extrae el código VERBATIM del archivo y lo corre contra 12 shapes (incluidos los degradados: `stepProgress` ausente, vacío, no-array, `null`, objeto, todo cerrado, entrada `null`, entrada sin `step`) — 12/12 OK, ninguno lanza; `node --check` del script; `npm test` idéntico al baseline §6 (6 suites / 7 tests, 427 de 435). Sesión con `SAGECONNECT_HOOKS_BYPASS=1`, chequeos manuales sustitutos documentados en el SUMMARY.
 
 Session result (23-01): Plan 23-01 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `185e8f2` feat, `75e7140` test, `c0e99e7` test). El disparo manual (`POST /api/schedule/background-cycle/trigger`) ya encadena `startChildProcess()` después de `forResponse()` dentro del lock `background-cycle` existente, con instrumentación `startStep`/`endStep`, detección del sentinel `/Child process timeout/` y `sendAdminAlert` con el mismo asunto que el cron (log ruteado a `ScheduleRoutes.log`, D-06). Bloque duplicado a propósito (D-01) y blindado con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. Archivo de test nuevo `tests/api/schedule-trigger-import.test.js` con los 6 casos de D-17 (D-16 revisada: archivo propio en vez de editar `schedule-routes.test.js`, para dejar REQ-23-06 cierto por construcción). `npm test` idéntico al baseline §6 — 6 suites / 7 tests fallando, cero nuevas; 427 pasan de 435 (+9 nuevos). `src/services/CronScheduler.js`, `src/background.js` y `src/config.js` sin tocar. Sesión corrida con `SAGECONNECT_HOOKS_BYPASS=1`; los 5 hooks apagados se sustituyeron por chequeos manuales documentados en el SUMMARY (grep de redacción HANDOFF §1 antes de cada commit — limpio en los 3).
-Stopped at: Fase 23 COMPLETA (4/4): el boton encadena el importador y la cadena Portal -> XML -> .exe -> Cuentas por Pagar de Sage quedo probada end-to-end en zcl-rds-test el 07-sep. El bloqueo del [CORREOAP] Para= en el COPDAT.ini de test fue resuelto por la autora del importador. Siguiente: merge de feat/boton-ejecucion a master (cuidar el orden contra feat/reintentos). Sigue abierto el hallazgo del exit code 0 en fallo del .exe — merece fase propia. Ver .continue-here.md
-Resume next: la fase 23 no requiere mas trabajo. Lo que sigue es el **merge de `feat/boton-ejecucion` a `master`** (sin PR abierto todavia), respetando el orden contra `feat/reintentos`. Candidatos a fase nueva: detectar importaciones fallidas pese al exit code 0, y la fase 22 (botones por tarea), planeada pero no ejecutada y con el diseno cambiado a botones independientes.
+Stopped at: Phase 24 context gathered
+Resume next: fase 24 lista para planear: leer `24-SPEC.md` y `24-CONTEXT.md` en `.planning/phases/24-paginar-descarga-cfdi/` y correr `/gsd-plan-phase 24`. La rama sale de `origin/master` (`dde4bd0`), nunca de `master` local (trae la fase 20 sin publicar).
