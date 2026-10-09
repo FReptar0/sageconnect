@@ -25,6 +25,13 @@ const RETRY_BASE_MS = 1500;
 // getTypeE + getTypeI en el mismo paso: 2 × (75 s + 30 s de una petición en vuelo) = 210 s < 300 s
 // del paso downloadCFDI; preserva axios 30 s < paso 5 min < hijo 10 min < candado 14 min (D-10).
 const LISTING_BUDGET_FRACTION = 0.25;
+// Filtro "ya está en Sage" en bloque (fase 24): IN de hasta 200 UUID por consulta.
+const SQL_BLOCK_SIZE = 200;
+// Listas blancas antes de SQL (D-14, REQ-24-09): sólo estos caracteres llegan como literales, así
+// que ninguna comilla, espacio ni punto y coma del portal entra a una consulta. Sin bandera g: con
+// ella, .test() guarda lastIndex entre llamadas y alterna resultados.
+const UUID_REGEX = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i;
+const RFC_REGEX = /^[A-ZÑ&0-9]{12,13}$/i;
 
 async function getTypeP(index) {
     const logFileName = 'GetTypesCFDI';
@@ -139,66 +146,23 @@ async function getTypeI(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await portalClient.get(
-            urlBase(index) +
-            `?from=${dateFrom}-01` +
-            `&documentTypes=CFDI` +
-            `&offset=0&pageSize=0` +
-            `&cfdiType=INVOICE` +
-            `&stage=PENDING_TO_PAY`,
-            {
-                headers: {
-                    'PDPTenantKey': apiKeys[index],
-                    'PDPTenantSecret': apiSecrets[index]
-                }
-            }
+        const page = await fetchCfdiPages(
+            index,
+            { cfdiType: 'INVOICE', stage: 'PENDING_TO_PAY', from: `${dateFrom}-01`, hideValidations: true },
+            { consulta: 'getTypeI', maxPages: CYCLE_MAX_PAGES, budgetMs: listingBudgetMs() }
         );
 
-        if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo I');
+        if (page.items.length === 0) {
+            // "No hay" sólo si el listado terminó de verdad: si falló la primera página o se agotó el
+            // presupuesto no se pudo ver, y la causa ya quedó en la línea [PAGINACION] (D-02, REQ-24-05).
+            if (page.stopReason === 'completo' || (page.stopReason === 'pagina-vacia' && !(page.total > 0))) {
+                console.log('[INFO] No hay CFDI de tipo I');
+            }
             return [];
         }
 
-        const data = [];
-        for (const item of response.data.items) {
-            const rfcQuery = `SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${item.cfdi.receptor.rfc}';`;
-            try {
-                const rfcResult = await runQuery(rfcQuery, 'FESA');
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator(logFileName, 'info', `UUID ${item.cfdi.timbre.uuid} eliminado por falta de RFCReceptor en fesa`);
-                    continue;
-                }
-
-                const cfdiQuery = `SELECT COUNT(*) AS NREG FROM APIBH H, APIBHO O WHERE H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM AND H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND [VALUE] = '${item.cfdi.timbre.uuid}';`;
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
-                if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por ser ya timbrado`);
-                    continue;
-                }
-
-                const poCheckQuery = `
-                    SELECT COUNT(O.[VALUE]) AS NREG
-                      FROM POINVH1 H
-                      JOIN POINVHO O ON H.INVHSEQ = O.INVHSEQ
-                     WHERE O.OPTFIELD = 'FOLIOCFD'
-                       AND O.[VALUE]  = '${item.cfdi.timbre.uuid}'
-                `;
-                const poCheckResult = await runQuery(poCheckQuery, databases[index]);
-                if (poCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${item.cfdi.timbre.uuid} eliminado por existir en Sage OC (ya registrado en órdenes de compra)`);
-                    continue;
-                }
-
-                console.log(`[OK] UUID ${item.cfdi.timbre.uuid} conservado`);
-                data.push(item);
-            } catch (error) {
-                console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator(logFileName, 'error', 'Error executing query: \n' + error + '\n');
-            }
-        }
-
-        return data;
+        // Con una página fallida o el presupuesto agotado, page.items trae lo recibido y se filtra igual.
+        return await filterNotInSage(index, page.items, 'I', 'getTypeI');
     } catch (error) {
         try {
             logGenerator(logFileName, 'error', 'Error al obtener el tipo de comprobante "I" : \n' + error + '\n');
@@ -325,81 +289,21 @@ async function getTypeE(index) {
     let dateFrom = getOneMonthAgoString();
 
     try {
-        const response = await portalClient.get(
-            urlBase(index) +
-            `?from=${dateFrom}-01` +
-            `&documentTypes=CFDI` +
-            `&offset=0&pageSize=0` +
-            `&cfdiType=CREDIT_NOTE`,
-            {
-                headers: {
-                    'PDPTenantKey': apiKeys[index],
-                    'PDPTenantSecret': apiSecrets[index]
-                }
-            }
+        const page = await fetchCfdiPages(
+            index,
+            { cfdiType: 'CREDIT_NOTE', from: `${dateFrom}-01`, hideValidations: true },
+            { consulta: 'getTypeE', maxPages: CYCLE_MAX_PAGES, budgetMs: listingBudgetMs() }
         );
 
-        if (response.data.total === 0) {
-            console.log('[INFO] No hay CFDI de tipo E');
+        if (page.items.length === 0) {
+            // Misma regla que getTypeI: "no hay" sólo si el listado terminó de verdad (D-02).
+            if (page.stopReason === 'completo' || (page.stopReason === 'pagina-vacia' && !(page.total > 0))) {
+                console.log('[INFO] No hay CFDI de tipo E');
+            }
             return [];
         }
 
-        const data = [];
-        for (const item of response.data.items) {
-            const uuid = item.cfdi.timbre.uuid;
-
-            const rfcQuery = `
-                SELECT COUNT(*) AS NREG
-                  FROM fesaParam
-                 WHERE Parametro = 'RFCReceptor'
-                   AND VALOR     = '${item.cfdi.receptor.rfc}';
-            `;
-            try {
-                const rfcResult = await runQuery(rfcQuery, 'FESA');
-                if (rfcResult.recordset[0].NREG === 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    logGenerator(logFileName, 'info', `UUID ${uuid} eliminado por falta de RFCReceptor en fesa`);
-                    continue;
-                }
-
-                const cfdiQuery = `
-                    SELECT COUNT(*) AS NREG
-                      FROM APIBH H
-                      JOIN APIBHO O
-                        ON H.CNTBTCH = O.CNTBTCH
-                       AND H.CNTITEM = O.CNTITEM
-                     WHERE H.ERRENTRY = 0
-                       AND O.OPTFIELD = 'FOLIOCFD'
-                       AND [VALUE]    = '${uuid}';
-                `;
-                const cfdiResult = await runQuery(cfdiQuery, databases[index]);
-                if (cfdiResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por ser ya timbrado`);
-                    continue;
-                }
-
-                const crnCheckQuery = `
-                    SELECT COUNT(O.[VALUE]) AS NREG
-                      FROM POCRNH1 H
-                      JOIN POCRNHO O ON H.CRNHSEQ = O.CRNHSEQ
-                     WHERE O.OPTFIELD = 'FOLIOCFD'
-                       AND O.[VALUE]  = '${uuid}'
-                `;
-                const crnCheckResult = await runQuery(crnCheckQuery, databases[index]);
-                if (crnCheckResult.recordset[0].NREG > 0) {
-                    console.log(`[INFO] UUID ${uuid} eliminado por existir en Sage NC (ya registrado en notas de crédito)`);
-                    continue;
-                }
-
-                console.log(`[OK] UUID ${uuid} conservado`);
-                data.push(item);
-            } catch (error) {
-                console.log(`[ERROR] Error executing query: ${error}`);
-                logGenerator(logFileName, 'error', `Error executing query: \n${error}\n`);
-            }
-        }
-
-        return data;
+        return await filterNotInSage(index, page.items, 'E', 'getTypeE');
     } catch (error) {
         logGenerator(logFileName, 'error', `Error al obtener el tipo de comprobante "E": \n${error}\n`);
         return [];
@@ -686,6 +590,159 @@ async function fetchCfdiPages(index, query, opts) {
     });
 
     return { items, total, pages, ms, slowestPageMs, stopReason, failedOffset, raw, error };
+}
+
+/**
+ * Filtro "ya está en Sage" en bloque (D-12 a D-19). Decide lo mismo que el filtro por factura
+ * anterior: se descarga sólo si el RFC receptor está registrado en FESA y el UUID no está en CxP
+ * ni en OC (facturas, kind 'I') o en NC (notas de crédito, kind 'E'), con la misma precedencia
+ * RFC → CxP → OC/NC. En vez de 3 consultas por factura hace, en serie, una por RFC distinto y una
+ * por cada bloque de 200 UUID en CxP y en OC/NC: como máximo 2 × ceil(U / 200) + R (D-16).
+ *
+ * Sólo valores que pasaron UUID_REGEX o RFC_REGEX llegan al SQL (D-14). El IN lleva cada UUID
+ * recortado tal como lo entregó el portal y las filas se cruzan en mayúsculas, así que encuentra lo
+ * mismo que el `=` anterior con cualquier intercalación de la base (D-13). Un item malformado o una
+ * consulta que falla sólo apartan a sus propias facturas (D-15); una excepción inesperada devuelve
+ * [] para no descargar nada sin verificar. Todo el estado es local a la llamada (always-on).
+ *
+ * @param {number} index - Índice del tenant.
+ * @param {Array} items - Items del portal, en su orden.
+ * @param {string} kind - 'I' (facturas, POINVHO) o 'E' (notas de crédito, POCRNHO).
+ * @param {string} consulta - Nombre de la consulta para el log (getTypeI o getTypeE).
+ * @returns {Promise<Array>} - Los items a descargar, en el orden de entrada y sin modificar.
+ */
+async function filterNotInSage(index, items, kind, consulta) {
+    const t0 = Date.now();
+
+    try {
+        const tenant = tenantIds[index];
+
+        // Validación (REQ-24-09): un item malformado sólo se aparta a sí mismo.
+        const registros = [];
+        for (const item of items) {
+            const rawUuid = item?.cfdi?.timbre?.uuid;
+            const registro = { item, rawUuid, uuid: null, key: null, rfc: null, resultado: null, detalle: null };
+            if (typeof rawUuid !== 'string' || rawUuid.trim() === '') {
+                registro.resultado = 'invalida';
+                registro.detalle = 'uuid-ausente';
+            } else if (!UUID_REGEX.test(rawUuid.trim())) {
+                registro.resultado = 'invalida';
+                registro.detalle = 'uuid-invalido';
+            } else {
+                registro.uuid = rawUuid.trim();
+                registro.key = registro.uuid.toUpperCase();
+                const rawRfc = item?.cfdi?.receptor?.rfc;
+                if (typeof rawRfc !== 'string' || rawRfc.trim() === '') {
+                    registro.resultado = 'invalida';
+                    registro.detalle = 'rfc-ausente';
+                } else if (!RFC_REGEX.test(rawRfc.trim())) {
+                    registro.resultado = 'invalida';
+                    registro.detalle = 'rfc-invalido valor=' + valorLog(rawRfc);
+                } else {
+                    registro.rfc = rawRfc.trim();
+                }
+            }
+            registros.push(registro);
+        }
+
+        // Una consulta que falla aparta sólo a sus facturas y deja su línea de error (D-15).
+        const errorDeBloque = (lote, tabla, bloque, err) => {
+            for (const registro of lote) {
+                registro.resultado = 'error-sql';
+                registro.detalle = `tabla=${tabla} bloque=${bloque}`;
+            }
+            logGenerator(LOG_FILE, 'error', `[FILTRO-SAGE] consulta=${consulta} tenant=${tenant} tabla=${tabla}` +
+                ` bloque=${bloque} tamano=${lote.length} error=${valorLog(err?.message ?? err)}`);
+        };
+
+        // RFC receptor: una consulta por RFC distinto (texto recortado exacto, en orden de primera
+        // aparición), la misma de antes y contra FESA.
+        const porRfc = new Map();
+        for (const registro of registros) {
+            if (registro.resultado === null) {
+                if (!porRfc.has(registro.rfc)) porRfc.set(registro.rfc, []);
+                porRfc.get(registro.rfc).push(registro);
+            }
+        }
+        let bloqueRfc = 0;
+        for (const [rfc, lote] of porRfc) {
+            bloqueRfc++;
+            try {
+                const res = await runQuery(`SELECT COUNT(*) AS NREG FROM fesaParam WHERE Parametro = 'RFCReceptor' AND VALOR = '${rfc}';`, 'FESA');
+                if (Number(res.recordset[0].NREG) === 0) {
+                    for (const registro of lote) {
+                        registro.resultado = 'sin-rfc';
+                        registro.detalle = 'rfc_receptor=' + rfc;
+                    }
+                }
+            } catch (err) {
+                errorDeBloque(lote, 'fesaParam', bloqueRfc, err);
+            }
+        }
+
+        // Los que siguen pendientes, en bloques de SQL_BLOCK_SIZE con los UUID tal como vinieron
+        // del portal; las filas se cruzan recortadas y en mayúsculas ([VALUE] puede traer espacios finales).
+        const porBloques = async (tabla, armarSql, siNoEsta) => {
+            const pendientes = registros.filter(registro => registro.resultado === null);
+            for (let inicio = 0; inicio < pendientes.length; inicio += SQL_BLOCK_SIZE) {
+                const bloque = inicio / SQL_BLOCK_SIZE + 1;
+                const lote = pendientes.slice(inicio, inicio + SQL_BLOCK_SIZE);
+                const literales = [...new Set(lote.map(registro => registro.uuid))].map(u => `'${u}'`).join(', ');
+                try {
+                    const res = await runQuery(armarSql(literales), databases[index]);
+                    const enSage = new Set(res.recordset.map(row => String(row.U).trim().toUpperCase()));
+                    for (const registro of lote) {
+                        registro.resultado = enSage.has(registro.key) ? 'ya-en-sage' : siNoEsta;
+                    }
+                } catch (err) {
+                    errorDeBloque(lote, tabla, bloque, err);
+                }
+            }
+        };
+
+        // CxP: lo que no está sigue pendiente y pasa a OC/NC; un bloque con error no pasa.
+        await porBloques('APIBHO', (literales) =>
+            `SELECT DISTINCT O.[VALUE] AS U FROM APIBH H JOIN APIBHO O ON H.CNTBTCH = O.CNTBTCH AND H.CNTITEM = O.CNTITEM WHERE H.ERRENTRY = 0 AND O.OPTFIELD = 'FOLIOCFD' AND O.[VALUE] IN (${literales})`,
+            null);
+
+        // Facturas contra OC y notas de crédito contra NC, igual que antes; lo que no está se descarga.
+        if (kind === 'E') {
+            await porBloques('POCRNHO', (literales) =>
+                `SELECT DISTINCT O.[VALUE] AS U FROM POCRNH1 H JOIN POCRNHO O ON H.CRNHSEQ = O.CRNHSEQ WHERE O.OPTFIELD = 'FOLIOCFD' AND O.[VALUE] IN (${literales})`,
+                'a-descargar');
+        } else {
+            await porBloques('POINVHO', (literales) =>
+                `SELECT DISTINCT O.[VALUE] AS U FROM POINVH1 H JOIN POINVHO O ON H.INVHSEQ = O.INVHSEQ WHERE O.OPTFIELD = 'FOLIOCFD' AND O.[VALUE] IN (${literales})`,
+                'a-descargar');
+        }
+
+        // Una línea por factura sólo para lo que se descarga y las anomalías (D-19); las que ya
+        // están en Sage sólo suman al contador.
+        const niveles = { 'a-descargar': 'info', 'sin-rfc': 'info', 'invalida': 'warn', 'error-sql': 'error' };
+        const cuenta = { 'ya-en-sage': 0, 'sin-rfc': 0, 'invalida': 0, 'error-sql': 0, 'a-descargar': 0 };
+        for (const registro of registros) {
+            cuenta[registro.resultado]++;
+            const nivel = niveles[registro.resultado];
+            if (nivel) {
+                const u = registro.uuid !== null ? registro.uuid : valorLog(registro.rawUuid ?? '');
+                const detalle = registro.detalle ? ` detalle=${registro.detalle}` : '';
+                logGenerator(LOG_FILE, nivel, `[FILTRO-SAGE] consulta=${consulta} UUID=${u} id=${idLog(registro.item?.id)}` +
+                    ` resultado=${registro.resultado}${detalle}`);
+            }
+        }
+
+        // Resumen (D-18): los cinco contadores suman recibidas; warn si hubo anomalías.
+        const anomalias = cuenta['invalida'] + cuenta['error-sql'];
+        logGenerator(LOG_FILE, anomalias > 0 ? 'warn' : 'info',
+            `[FILTRO-SAGE] consulta=${consulta} tenant=${tenant} recibidas=${items.length} ya_en_sage=${cuenta['ya-en-sage']}` +
+            ` sin_rfc=${cuenta['sin-rfc']} invalidas=${cuenta['invalida']} error_sql=${cuenta['error-sql']}` +
+            ` a_descargar=${cuenta['a-descargar']} ms=${Date.now() - t0}`);
+
+        return registros.filter(registro => registro.resultado === 'a-descargar').map(registro => registro.item);
+    } catch (err) {
+        logGenerator(LOG_FILE, 'error', `[FILTRO-SAGE] consulta=${consulta} tenant=${tenantIds[index]} error_inesperado=${valorLog(err?.message ?? err)}`);
+        return [];
+    }
 }
 
 /**
