@@ -192,7 +192,7 @@ La de getTypeE no aparece porque no hubo notas de crédito (`total=0`), como se 
 | `POINVHO` (OC) | no se puede saber | sólo corre para facturas que no aparecieron en CxP; `ya_en_sage=3` no distingue la tabla |
 | `POCRNHO` (notas de crédito) | no | getTypeE con `total=0` |
 
-El ejercicio con datos reales de producción (§ 7) completó esta tabla: `POINVHO` sí corrió sin error (`a_descargar=33`), y `POCRNHO` casi seguro (87 notas, `error_sql=0`).
+El ejercicio con datos reales de producción (§ 7) completó en parte esta tabla: `POINVHO` sí corrió sin error (`a_descargar=33`). `POCRNHO` **sigue sin demostrarse**: con las 87 notas ya en Sage, si todas estaban en CxP esa consulta no se ejecuta (revisión de código, IN-01).
 
 **Addenda: no ejercitada.** El ciclo no descargó ningún XML (`a_descargar=0`): las 3 facturas pendientes del sandbox ya están registradas en la base de pruebas. Ejercitarla exige dejar en "Pendiente de pago" una factura nueva del sandbox, de un proveedor con banco y sin registrar en Sage. Se acepta sin ella porque `hideValidations=true` sólo recorta `metadata.validations`, y los campos con los que se arma la addenda llegan idénticos (verificado en producción el 08-oct, D-27). Se revisa en el primer ciclo de producción (ver abajo).
 
@@ -231,7 +231,7 @@ RESULTADO getTypeE a_descargar=0 getTypeI a_descargar=33 ms_total=6469
 
 **Qué demuestra:**
 - **Escala:** 910 de 910 en 5 páginas, en 4.0 s; la página más lenta tardó 1.27 s. El presupuesto de 75 s deja unas 19 veces de margen. El servicio actual sólo ve 200 de esas 910.
-- **Filtro en bloque contra la base real:** 997 ms para 910 facturas, sin ningún error SQL. `POINVHO` corrió sin duda, porque "a descargar" sólo se asigna después de consultar OC. `POCRNHO` casi seguro: 87 notas de crédito con `error_sql=0`.
+- **Filtro en bloque contra la base real:** 997 ms para 910 facturas, sin ningún error SQL. `POINVHO` corrió sin duda, porque "a descargar" sólo se asigna después de consultar OC. `POCRNHO` **no está demostrado**: si las 87 notas de crédito estaban en CxP, la consulta de notas de crédito no se ejecutó (IN-01 de la revisión).
 - **Lo que bajaría el primer ciclo paginado: 33 facturas.** Es la simulación del rescate que pide la puerta de despliegue del SPEC; su lista está en la evidencia. 22 de las 33 tienen ids consecutivos del portal, creados el 06-oct por la tarde: se cargaron juntas. Que sean un solo proveedor es hipótesis sin confirmar.
 - **Sigue sin ejercitarse la addenda,** porque el script no descarga.
 
@@ -246,7 +246,7 @@ RESULTADO getTypeE a_descargar=0 getTypeI a_descargar=33 ms_total=6469
 - **Paginación:** `[PAGINACION]` con `recibidas` igual a `total`; hoy deberían ser unas 5 páginas para getTypeI (822 pendientes el 08-oct).
 - **Lo que test no pudo ejercitar:**
   - `POINVHO` ya quedó probado con datos de producción (§ 7);
-  - confirmar `error_sql=0` en la línea `[FILTRO-SAGE]` de getTypeE (`POCRNHO`, casi seguro ya probado);
+  - confirmar `error_sql=0` en la línea `[FILTRO-SAGE]` de getTypeE cuando haya una nota de crédito que no esté en CxP (`POCRNHO` sigue sin demostrarse);
   - abrir uno de los XML descargados y confirmar `cfdi:Addenda` → `cfdi:AddendaEmisor` con `cfdi:DoctoDatosAdi` y `cfdi:Proveedor` con `provider_id` e `IdBase`. Es lo único que sigue sin ejercitarse.
 - **Tiempos:**
   - downloadCFDI sin `[TIMEOUT]` y sin crecer más de unos segundos sobre sus ~30 s de octubre;
