@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: null
 milestone_name: (TBD)
 status: executing
-stopped_at: Completed 24-01-PLAN.md
-last_updated: "2026-10-09T15:58:06.832Z"
+stopped_at: Completed 24-02-PLAN.md
+last_updated: "2026-10-09T16:37:23.727Z"
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 12
-  completed_plans: 5
-  percent: 42
+  completed_plans: 6
+  percent: 50
 ---
 
 # Project State
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. Ola 1 (24-01) ejecutada y verificada el 09-oct; siguiente: ola 2 (24-02) en sesión nueva.
+**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. Olas 1 y 2 (24-01, 24-02) ejecutadas y verificadas el 09-oct: ya no queda código por escribir; siguiente: ola 3 (24-03, compuerta local) en sesión nueva.
 
 ## Current Position
 
-Phase: 24 (paginar-descarga-cfdi) — EXECUTING: 24-01 hecho (`55ad054` test, `e9bb4a4` feat, `b791b1a` test, SUMMARY `ba94941`)
-Plan: 2 of 4 — siguiente 24-02 (filtro en bloque + getTypeI/getTypeE paginadas) → 24-03 (compuerta local) → 24-04 (zcl-rds-test, con OK de Yahir)
+Phase: 24 (paginar-descarga-cfdi) — EXECUTING: 24-01 hecho (`55ad054` test, `e9bb4a4` feat, `b791b1a` test, SUMMARY `ba94941`); 24-02 hecho (`acd731b` feat, `f9e19af` test, SUMMARY `d14b333`)
+Plan: 3 of 4 — siguiente 24-03 (compuerta local: regresión, alcance de 4 archivos, higiene de commits, prueba negativa consolidada y evidencia del SPEC; sin tocar código) → 24-04 (zcl-rds-test, con OK de Yahir)
 Status: Ready to execute
-Siguiente decision: `/gsd-execute-phase 24 --wave 2 --interactive` en sesión nueva arrancada con `SAGECONNECT_HOOKS_BYPASS=1 claude` (en línea: el worktree por defecto no trae `node_modules`). `master` sigue congelado hasta que prod tenga el build del botón (`0785a9a`).
+Siguiente decision: `/gsd-execute-phase 24 --wave 3 --interactive` en sesión nueva arrancada con `SAGECONNECT_HOOKS_BYPASS=1 claude` (en línea: el worktree por defecto no trae `node_modules`). `master` sigue congelado hasta que prod tenga el build del botón (`0785a9a`).
 
 ## Deferred Items
 
@@ -75,6 +75,8 @@ Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md
 | 2026-08-31 | 23-04 | **`CronScheduler.js` editado SÓLO en comentarios** (relajación acotada de REQ-23-06, registrada en la enmienda del SPEC) — dejar escrito en el archivo que `startChildProcess` es cron-only, después de que la fase 23 lo volvió falso, era peor que el diff vacío. Ni una línea ejecutable cambió. |
 | 2026-10-09 | 24-01 | **Ejecución en línea, no en worktree** — `workflow.use_worktrees` no está configurado (default `true`) y un worktree nuevo no trae `node_modules`, que los planes necesitan para `npm test`/`npx jest`. Las olas 2 y 3 se corren con `/gsd-execute-phase 24 --wave N --interactive` sobre el árbol principal. |
 | 2026-10-09 | 24-01 | **La prueba negativa se revisa por la razón de cada fallo, no sólo por el conteo** — 20 ✕ / 5 ✓ como se esperaba, y ninguno falla por un error del propio test: P-24 devuelve lo mismo que hoy y falla sólo por la línea `[PAGINACION]` que no existía. |
+| 2026-10-09 | 24-02 | **La suite se escribe y se corre antes del commit `feat`** — cuando el plan separa feat y test, la suite F-01..F-18 se probó contra el código nuevo antes de commitearlo; los commits siguen siendo uno por tarea y en el orden del plan. Así un error del filtro se corrige antes del `feat` y no queda un `fix(24)` aparte (no hizo falta: 21/21 a la primera; la prueba negativa dio 16 ✕ / 5 ✓, todas por la razón esperada). |
+| 2026-10-09 | 24-02 | **El grep de redacción manual también revisa el mensaje del commit** — HANDOFF §1 cubre los mensajes de commit y el hook apagado sólo veía el diff. El script local lee los patrones del repo en el momento y muestra sólo el número de patrón, nunca la etiqueta del hook (que lleva el nombre). |
 
 ## Blockers/Concerns
 
@@ -84,7 +86,7 @@ Decisiones tomadas durante la ejecución (las de diseño viven en `23-CONTEXT.md
 
 ## Session Continuity
 
-Last session: 2026-10-09T15:58:06.828Z
+Last session: 2026-10-09T16:37:23.724Z
 Session result (23-03): Plan 23-03 CERRADO — la fase 23 queda completa. El 01-sep se verificaron REQ-23-01 (el boton invoca al importador; 3 reproducciones, evidencia en `ChildProcess.log` con marcas de hora imposibles para el cron, que solo corre a las 03:01) y REQ-23-08 (`IMPORT_CFDIS_ROUTE` apunta al `.exe` directo, sin wrapper `.bat`, asi que la trampa de EINVAL en Node 22 no aplica). REQ-23-05 y REQ-23-09 quedaron bloqueados porque el `.exe` abortaba al arrancar con `GetParam, Faltan especificar los parametros de la seccion [CORREOAP]`: `Para=` estaba vacio en `E:\Sage\Sage300\Macros\COPDAT.ini` de zcl-rds-test — archivo de Sage 300, no de SageConnect, roto desde el 13-ene-2026. **Resuelto por la autora del importador**; con eso los dos requisitos se cerraron el 07-sep por confirmacion directa del operador: el tercer estado del boton ("Importando comprobantes a Sage...") ya se ve —no era un fallo de UI, el paso duraba 2 s contra un poll de 3.5 s— y la factura aparece en Cuentas por Pagar de Sage. Tambien se corrigio en el `.env` del servidor de test un desajuste de carpetas real (SageConnect escribia en `E:\sageconnect-dist\downloads`, el `.exe` lee `D:\XMLSFOCALTEC\`); prod ya tenia ambas variables apuntando a la carpeta del importador. **Hallazgo abierto y ahora mas urgente:** el `.exe` devuelve exit code 0 aunque falle, asi que ni el cron ni el boton detectan una importacion rota — tampoco en produccion; el `Para=` invisible durante siete meses mide el costo. Merece fase propia. Cero cambios de codigo en este plan.
 
 Session result (23-04): Plan 23-04 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `5f47a8e` fix, `7598f34` test, `59406f9` test). Cierra el **blocker CR-01** de la revisión de código: `releaseLock` borra el slot y cancela su watchdog sin comparar el `operationId`, así que la cadena manual —que al encadenar el importador pasa de ~13 a ~23 min contra un candado de 14— terminaba liberando el candado del cron, cancelándole el watchdog, dejando el estado en idle y habilitando un tercer ciclo concurrente. Ahora `ownsLock()` protege `releaseLock`, `startStep` y `endStep`; la omisión deja una entrada `[LOCK]` warn en `ScheduleRoutes.log` (la única señal operativa que existirá si esto pasa en producción); y un `.catch` terminal impide que un throw tardío quede como `unhandledRejection` (Node 22 tumbaría el servicio). Tests: 5 casos nuevos que ejercitan el `OperationManager` REAL vía `jest.resetModules` + `jest.unmock` (los 6 previos lo mockean entero — por eso CR-01 pasó desapercibido), incluidos el camino feliz y el orden `startChildProcess → releaseLock`. REQ-23-11: `stripComments` hace que las aserciones de paridad ya no pasen sobre código comentado (se demostró en ambos sentidos). Además se corrigieron los dos comentarios que la fase volvió falsos: `CronScheduler.js` (sólo comentarios, ni una línea ejecutable) y el del literal `'background-cycle'` (WR-06). `npm test` en baseline §6: mismas 6 suites / 7 tests, total 435 → 441 por los 6 casos nuevos. `git diff` vacío para `OperationManager.js`, `background.js` y `config.js`. Sesión con `SAGECONNECT_HOOKS_BYPASS=1`; grep de redacción corrido a mano antes de los 3 commits, limpio. **Siguiente:** 23-03 (verificación end-to-end en `zcl-rds-test`) y el merge a `master`, que era lo que CR-01 bloqueaba.
@@ -92,5 +94,5 @@ Session result (23-04): Plan 23-04 ejecutado completo en `feat/boton-ejecucion` 
 Session result (23-02): Plan 23-02 ejecutado completo en `feat/boton-ejecucion` (2 tareas, 2 commits atómicos: `e746211` feat, `2b4ae1f` feat). `public/ejecucion.html` — único archivo tocado — pasa de dos estados de botón a tres: `applyButtonState(running, importing)` y un `'importing'` en `btn.dataset.uiState` que pinta "Importando comprobantes a Sage..." mientras la última entrada abierta de `stepProgress` sea `startChildProcess`. El dato ya viajaba en el poll de `GET /api/operations/status`; el plan 23-01 es el que hace que esa entrada exista en la ruta manual. Cero backend, cero endpoints, cero recursos always-on nuevos (se reusa el `setInterval` que ya se libera en `beforeunload`). T-LKI-01 preservada: el nombre del paso se COMPARA contra el literal, nunca se interpola. Los cuatro caminos de fail-safe pasan `applyButtonState(false, false)` — el botón nunca queda trabado. Verificación: simulación en Node que extrae el código VERBATIM del archivo y lo corre contra 12 shapes (incluidos los degradados: `stepProgress` ausente, vacío, no-array, `null`, objeto, todo cerrado, entrada `null`, entrada sin `step`) — 12/12 OK, ninguno lanza; `node --check` del script; `npm test` idéntico al baseline §6 (6 suites / 7 tests, 427 de 435). Sesión con `SAGECONNECT_HOOKS_BYPASS=1`, chequeos manuales sustitutos documentados en el SUMMARY.
 
 Session result (23-01): Plan 23-01 ejecutado completo en `feat/boton-ejecucion` (3 tareas, 3 commits atómicos: `185e8f2` feat, `75e7140` test, `c0e99e7` test). El disparo manual (`POST /api/schedule/background-cycle/trigger`) ya encadena `startChildProcess()` después de `forResponse()` dentro del lock `background-cycle` existente, con instrumentación `startStep`/`endStep`, detección del sentinel `/Child process timeout/` y `sendAdminAlert` con el mismo asunto que el cron (log ruteado a `ScheduleRoutes.log`, D-06). Bloque duplicado a propósito (D-01) y blindado con 3 aserciones nuevas sobre el fuente en `timeout-logging.test.js`. Archivo de test nuevo `tests/api/schedule-trigger-import.test.js` con los 6 casos de D-17 (D-16 revisada: archivo propio en vez de editar `schedule-routes.test.js`, para dejar REQ-23-06 cierto por construcción). `npm test` idéntico al baseline §6 — 6 suites / 7 tests fallando, cero nuevas; 427 pasan de 435 (+9 nuevos). `src/services/CronScheduler.js`, `src/background.js` y `src/config.js` sin tocar. Sesión corrida con `SAGECONNECT_HOOKS_BYPASS=1`; los 5 hooks apagados se sustituyeron por chequeos manuales documentados en el SUMMARY (grep de redacción HANDOFF §1 antes de cada commit — limpio en los 3).
-Stopped at: Completed 24-01-PLAN.md
-Resume next: ejecutar la fase 24 con `/gsd-execute-phase 24` en una sesión nueva: empieza por el pre-vuelo del bypass y la línea base de `npm test` (24-01). Leer antes `24-SPEC.md`, `24-CONTEXT.md` y `24-01-PLAN.md`.
+Stopped at: Completed 24-02-PLAN.md
+Resume next: ejecutar la ola 3 (24-03, compuerta local, sólo verificación) con `/gsd-execute-phase 24 --wave 3 --interactive` en una sesión nueva arrancada con `SAGECONNECT_HOOKS_BYPASS=1 claude`. Leer antes `24-03-PLAN.md`, `24-01-SUMMARY.md` y `24-02-SUMMARY.md` (líneas base y tablas de la prueba negativa).
