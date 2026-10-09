@@ -117,7 +117,7 @@ Plans:
 Plans:
 - [x] 24-01-PLAN.md — Paginación compartida (fetchCfdiPages) + getPendingToPayInvoices con su contrato intacto + getCfdisByProvider paginada (providerId, presupuesto) + línea de corte de getTypeP + suite P-01..P-25 [wave 1]
 - [x] 24-02-PLAN.md — Filtro "ya está en Sage" en bloque + getTypeI/getTypeE paginadas + registro [FILTRO-SAGE] + suite F-01..F-18 con paridad CI/CS [wave 2]
-- [ ] 24-03-PLAN.md — Compuerta final local: regresión contra la línea base, alcance, prueba negativa consolidada y evidencia por criterio del SPEC [wave 3]
+- [x] 24-03-PLAN.md — Compuerta final local: regresión contra la línea base, alcance, prueba negativa consolidada y evidencia por criterio del SPEC [wave 3]
 - [ ] 24-04-PLAN.md — Publicar la rama con OK de Yahir y verificar un ciclo en zcl-rds-test; criterios para producción [wave 4]
 
 ### 📋 v2.4 (TBD)
@@ -156,4 +156,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
-| 24. Paginar descarga CFDIs    | v2.4      | 2/4            | In Progress | —          |
+| 24. Paginar descarga CFDIs    | v2.4      | 3/4            | In Progress | —          |
