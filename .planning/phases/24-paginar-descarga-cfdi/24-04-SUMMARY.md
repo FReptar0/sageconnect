@@ -13,6 +13,7 @@ provides:
   - "Build ofuscado ee03788 (06e6d9e) en la rama homónima del dist, run 37969497759 en success; master del dist intacto (0785a9a)"
   - "Build instalado en zcl-rds-test con punto de regreso anotado (0785a9a, rama master del dist) y un ciclo verificado contra el portal sandbox y la base de pruebas de Sage"
   - "Criterios para el despliegue a producción, escritos para Yahir"
+  - "Ejercicio de solo lectura con datos reales de producción en ZCL-RDS-02 (después del plan): 910/910 en 5 páginas en 4.0 s, filtro en bloque sin error con POINVHO ejercitado, y la lista de 33 facturas que bajaría el primer ciclo paginado"
 affects: [cierre de la fase 24 (verificación, revisión de código y seguridad), despliegue a producción (fuera de esta fase)]
 
 # Tech tracking
@@ -32,6 +33,7 @@ key-decisions:
   - "El push falló dos veces con HTTP 408 (send-pack por HTTP/2; paquete de ~300 KB, GitHub operativo, sin proxy); con OK de Yahir entró con `git -c http.version=HTTP/1.1 push -u origin feat/paginar-descarga-cfdi`, sin dejar configuración permanente"
   - "La addenda, la consulta en bloque de OC (POINVHO) y la de notas de crédito (POCRNHO) no se ejercitaron en test: el sandbox sólo tenía 3 facturas pendientes y ya estaban en Sage, y ninguna nota de crédito. Se acepta como riesgo bajo y se revisa en el primer ciclo de producción: APIBHO corrió con el mismo patrón SQL, las otras dos tablas usan las mismas columnas que las consultas que hoy corren en producción, y hideValidations ya se verificó en producción (D-27)"
   - "La hora del despliegue se tomó del health (uptime 45.4 s a las 18:29:30Z ⇒ arranque 12:28:44 hora del servidor) porque $T no se pegó; el log del día empezó con este ciclo, así que no hay líneas del build anterior que confundir"
+  - "La escala real se probó en ZCL-RDS-02 con un script de solo lectura y no reapuntando un servicio a producción: SageConnect no tiene modo de solo lectura (su ciclo sube pagos y OCs, escribe en FESA y corre el importador), así que un servicio de test apuntado a producción sería una segunda instancia viva. El script corre sólo getTypeE/getTypeI con los módulos instalados de producción, que son idénticos en el build c5a43cb y en la rama"
 
 patterns-established:
   - "Antes del push, comparar los hashes de contenido contra la compuerta: lo publicado es exactamente lo verificado aunque haya commits docs en medio"
@@ -190,6 +192,8 @@ La de getTypeE no aparece porque no hubo notas de crédito (`total=0`), como se 
 | `POINVHO` (OC) | no se puede saber | sólo corre para facturas que no aparecieron en CxP; `ya_en_sage=3` no distingue la tabla |
 | `POCRNHO` (notas de crédito) | no | getTypeE con `total=0` |
 
+El ejercicio con datos reales de producción (§ 7) completó esta tabla: `POINVHO` sí corrió sin error (`a_descargar=33`), y `POCRNHO` casi seguro (87 notas, `error_sql=0`).
+
 **Addenda: no ejercitada.** El ciclo no descargó ningún XML (`a_descargar=0`): las 3 facturas pendientes del sandbox ya están registradas en la base de pruebas. Ejercitarla exige dejar en "Pendiente de pago" una factura nueva del sandbox, de un proveedor con banco y sin registrar en Sage. Se acepta sin ella porque `hideValidations=true` sólo recorta `metadata.validations`, y los campos con los que se arma la addenda llegan idénticos (verificado en producción el 08-oct, D-27). Se revisa en el primer ciclo de producción (ver abajo).
 
 ## 5. D-27 / D-28
@@ -203,19 +207,47 @@ D-27/D-28: verificación en vivo de providerId y hideValidations hecha el 08-oct
 - **Archivos sueltos en el dist de test:** tres respaldos del `.env` (con secretos, no ignorados por git) y dos scripts (`dl-check.js`, `rfc-check.js`) dentro de `E:\sageconnect-dist`. Conviene moverlos fuera del repo.
 - **Avisos de GitHub Actions** en el workflow (Node 20 obsoleto; `ubuntu-latest` → Ubuntu 26 desde el 19-oct-2026) y Dependabot (99 vulnerabilidades en la rama principal).
 
+## 7. Ejercicio de solo lectura con datos reales de producción (09-oct, después del plan)
+
+El sandbox no podía mostrar la escala real (3 facturas, una página). A petición de Yahir, y con su OK, se corrió el código nuevo contra los datos de producción **sin desplegarlo ni tocar el servicio**.
+
+**Método:**
+- Un script local, `data-sageconnect/casos/probar-paginacion.js` (fuera de git), y la copia de `src/utils/GetTypesCFDI.js` de la rama, en el Escritorio de ZCL-RDS-02.
+- El script exige que la copia sea idéntica a la de la rama (huella canónica `554bd71dd002`).
+- La carga como si estuviera en `src/utils`, sin escribir nada ahí, y usa como biblioteca los módulos instalados de producción (build `c5a43cb`): `config`/`.env`, `PortalClient`, `SQLServerConnection` y `TimezoneHelper`. Esos módulos son idénticos en el fuente de ese build (`4ac51f4`) y en la rama.
+- Llama sólo a `getTypeE(0)` y `getTypeI(0)`: GET al portal y SELECT a la base. El registro sale en pantalla, así que nada se escribe en `C:\Logs`. No descarga, no corre git y el servicio siguió en `c5a43cb`.
+- Antes se probó localmente contra un portal y una base falsos, con una copia guardada como lo haría el Bloc de notas (con BOM y CRLF). También se comprobó que se niega con una copia en ANSI o desde la carpeta equivocada, y que no escribe archivos de log.
+
+**Resultado** (salida completa en `data-sageconnect/evidencia/2026-10-09-probar-paginacion-prod.txt`, fuera de git porque trae los UUID):
+
+```
+portal=api.portaldeproveedores.mx tenant=t7e92ajx4dm77k base_sage=COPDAT presupuesto_ms=75000
+[INFO] [PAGINACION] consulta=getTypeE tenant=t7e92ajx4dm77k total=87 recibidas=87 paginas=1 ms=1011 pagina_mas_lenta_ms=1011 corte=completo
+[INFO] [FILTRO-SAGE] consulta=getTypeE tenant=t7e92ajx4dm77k recibidas=87 ya_en_sage=87 sin_rfc=0 invalidas=0 error_sql=0 a_descargar=0 ms=441
+[INFO] [PAGINACION] consulta=getTypeI tenant=t7e92ajx4dm77k total=910 recibidas=910 paginas=5 ms=3998 pagina_mas_lenta_ms=1266 corte=completo
+[INFO] [FILTRO-SAGE] consulta=getTypeI tenant=t7e92ajx4dm77k recibidas=910 ya_en_sage=877 sin_rfc=0 invalidas=0 error_sql=0 a_descargar=33 ms=997
+RESULTADO getTypeE a_descargar=0 getTypeI a_descargar=33 ms_total=6469
+```
+
+**Qué demuestra:**
+- **Escala:** 910 de 910 en 5 páginas, en 4.0 s; la página más lenta tardó 1.27 s. El presupuesto de 75 s deja unas 19 veces de margen. El servicio actual sólo ve 200 de esas 910.
+- **Filtro en bloque contra la base real:** 997 ms para 910 facturas, sin ningún error SQL. `POINVHO` corrió sin duda, porque "a descargar" sólo se asigna después de consultar OC. `POCRNHO` casi seguro: 87 notas de crédito con `error_sql=0`.
+- **Lo que bajaría el primer ciclo paginado: 33 facturas.** Es la simulación del rescate que pide la puerta de despliegue del SPEC; su lista está en la evidencia. 22 de las 33 tienen ids consecutivos del portal, creados el 06-oct por la tarde: se cargaron juntas. Que sean un solo proveedor es hipótesis sin confirmar.
+- **Sigue sin ejercitarse la addenda,** porque el script no descarga.
+
 ## Para producción (fuera de esta fase)
 
 **Antes:**
 - **Orden:** `master` sigue congelado hasta que producción tenga el build del botón (`0785a9a`). Lo instala TI o el responsable técnico, porque Yahir no tiene admin en ZCL-RDS-02. Esta corrección sale después, como build aparte. Va a `master` con un PR desde la rama contra `origin/master`, nunca con un push del `master` local, que trae la fase 20 sin publicar.
-- **Rescate:** correr la simulación del rescate para listar lo que bajará el primer ciclo paginado (pendientes fuera de las 200 y sin UUID en Sage) y revisarla con el cliente. Están capturando facturas a mano, y las que no tengan el UUID en `FOLIOCFD` se volverían a bajar; sin OC, el importador las duplica en CxP.
+- **Rescate:** revisar con el cliente la lista de lo que bajará el primer ciclo paginado. Al 09-oct son 33 facturas (§ 7). Están capturando facturas a mano, y las que no tengan el UUID en `FOLIOCFD` se volverían a bajar; sin OC, el importador las duplica en CxP. **Justo antes del despliegue, repetir el ejercicio de § 7** (`probar-paginacion.js`, sólo lectura) para tener la lista al día.
 - **Rollback:** anotar `git rev-parse HEAD` del dist antes del `reset`, porque los builds son huérfanos y el rollback de DEPLOYMENT.md §6 no sirve.
 
 **Después** (`GetTypesCFDI.log` y `ForResponse.log` del día):
 - **Paginación:** `[PAGINACION]` con `recibidas` igual a `total`; hoy deberían ser unas 5 páginas para getTypeI (822 pendientes el 08-oct).
 - **Lo que test no pudo ejercitar:**
-  - `[FILTRO-SAGE]` de getTypeI con `error_sql=0` y `a_descargar` mayor que 0: así queda probada la consulta en bloque de OC (`POINVHO`);
-  - el primer ciclo con notas de crédito, con `error_sql=0` en la línea de getTypeE (`POCRNHO`);
-  - abrir uno de los XML descargados y confirmar `cfdi:Addenda` → `cfdi:AddendaEmisor` con `cfdi:DoctoDatosAdi` y `cfdi:Proveedor` con `provider_id` e `IdBase`.
+  - `POINVHO` ya quedó probado con datos de producción (§ 7);
+  - confirmar `error_sql=0` en la línea `[FILTRO-SAGE]` de getTypeE (`POCRNHO`, casi seguro ya probado);
+  - abrir uno de los XML descargados y confirmar `cfdi:Addenda` → `cfdi:AddendaEmisor` con `cfdi:DoctoDatosAdi` y `cfdi:Proveedor` con `provider_id` e `IdBase`. Es lo único que sigue sin ejercitarse.
 - **Tiempos:**
   - downloadCFDI sin `[TIMEOUT]` y sin crecer más de unos segundos sobre sus ~30 s de octubre;
   - sin `corte=presupuesto`.
