@@ -10,11 +10,12 @@
  * temporizadores; el modelo del portal adelanta el reloj con jest.setSystemTime.
  *
  * Prueba negativa (D-25), corriendo esta suite contra el GetTypesCFDI.js de origin/master:
- *   DEBEN FALLAR P-02 a P-18, P-23 a P-25 y P-29 a P-31 (paginación, providerId, reintento,
- *   presupuesto, registro y respuestas sin items).
+ *   DEBEN FALLAR P-02 a P-18 y P-23 a P-31 (paginación, providerId, reintento, presupuesto,
+ *   registro, respuestas sin items y tope de getCfdisByProvider).
  *   DEBEN PASAR P-01, P-19, P-20, P-21 y P-22: anclas del contrato de hoy (REQ-24-03).
  * Contra el GetTypesCFDI.js previo a las correcciones de la revisión (5e57893) fallan sólo P-15 y
- * P-29 a P-31: las de WR-01 (D-32).
+ * P-29 a P-31 (WR-01, D-32), y P-26 y P-28 (WR-02, D-33); P-27 pasa: es el ancla de que el tope no
+ * mata los reintentos rápidos.
  */
 
 const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals');
@@ -100,6 +101,7 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
         jest.restoreAllMocks();
         jest.useRealTimers();
         config.schedule.stepTimeoutMs = 300000;
+        config.portal.httpTimeoutMs = 30000;
     });
 
     test('P-01 la API exportada no cambia (REQ-24-15, D-01)', () => {
@@ -354,6 +356,8 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
     });
 
     test('P-16 agotado el presupuesto no se pide otra página y se devuelve lo recibido (REQ-24-06, D-10)', async () => {
+        // Timeout de axios alto para aislar el 25 % de stepTimeoutMs (D-10); su tope se prueba en P-26 a P-28.
+        config.portal.httpTimeoutMs = 300000;
         const portal = createPortal({ items: makeItems(600), delayMs: 40000 });
         mockGet.mockImplementation(portal.get);
 
@@ -368,6 +372,7 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
     });
 
     test('P-17 una espera de reintento que rebasaría el presupuesto no se crea (REQ-24-06, D-10)', async () => {
+        config.portal.httpTimeoutMs = 300000;
         const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
         const portal = createPortal({
             items: makeItems(450),
@@ -390,6 +395,7 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
     });
 
     test('P-18 el presupuesto se lee de stepTimeoutMs en cada llamada (D-10)', async () => {
+        config.portal.httpTimeoutMs = 300000;
         // 120 s de paso => 30 s de presupuesto: con 20 s por página caben 2 páginas.
         config.schedule.stepTimeoutMs = 120000;
         const corto = createPortal({ items: makeItems(600), delayMs: 20000 });
@@ -506,7 +512,63 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
         }]);
     });
 
-    test('P-29 una primera página sin arreglo items es página fallida: [] sin reintento y en error (WR-01, D-32)', async () => {
+    test('P-26 getCfdisByProvider no reintenta un intento colgado: cuesta 30 s, no 94.5 s (WR-02, D-33)', async () => {
+        const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+        const portal = createPortal({ items: makeItems(450), delayMs: 30000, failures: { 0: ['ECONNABORTED'] } });
+        mockGet.mockImplementation(portal.get);
+
+        const result = await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(portal.calls).toHaveLength(1);
+        expect(result).toEqual([]);
+        expect(setTimeoutSpy.mock.calls.some(c => c[1] === 1500)).toBe(false);
+        expect(intentos()).toEqual([
+            { level: 'warn', msg: '[PAGINACION-INTENTO] consulta=getCfdisByProvider tenant=T1 offset=0 intento=1/3 status=ECONNABORTED accion=presupuesto' }
+        ]);
+        expect(paginacion()).toEqual([{
+            level: 'error',
+            msg: '[PAGINACION] consulta=getCfdisByProvider tenant=T1 total=desconocido recibidas=0 paginas=0 ms=30000 pagina_mas_lenta_ms=30000 corte=presupuesto proveedor=PROV1'
+        }]);
+    });
+
+    test('P-27 con el tope, un 503 rápido se sigue reintentando y la consulta se completa (WR-02, D-33)', async () => {
+        const items = makeItems(150);
+        const portal = createPortal({ items, failures: { 0: [503] } });
+        mockGet.mockImplementation(portal.get);
+
+        const result = await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(portal.calls).toHaveLength(2);
+        expect(result).toEqual(items);
+        const [linea] = paginacion();
+        expect(linea.level).toBe('info');
+        expect(linea.msg).toContain('corte=completo');
+    });
+
+    test('P-28 el tope de getCfdisByProvider sigue al timeout de axios, leído en cada llamada (WR-02, D-33)', async () => {
+        // 10 s de timeout => 10 s de presupuesto: con 6 s por página caben 2 páginas.
+        config.portal.httpTimeoutMs = 10000;
+        const corto = createPortal({ items: makeItems(450), delayMs: 6000 });
+        mockGet.mockImplementation(corto.get);
+
+        await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(corto.calls).toHaveLength(2);
+        expect(paginacion()[0].msg).toContain('corte=presupuesto');
+
+        // Con 30 s (el default) el mismo escenario completa las 3 páginas.
+        config.portal.httpTimeoutMs = 30000;
+        mockLog.mockClear();
+        const normal = createPortal({ items: makeItems(450), delayMs: 6000 });
+        mockGet.mockImplementation(normal.get);
+
+        await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(normal.calls).toHaveLength(3);
+        expect(paginacion()[0].msg).toContain('corte=completo');
+    });
+
+    test('P-29una primera página sin arreglo items es página fallida: [] sin reintento y en error (WR-01, D-32)', async () => {
         const portal = createPortal({ items: makeItems(450), bodies: { 0: '<html><body>Mantenimiento</body></html>' } });
         mockGet.mockImplementation(portal.get);
 

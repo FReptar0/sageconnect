@@ -22,8 +22,12 @@ const CYCLE_MAX_PAGES = 50;
 const MAX_PAGE_ATTEMPTS = 3;
 const RETRY_BASE_MS = 1500;
 // Presupuesto por consulta del ciclo = 25 % de stepTimeoutMs (75 s con el default de 5 min).
-// getTypeE + getTypeI en el mismo paso: 2 × (75 s + 30 s de una petición en vuelo) = 210 s < 300 s
-// del paso downloadCFDI; preserva axios 30 s < paso 5 min < hijo 10 min < candado 14 min (D-10).
+// La cota es del paso downloadCFDI, que hace dos listados: getTypeE + getTypeI = 2 × (75 s + ~30 s
+// de una petición en vuelo) = ~210 s < 300 s; preserva axios 30 s < paso 5 min < hijo 10 min <
+// candado 14 min (D-10). Los ~30 s son lo usual, no una cota dura: el timeout de axios mide
+// inactividad del socket, no la duración de la petición (IN-03). getCfdisByProvider corre una vez
+// por cada factura pagada sin UUID dentro de uploadPayments, así que su presupuesto se limita
+// además al timeout de axios (D-33, providerListingBudgetMs).
 const LISTING_BUDGET_FRACTION = 0.25;
 // Filtro "ya está en Sage" en bloque (fase 24): IN de hasta 200 UUID por consulta.
 const SQL_BLOCK_SIZE = 200;
@@ -314,8 +318,8 @@ async function getTypeE(index) {
 
 /**
  * Obtiene CFDIs PENDING_TO_PAY de tipo INVOICE filtrados por provider_id.
- * Pagina hasta el `total` del portal pidiendo `providerId` y `hideValidations=true`, dentro del
- * presupuesto de tiempo del ciclo; si una página falla o se agota el presupuesto, devuelve lo
+ * Pagina hasta el `total` del portal pidiendo `providerId` y `hideValidations=true`, dentro de un
+ * presupuesto que no pasa del timeout de axios (D-33); si una página falla o se agota, devuelve lo
  * recibido. Conserva el filtro local por metadata.provider_id por si el portal ignorara el
  * parámetro. Con providerId vacío devuelve [] sin consultar el portal (D-31).
  * @param {number} index - Índice del tenant.
@@ -335,7 +339,7 @@ async function getCfdisByProvider(index, providerId) {
         const r = await fetchCfdiPages(
             index,
             { cfdiType: 'INVOICE', stage: 'PENDING_TO_PAY', from: `${dateFrom}-01`, providerId, hideValidations: true },
-            { consulta: 'getCfdisByProvider', maxPages: CYCLE_MAX_PAGES, budgetMs: listingBudgetMs() }
+            { consulta: 'getCfdisByProvider', maxPages: CYCLE_MAX_PAGES, budgetMs: providerListingBudgetMs() }
         );
 
         return r.items.filter(item => item?.metadata?.provider_id === providerId);
@@ -362,6 +366,18 @@ function sleep(ms) {
 /** Presupuesto de una consulta del ciclo, en ms. Se lee en cada llamada, nunca al cargar el módulo. */
 function listingBudgetMs() {
     return Math.floor(config.schedule.stepTimeoutMs * LISTING_BUDGET_FRACTION);
+}
+
+/**
+ * Presupuesto de getCfdisByProvider, en ms: el del ciclo, pero nunca mayor que el timeout de axios
+ * (D-33). Corre una vez por factura pagada sin UUID dentro de uploadPayments, así que su presupuesto
+ * por llamada no acota el paso: con este tope, un intento colgado ya no se reintenta (cuesta ~30 s,
+ * como antes de la fase) y los fallos rápidos (429, 503, ECONNRESET) sí. Se lee en cada llamada; la
+ * guarda evita NaN, que dejaría la consulta sin presupuesto.
+ */
+function providerListingBudgetMs() {
+    const http = Number(config.portal.httpTimeoutMs);
+    return Number.isFinite(http) && http > 0 ? Math.min(listingBudgetMs(), http) : listingBudgetMs();
 }
 
 /** `total` del portal como número >= 0, o null si no viene o no es un número válido. */
