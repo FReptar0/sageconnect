@@ -154,6 +154,18 @@ Yahir delegó todas las decisiones técnicas ("que funcionen, no tengan errores,
   - Para ese llamador el resultado es el mismo que hoy: la petición actual filtra por `provider_id === ''` y no encuentra nada.
   - Evita que, ya paginada y sin el parámetro `providerId`, recorra toda la lista de pendientes (5 páginas hoy) por cada factura pagada sin UUID.
 
+### Decisiones agregadas por la revisión de código (12-oct, `24-REVIEW-FIX.md`)
+- **D-32 — Un listado que no se pudo leer queda en `error`, no en `warn` ni en `info`** (WR-01, commit `29ed5cd`).
+  - **Respuesta sin `items`:** una respuesta 200 sin arreglo `items` es página fallida. `requestCfdiPage` deja `[PAGINACION-INTENTO] … status=sin-items accion=abandonar` y no reintenta. En `getPendingToPayInvoices`, una página así a media lista devuelve `[]` (contrato todo o nada, REQ-24-03).
+  - **Nivel del resumen:** `logPaginationSummary` registra `error` cuando no llegó nada (`recibidas=0`) y el corte no es `completo`; los demás casos siguen la regla de D-17. Esto afina D-17: P-15 y F-03(b) pasan de `warn` a `error`.
+  - **"No hay CFDI":** `getTypeI`/`getTypeE` sólo lo dicen con el 0 de 0 que reporta el portal (`corte=completo` sin items).
+  - **Por qué:** con las credenciales del tenant cambiadas, el ciclo dejaba de bajar todo cada 15 min sin una sola línea `[ERROR]` en `GetTypesCFDI.log`. Con una respuesta sin `items`, el operador leía "No hay CFDI de tipo I".
+- **D-33 — El presupuesto de `getCfdisByProvider` es min(25 % de `stepTimeoutMs`, `httpTimeoutMs`)** (WR-02, commit `6581a97`). Lo calcula `providerListingBudgetMs()`, que lo lee en cada llamada y tiene guarda contra NaN.
+  - **Por qué:** se llama una vez por cada factura pagada sin UUID dentro de `uploadPayments`, en serie y sin tope, así que el presupuesto por llamada de D-10 no acotaba el paso. Con el portal colgado costaba 94.5 s por llamada (3 intentos de 30 s).
+  - **Qué cambia:** un intento colgado ya no se reintenta (30 s, como antes de la fase) y los fallos rápidos sí.
+  - **Qué no cambia:** `getTypeI`/`getTypeE` conservan los 75 s de D-10 (F-04 lo protege), y se sigue cumpliendo REQ-24-06 ("como máximo 25 %").
+  - **Comentario corregido (IN-03):** la cota de 210 s es del paso downloadCFDI, y los ~30 s del timeout de axios miden inactividad del socket; no son una cota dura.
+
 ### Claude's Discretion
 - Nombres exactos de funciones internas y variables; si `requestPendingToPayPage` se generaliza o se sustituye.
 - **División en planes (sugerencia).** Todos tocan el mismo archivo, así que van en olas secuenciales:
