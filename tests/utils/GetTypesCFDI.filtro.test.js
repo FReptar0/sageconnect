@@ -12,9 +12,11 @@
  * temporizadores; el modelo del portal adelanta el reloj con jest.setSystemTime.
  *
  * Prueba negativa (D-25), corriendo esta suite contra el GetTypesCFDI.js de origin/master:
- *   DEBEN FALLAR F-01 a F-04, F-07 a F-16 y F-18 (paginación, conteo de SQL, presupuesto,
- *   validación, errores por bloque, registro y fuente).
+ *   DEBEN FALLAR F-01 a F-04, F-07 a F-16 y F-18 a F-20 (paginación, conteo de SQL, presupuesto,
+ *   validación, errores por bloque, registro, fuente y respuestas sin items).
  *   DEBEN PASAR F-05, F-06 y F-17 en todas sus variantes: anclas de la decisión por factura de hoy.
+ * Contra el GetTypesCFDI.js previo a las correcciones de la revisión (5e57893) fallan sólo F-03,
+ * F-19 y F-20: las de WR-01 (D-32).
  */
 
 const fs = require('fs');
@@ -272,7 +274,7 @@ describe('GetTypesCFDI — filtro en bloque y getTypeI/getTypeE paginadas (fase 
         }]);
     });
 
-    test('F-03 con una página fallida filtra lo recibido y sólo dice "no hay" si el listado terminó (REQ-24-05, D-02)', async () => {
+    test('F-03 con una página fallida filtra lo recibido y sólo dice "no hay" si el listado terminó (REQ-24-05, D-02, D-32)', async () => {
         const db = createSageDb({ rfcs: [R1] });
         mockRunQuery.mockImplementation(db.runQuery);
 
@@ -300,7 +302,7 @@ describe('GetTypesCFDI — filtro en bloque y getTypeI/getTypeE paginadas (fase 
 
         expect(rb).toEqual([]);
         const [lb] = paginacion();
-        expect(lb.level).toBe('warn');
+        expect(lb.level).toBe('error');
         expect(lb.msg).toContain('corte=pagina-fallida offset_fallido=0');
         expect(consola().some(t => t.includes('No hay CFDI de tipo I'))).toBe(false);
 
@@ -628,5 +630,42 @@ describe('GetTypesCFDI — filtro en bloque y getTypeI/getTypeE paginadas (fase 
         expect(result).toEqual([]);
         expect(resumen('getTypeI').msg).toContain('ya_en_sage=1');
         expect(sqls(db, 'cxp').some(c => c.sql.includes(`'${makeUuid(7)}'`))).toBe(true);
+    });
+
+    describe.each([['getTypeI', 'I'], ['getTypeE', 'E']])('%s', (fn, tipo) => {
+        test('F-19 una respuesta sin arreglo items es página fallida: [] sin "no hay" y sin consultar Sage (WR-01, D-32)', async () => {
+            const db = createSageDb({ rfcs: [R1] });
+            const portal = createPortal({ items: makeItems(450, { rfc: R1 }), bodies: { 0: '<html><body>Mantenimiento</body></html>' } });
+            mockGet.mockImplementation(portal.get);
+            mockRunQuery.mockImplementation(db.runQuery);
+
+            const result = await settle(GetTypesCFDI[fn](0));
+
+            expect(result).toEqual([]);
+            expect(portal.calls).toHaveLength(1);
+            expect(db.calls).toHaveLength(0);
+            expect(consola().some(t => t.includes(`No hay CFDI de tipo ${tipo}`))).toBe(false);
+            expect(paginacion()).toEqual([{
+                level: 'error',
+                msg: `[PAGINACION] consulta=${fn} tenant=T1 total=desconocido recibidas=0 paginas=0 ms=0 pagina_mas_lenta_ms=0 corte=pagina-fallida offset_fallido=0`
+            }]);
+        });
+
+        test('F-20 una primera página vacía sin total no dice "no hay" y queda en error (WR-01, D-32)', async () => {
+            const db = createSageDb({ rfcs: [R1] });
+            const portal = createPortal({ items: [], total: 'omit' });
+            mockGet.mockImplementation(portal.get);
+            mockRunQuery.mockImplementation(db.runQuery);
+
+            const result = await settle(GetTypesCFDI[fn](0));
+
+            expect(result).toEqual([]);
+            expect(db.calls).toHaveLength(0);
+            expect(consola().some(t => t.includes(`No hay CFDI de tipo ${tipo}`))).toBe(false);
+            expect(paginacion()).toEqual([{
+                level: 'error',
+                msg: `[PAGINACION] consulta=${fn} tenant=T1 total=desconocido recibidas=0 paginas=1 ms=0 pagina_mas_lenta_ms=0 corte=pagina-vacia`
+            }]);
+        });
     });
 });

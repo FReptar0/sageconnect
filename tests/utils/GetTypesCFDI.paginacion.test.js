@@ -10,8 +10,11 @@
  * temporizadores; el modelo del portal adelanta el reloj con jest.setSystemTime.
  *
  * Prueba negativa (D-25), corriendo esta suite contra el GetTypesCFDI.js de origin/master:
- *   DEBEN FALLAR P-02 a P-18, P-23, P-24 y P-25 (paginación, providerId, reintento, presupuesto, registro).
+ *   DEBEN FALLAR P-02 a P-18, P-23 a P-25 y P-29 a P-31 (paginación, providerId, reintento,
+ *   presupuesto, registro y respuestas sin items).
  *   DEBEN PASAR P-01, P-19, P-20, P-21 y P-22: anclas del contrato de hoy (REQ-24-03).
+ * Contra el GetTypesCFDI.js previo a las correcciones de la revisión (5e57893) fallan sólo P-15 y
+ * P-29 a P-31: las de WR-01 (D-32).
  */
 
 const { describe, test, expect, beforeEach, afterEach } = require('@jest/globals');
@@ -336,7 +339,7 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
         expect(linea.msg).toContain('corte=pagina-fallida offset_fallido=400');
     });
 
-    test('P-15 si falla la primera página el resultado es [] (REQ-24-04/05)', async () => {
+    test('P-15 si falla la primera página el resultado es [] y la línea queda en error (REQ-24-04/05, D-32)', async () => {
         const portal = createPortal({ items: makeItems(450), failures: { 0: [503, 503, 503] } });
         mockGet.mockImplementation(portal.get);
 
@@ -345,7 +348,7 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
         expect(portal.calls).toHaveLength(3);
         expect(result).toEqual([]);
         const [linea] = paginacion();
-        expect(linea.level).toBe('warn');
+        expect(linea.level).toBe('error');
         expect(linea.msg).toContain('total=desconocido recibidas=0 paginas=0');
         expect(linea.msg).toContain('corte=pagina-fallida offset_fallido=0');
     });
@@ -500,6 +503,49 @@ describe('GetTypesCFDI — paginación (fase 24, 24-01)', () => {
         expect(paginacion()).toEqual([{
             level: 'info',
             msg: '[PAGINACION] consulta=getTypeP tenant=T1 total=150 recibidas=150 paginas=1 ms=0 pagina_mas_lenta_ms=0 corte=completo'
+        }]);
+    });
+
+    test('P-29 una primera página sin arreglo items es página fallida: [] sin reintento y en error (WR-01, D-32)', async () => {
+        const portal = createPortal({ items: makeItems(450), bodies: { 0: '<html><body>Mantenimiento</body></html>' } });
+        mockGet.mockImplementation(portal.get);
+
+        const result = await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(portal.calls).toHaveLength(1);
+        expect(result).toEqual([]);
+        expect(intentos()).toEqual([
+            { level: 'warn', msg: '[PAGINACION-INTENTO] consulta=getCfdisByProvider tenant=T1 offset=0 intento=1/3 status=sin-items accion=abandonar' }
+        ]);
+        expect(paginacion()).toEqual([{
+            level: 'error',
+            msg: '[PAGINACION] consulta=getCfdisByProvider tenant=T1 total=desconocido recibidas=0 paginas=0 ms=0 pagina_mas_lenta_ms=0 corte=pagina-fallida offset_fallido=0 proveedor=PROV1'
+        }]);
+    });
+
+    test('P-30 getPendingToPayInvoices devuelve [] si una página a media lista viene sin items (REQ-24-03, WR-01)', async () => {
+        const portal = createPortal({ items: makeItems(450), bodies: { 200: { total: 450 } } });
+        mockGet.mockImplementation(portal.get);
+
+        const result = await settle(GetTypesCFDI.getPendingToPayInvoices(0));
+
+        expect(result).toEqual([]);
+        expect(portal.calls).toHaveLength(2);
+        expect(intentos()).toEqual([
+            { level: 'warn', msg: '[PAGINACION-INTENTO] consulta=getPendingToPayInvoices tenant=T1 offset=200 intento=1/3 status=sin-items accion=abandonar' }
+        ]);
+    });
+
+    test('P-31 una primera página vacía sin total queda en error, no en info (WR-01, D-32)', async () => {
+        const portal = createPortal({ items: [], total: 'omit' });
+        mockGet.mockImplementation(portal.get);
+
+        const result = await settle(GetTypesCFDI.getCfdisByProvider(0, 'PROV1'));
+
+        expect(result).toEqual([]);
+        expect(paginacion()).toEqual([{
+            level: 'error',
+            msg: '[PAGINACION] consulta=getCfdisByProvider tenant=T1 total=desconocido recibidas=0 paginas=1 ms=0 pagina_mas_lenta_ms=0 corte=pagina-vacia proveedor=PROV1'
         }]);
     });
 });

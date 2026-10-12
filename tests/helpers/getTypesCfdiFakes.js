@@ -89,6 +89,8 @@ function netError(code) {
  *   ignoreOffset     portal que siempre devuelve la primera página
  *   honorProviderId  false => ignora el parámetro providerId
  *   failures         { [offset]: [status | código de red, ...] } por intento; agotada la lista, responde bien
+ *   bodies           { [offset]: cuerpo } responde { data: cuerpo } tal cual en ese offset (p. ej. una página
+ *                    HTML o un objeto sin items); se aplica después de failures
  *   delayMs          número o (offset, intento) => ms; adelanta el reloj falso antes de responder o fallar
  *
  * Devuelve { get, calls, stats }; stats.maxInFlight es el máximo de peticiones simultáneas.
@@ -132,6 +134,10 @@ function createPortal(scenario = {}) {
             if (failures && intento <= failures.length) {
                 const failure = failures[intento - 1];
                 throw typeof failure === 'number' ? httpError(failure) : netError(failure);
+            }
+
+            if (scenario.bodies && Object.prototype.hasOwnProperty.call(scenario.bodies, offset)) {
+                return { data: scenario.bodies[offset] };
             }
 
             let lista = scenario.items || [];

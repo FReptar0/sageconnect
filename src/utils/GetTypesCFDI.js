@@ -153,9 +153,10 @@ async function getTypeI(index) {
         );
 
         if (page.items.length === 0) {
-            // "No hay" sólo si el listado terminó de verdad: si falló la primera página o se agotó el
-            // presupuesto no se pudo ver, y la causa ya quedó en la línea [PAGINACION] (D-02, REQ-24-05).
-            if (page.stopReason === 'completo' || (page.stopReason === 'pagina-vacia' && !(page.total > 0))) {
+            // "No hay" sólo con el 0 de 0 que reportó el portal: si falló la primera página, se agotó el
+            // presupuesto o la página vino vacía sin total, no se pudo ver, y la causa ya quedó en la
+            // línea [PAGINACION] (D-02, D-32, REQ-24-05).
+            if (page.stopReason === 'completo') {
                 console.log('[INFO] No hay CFDI de tipo I');
             }
             return [];
@@ -296,8 +297,8 @@ async function getTypeE(index) {
         );
 
         if (page.items.length === 0) {
-            // Misma regla que getTypeI: "no hay" sólo si el listado terminó de verdad (D-02).
-            if (page.stopReason === 'completo' || (page.stopReason === 'pagina-vacia' && !(page.total > 0))) {
+            // Misma regla que getTypeI: "no hay" sólo con el 0 de 0 que reportó el portal (D-02, D-32).
+            if (page.stopReason === 'completo') {
                 console.log('[INFO] No hay CFDI de tipo E');
             }
             return [];
@@ -389,7 +390,8 @@ function idLog(value) {
 
 /**
  * Escribe la línea [PAGINACION] de una consulta (D-17): info si llegó todo lo que el portal
- * reportó, warn si no, con la causa en corte=. Nunca incluye la URL ni las cabeceras.
+ * reportó, warn si no, con la causa en corte=, y error si no llegó nada y el listado no terminó
+ * (D-32). Nunca incluye la URL ni las cabeceras.
  */
 function logPaginationSummary(consulta, index, resumen) {
     const { recibidas, pages, ms, slowestPageMs, stopReason, failedOffset, proveedor } = resumen;
@@ -406,7 +408,10 @@ function logPaginationSummary(consulta, index, resumen) {
     }
 
     let nivel;
-    if (total !== null) {
+    if (recibidas === 0 && stopReason !== 'completo') {
+        // No se pudo ver el portal: no es un corte parcial, es que no bajó nada (D-32).
+        nivel = 'error';
+    } else if (total !== null) {
         nivel = recibidas < total ? 'warn' : 'info';
     } else {
         nivel = ['pagina-fallida', 'presupuesto', 'tope-paginas', 'sin-avance'].includes(stopReason) ? 'warn' : 'info';
@@ -436,6 +441,14 @@ async function requestCfdiPage(index, url, ctx) {
                     'PDPTenantSecret': apiSecrets[index]
                 }
             });
+            // Una respuesta sin arreglo items (página HTML de un balanceador o de mantenimiento, un
+            // {"message": ...} o un cambio de esquema) es una falla, no una página vacía, y no se
+            // reintenta (D-32).
+            if (!Array.isArray(response?.data?.items)) {
+                logGenerator(LOG_FILE, 'warn', `[PAGINACION-INTENTO] consulta=${consulta} tenant=${tenantIds[index]}` +
+                    ` offset=${offset} intento=${attempt}/${MAX_PAGE_ATTEMPTS} status=sin-items accion=abandonar`);
+                return { ok: false, reason: 'pagina-fallida', error: new Error('respuesta del portal sin arreglo items') };
+            }
             return { ok: true, response };
         } catch (error) {
             lastError = error;
