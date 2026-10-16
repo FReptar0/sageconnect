@@ -106,6 +106,20 @@ Plans:
 - [x] 23-04-PLAN.md — Guarda de propiedad del candado (CR-01) + paridad que no pasa sobre codigo comentado [wave 2]
 - [x] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2, despues de 23-04]
 
+### 📋 Phase 24: Paginar la descarga de CFDIs (corregir el tope de 200)
+
+**Milestone:** v2.4 (TBD) — rama `feat/paginar-descarga-cfdi` (sale de `origin/master` `dde4bd0`)
+**Goal:** `getTypeI`, `getTypeE` y `getCfdisByProvider` reciben **todas** las facturas que el portal reporta en `total` (hoy se cortan en 200 y las autorizadas tarde nunca bajan), con el filtro "ya está en Sage" en bloque para que el paso downloadCFDI siga dentro de su presupuesto de 5 min, y una línea de log que hace visible cualquier corte.
+**Origen:** causa raíz verificada en producción (05-oct-2026) y reunión del 07-oct-2026: liberar la corrección ya, sin esperar la migración. Insumo: handoff local del 08-oct (decisiones D1-D12).
+**Requirements:** [REQ-24-01, REQ-24-02, REQ-24-03, REQ-24-04, REQ-24-05, REQ-24-06, REQ-24-07, REQ-24-08, REQ-24-09, REQ-24-10, REQ-24-11, REQ-24-12, REQ-24-13, REQ-24-14, REQ-24-15] (detalle en `24-SPEC.md`)
+**Plans:** 4 plans (4 waves)
+
+Plans:
+- [x] 24-01-PLAN.md — Paginación compartida (fetchCfdiPages) + getPendingToPayInvoices con su contrato intacto + getCfdisByProvider paginada (providerId, presupuesto) + línea de corte de getTypeP + suite P-01..P-25 [wave 1]
+- [x] 24-02-PLAN.md — Filtro "ya está en Sage" en bloque + getTypeI/getTypeE paginadas + registro [FILTRO-SAGE] + suite F-01..F-18 con paridad CI/CS [wave 2]
+- [x] 24-03-PLAN.md — Compuerta final local: regresión contra la línea base, alcance, prueba negativa consolidada y evidencia por criterio del SPEC [wave 3]
+- [x] 24-04-PLAN.md — Publicar la rama con OK de Yahir y verificar un ciclo en zcl-rds-test; criterios para producción [wave 4]
+
 ### 📋 v2.4 (TBD)
 
 Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-ups from v2.3 closure:
@@ -142,3 +156,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
+| 24. Paginar descarga CFDIs    | v2.4      | 4/4            | In Progress | —          |
