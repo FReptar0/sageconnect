@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: null
 milestone_name: (TBD)
-status: verifying
-stopped_at: Fase 24 verificada (human_needed, addenda en el primer XML de producción) y segura (threats_open 0); PR #28 contra master
-last_updated: "2026-10-16T19:25:00.000Z"
+status: completed
+stopped_at: Fase 24 completa (verificada, segura y con la addenda comprobada en zcl-rds-test con el build 9313354); PR #28 fusionado (f68ef2f); master congelado hasta producción
+last_updated: "2026-10-16T20:20:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. Ejecutada, revisada (WR-01 y WR-02 corregidos), build `96cd3e6` con ciclo limpio en zcl-rds-test (12-oct), seguridad verificada (`24-SECURITY.md`, threats_open 0) y meta verificada (`24-VERIFICATION.md`: 15/15 requisitos; queda para humano la addenda del primer XML que se descargue). PR #28 contra `master`. Producción va aparte, con el control de cambios CONT-26-16.
+**Current focus:** Fase 24 (paginar la descarga de CFDIs, tope de 200) COMPLETA el 2026-10-16: verificada (`24-VERIFICATION.md`, passed: 15/15 requisitos y 19/19 criterios, la addenda comprobada en zcl-rds-test) y segura (`24-SECURITY.md`, threats_open 0). PR #28 fusionado en `master` (`f68ef2f`), build del dist `9313354`. Producción va aparte, con el control de cambios CONT-26-16. La fase 22 sigue planeada y en pausa.
 
 ## Current Position
 
-Phase: 24 (paginar-descarga-cfdi) — EXECUTED: 24-01 hecho (`55ad054` test, `e9bb4a4` feat, `b791b1a` test, SUMMARY `ba94941`); 24-02 hecho (`acd731b` feat, `f9e19af` test, SUMMARY `d14b333`); 24-03 hecho (compuerta sobre `a4ad0c0`, SUMMARY `56ad560`); 24-04 hecho (push `06e6d9e`, run `37969497759`, build del dist `ee03788`, ciclo en zcl-rds-test OK; SUMMARY `139c888`)
-Plan: 4 of 4 — todos ejecutados. zcl-rds-test tiene el build `96cd3e6` desde el 12-oct 17:09 (regreso: `0785a9a`, rama `master` del dist).
-Status: Verificada con un punto humano — `24-VERIFICATION.md` (human_needed: 15/15 requisitos, 18/19 criterios; la addenda de un XML descargado se revisa en el primer ciclo de producción) y `24-SECURITY.md` (24 amenazas, threats_open 0); CONCERNS.md actualizado (`3eae944`). Suites 56/56. Ejercicio de solo lectura en producción el 16-oct con la huella final `0a4a4ee262e3`: 518/518 en 3 páginas, 0 por descargar, consulta de POCRNHO probada.
-Siguiente decision: fusionar el PR #28 (merge commit con asunto propio), probar el build de `master` en zcl-rds-test con un ciclo y congelar `master` hasta producción (nunca push del `master` local, que trae la fase 20 sin publicar). Producción (fuera de la fase): con el visto bueno del control de cambios CONT-26-16 la instala alguien con admin (anotar antes el SHA; hoy `0785a9a`); revisar los primeros ciclos y abrir el primer XML descargado para cerrar el punto humano; después `phase.complete 24`.
+Phase: 24 (paginar-descarga-cfdi) — COMPLETA 2026-10-16 (4/4 planes; verificación passed; seguridad threats_open 0)
+Plan: 4 of 4 — todos ejecutados. zcl-rds-test tiene el build de master `9313354` desde el 16-oct (regreso: `96cd3e6`); ciclo del 16-oct 13:50 limpio y 4 XML con la addenda correcta.
+Status: Phase complete — la fase 24 está cerrada; el milestone v2.4 no, porque la fase 22 sigue planeada.
+Siguiente decision: producción (fuera de la fase), con el visto bueno del control de cambios CONT-26-16: la instala alguien con admin (anotar antes el SHA, hoy `0785a9a`; reset a `origin/master` = `9313354`; restart), y después se revisan los primeros ciclos. `master` congelado hasta entonces (nunca push del `master` local, que trae la fase 20 sin publicar). Los commits docs de este cierre quedan en la rama y se fusionan después de la instalación.
 
 ## Deferred Items
 

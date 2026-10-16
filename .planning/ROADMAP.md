@@ -106,7 +106,7 @@ Plans:
 - [x] 23-04-PLAN.md — Guarda de propiedad del candado (CR-01) + paridad que no pasa sobre codigo comentado [wave 2]
 - [x] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2, despues de 23-04]
 
-### 📋 Phase 24: Paginar la descarga de CFDIs (corregir el tope de 200)
+### ✅ Phase 24: Paginar la descarga de CFDIs (corregir el tope de 200) — COMPLETA 2026-10-16
 
 **Milestone:** v2.4 (TBD) — rama `feat/paginar-descarga-cfdi` (sale de `origin/master` `dde4bd0`)
 **Goal:** `getTypeI`, `getTypeE` y `getCfdisByProvider` reciben **todas** las facturas que el portal reporta en `total` (hoy se cortan en 200 y las autorizadas tarde nunca bajan), con el filtro "ya está en Sage" en bloque para que el paso downloadCFDI siga dentro de su presupuesto de 5 min, y una línea de log que hace visible cualquier corte.
@@ -156,4 +156,4 @@ Next milestone planning via `/gsd-new-milestone`. Pending non-blocking follow-up
 | 19. Root Cause Timeouts       | v2.3      | 3/3            | Complete | 2026-04-29 |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
-| 24. Paginar descarga CFDIs    | v2.4      | 4/4            | In Progress | —          |
+| 24. Paginar descarga CFDIs    | v2.4      | 4/4            | Complete | 2026-10-16 |
