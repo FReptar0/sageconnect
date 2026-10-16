@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: null
 milestone_name: (TBD)
 status: verifying
-stopped_at: WR-01 y WR-02 corregidos (29ed5cd, 6581a97); falta build nuevo y ciclo en zcl-rds-test
-last_updated: "2026-10-12T21:55:15.000Z"
+stopped_at: Fase 24 verificada (human_needed, addenda en el primer XML de producción) y segura (threats_open 0); PR #28 contra master
+last_updated: "2026-10-16T19:25:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 2
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 **Core value:** La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio continuo con interfaz web para operaciones y monitoreo en tiempo real.
-**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. Las 4 olas ejecutadas el 09-oct: rama publicada (`06e6d9e`), build `ee03788` instalado en zcl-rds-test y un ciclo verificado ahí. Revisión de código hecha (`9289762`) y sus dos WARNING corregidos el 12-oct (`29ed5cd` WR-01, `6581a97` WR-02; `24-REVIEW-FIX.md`). Falta build nuevo y ciclo en test, y cerrar la fase (verificación de la meta, seguridad). Producción queda fuera de la fase.
+**Current focus:** Fase 24 — paginar la descarga de CFDIs (tope de 200) en `feat/paginar-descarga-cfdi`. Ejecutada, revisada (WR-01 y WR-02 corregidos), build `96cd3e6` con ciclo limpio en zcl-rds-test (12-oct), seguridad verificada (`24-SECURITY.md`, threats_open 0) y meta verificada (`24-VERIFICATION.md`: 15/15 requisitos; queda para humano la addenda del primer XML que se descargue). PR #28 contra `master`. Producción va aparte, con el control de cambios CONT-26-16.
 
 ## Current Position
 
 Phase: 24 (paginar-descarga-cfdi) — EXECUTED: 24-01 hecho (`55ad054` test, `e9bb4a4` feat, `b791b1a` test, SUMMARY `ba94941`); 24-02 hecho (`acd731b` feat, `f9e19af` test, SUMMARY `d14b333`); 24-03 hecho (compuerta sobre `a4ad0c0`, SUMMARY `56ad560`); 24-04 hecho (push `06e6d9e`, run `37969497759`, build del dist `ee03788`, ciclo en zcl-rds-test OK; SUMMARY `139c888`)
-Plan: 4 of 4 — todos ejecutados. zcl-rds-test se queda con el build `ee03788` (regreso: `0785a9a`, rama `master` del dist).
-Status: Executed — revisión de código hecha (`9289762`: 0 bloqueantes) y WR-01/WR-02 corregidos el 12-oct (`29ed5cd`, `6581a97`; D-32 y D-33 en `24-CONTEXT.md`; `24-REVIEW-FIX.md`). Suites de la fase 56/56; `npm test` en línea base (6 suites / 7 pruebas de 497). Falta: build nuevo + ciclo en zcl-rds-test, y la verificación de la fase (gsd-verifier y /gsd-secure-phase 24)
-Siguiente decision: publicar la rama y lanzar el build para zcl-rds-test (con OK de Yahir en el momento); instalarlo, verificar un ciclo y actualizar la huella del ejercicio de solo lectura; después cerrar la fase 24 (verificación de la meta + seguridad + CONCERNS.md). Reunión del 12-oct con Santiago: se libera la paginación; pruebas internas con Santiago y luego con Memo. Producción (fuera de la fase): primero el build del botón (`0785a9a`) por TI; después esta rama por PR contra `origin/master` (nunca push del `master` local), previa revisión con el cliente de las 33 facturas que bajaría el primer ciclo (ejercicio del 09-oct; repetirlo justo antes del despliegue). Criterios en `24-04-SUMMARY.md` § "Para producción".
+Plan: 4 of 4 — todos ejecutados. zcl-rds-test tiene el build `96cd3e6` desde el 12-oct 17:09 (regreso: `0785a9a`, rama `master` del dist).
+Status: Verificada con un punto humano — `24-VERIFICATION.md` (human_needed: 15/15 requisitos, 18/19 criterios; la addenda de un XML descargado se revisa en el primer ciclo de producción) y `24-SECURITY.md` (24 amenazas, threats_open 0); CONCERNS.md actualizado (`3eae944`). Suites 56/56. Ejercicio de solo lectura en producción el 16-oct con la huella final `0a4a4ee262e3`: 518/518 en 3 páginas, 0 por descargar, consulta de POCRNHO probada.
+Siguiente decision: fusionar el PR #28 (merge commit con asunto propio), probar el build de `master` en zcl-rds-test con un ciclo y congelar `master` hasta producción (nunca push del `master` local, que trae la fase 20 sin publicar). Producción (fuera de la fase): con el visto bueno del control de cambios CONT-26-16 la instala alguien con admin (anotar antes el SHA; hoy `0785a9a`); revisar los primeros ciclos y abrir el primer XML descargado para cerrar el punto humano; después `phase.complete 24`.
 
 ## Deferred Items
 
