@@ -1,6 +1,6 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-03-12 (initial), updated 2026-04-27 (post-Phase 17 hotfix cascade)
+**Analysis Date:** 2026-03-12 (initial), updated 2026-04-27 (post-Phase 17 hotfix cascade), 2026-10-16 (Phase 24: GetTypesCFDI injection sites and tests)
 
 ## Tech Debt
 
@@ -10,7 +10,7 @@
   - `src/services/ProviderIdResolver.js` (lines 33, 37-38, 63-71)
   - `src/services/UuidResolver.js` (lines 44, 49-50, 69-77)
   - `src/controller/SagePaymentController.js` (lines 149, 214)
-  - `src/utils/GetTypesCFDI.js` (lines 91, 100)
+  - `src/utils/GetTypesCFDI.js` — `getTypeP` (lines 111, 120) and `getTypeIToSend` (lines 220, 239, 261). *(Phase 24, 2026-10-16: the `getTypeI`/`getTypeE` sites were replaced by the block filter `filterNotInSage`, which only sends UUIDs and RFCs that pass a whitelist (`UUID_REGEX`, `RFC_REGEX`) — still literals, not parameters, but no free text reaches the SQL; see `24-SECURITY.md` T-24-09. `getTypeP` and `getTypeIToSend` were out of scope: accepted risks AR-24-01/02.)*
   - `src/scripts/portal-payments-generator.js` (line 60)
   - `src/scripts/payment-uuid-repair.js` (multiple locations)
 - Impact: Attackers could exploit these injection points to extract sensitive data, modify database records, or escalate privileges if malicious data enters these functions (e.g., via API responses, file uploads).
@@ -341,6 +341,7 @@ Lesson: the always-on bug cascade was *not* the dominant cause for this specific
 **CFDI Processing:**
 - What's not tested: CFDI download, transformation, UUID matching algorithm
 - Files: `src/controller/CFDI_Downloader.js`, `src/utils/GetTypesCFDI.js`
+- *Partially covered (Phase 24, 2026-10-16):* `GetTypesCFDI.js` listing and Sage filter now have 56 tests (`tests/utils/GetTypesCFDI.paginacion.test.js`, `tests/utils/GetTypesCFDI.filtro.test.js`: paging, retries, budget, block filter with CI/CS parity, injection inputs). Still uncovered: `CFDI_Downloader.js` and `getTypeIToSend`.
 - Risk: Missed CFDIs, incorrect transformations, mismatched UUIDs
 - Priority: High - complex business logic without coverage
 
