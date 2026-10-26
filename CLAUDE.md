@@ -30,11 +30,11 @@ Full project context: `.planning/PROJECT.md`. Current state and last activity: `
 
 ## 2. Current state
 
-- **Version:** v2.3 (shipped 2026-04-29). Milestone history in `.planning/MILESTONES.md`.
+- **Version:** 3.0.0 per `package.json` (v2.3 milestone shipped 2026-04-29). Milestone history in `.planning/MILESTONES.md`.
 - **Runtime:** Node.js 22.15.0 on Windows Server, Servy-managed, port 3030.
 - **Licensing:** Service validates against the SageConnect License Server (HMAC-SHA256, anti-replay, 3-state cache). Startup fails fast if the license is invalid.
 - **API surface:** 17 REST endpoints (7 payment + 9 PO + force-release) + 6 system endpoints (health, tenants, license, schedule, history, operations). Mount table at `src/routes/routes.js`.
-- **Dashboard:** 4 HTML pages (`/schedule.html`, `/payments.html`, `/pos.html`, `/logs.html`), API key injected server-side via `<meta name="x-app-key">` — operators never paste it.
+- **Dashboard:** operator pages in `public/` (`/schedule.html`, `/payments.html`, `/pos.html`, `/logs.html`, `/ejecucion.html`), API key injected server-side via `<meta name="x-app-key">` — operators never paste it.
 - **Defense-in-depth timeouts:** axios (30s) < step (5m) < child (10m) < lock (14m). Breaking this order = bug.
 
 ## 3. Always-on constraint (READ THIS BEFORE WRITING CODE)

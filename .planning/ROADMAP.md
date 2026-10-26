@@ -90,6 +90,48 @@ See `.planning/MILESTONES.md` for accomplishments.
 
 ## Phase Details
 
+### 📋 Phase 22: Botones de ejecucion por tarea (portal de ejecucion manual)
+
+**Milestone:** v2.4 (TBD) — rama `feat/boton-ejecucion`
+**Goal:** El portal de ejecucion manual ejecuta la tarea "Compras" (`buildProvidersXML` → `createPurchaseOrders`) sin correr el ciclo completo de 7 pasos, reusando el lock `background-cycle` para no cruzarse con el cron de 15 min. Se conserva el boton "Ejecutar proceso ahora" (todo).
+**Requirements:** [REQ-22-01, REQ-22-02, REQ-22-03, REQ-22-04, REQ-22-05, REQ-22-06]
+**Plans:** 4 plans (4 waves)
+
+Plans:
+- [ ] 22-01-PLAN.md — Orquestacion selectiva en background.js (STEP_REGISTRY + runSteps + forResponse=runSteps(ALL_STEP_KEYS) + TASK_STEPS/runTask) [wave 1]
+- [ ] 22-02-PLAN.md — Endpoint POST de tarea con lock FIJO 'background-cycle' + schema Joi (no cruce con el cron) [wave 2]
+- [ ] 22-03-PLAN.md — Boton "Compras" en ejecucion.html + applyButtonState generalizado a N botones [wave 3]
+- [ ] 22-04-PLAN.md — Verificacion: baseline tests §6 + invariantes always-on + checkpoint manual (cron/ciclo-todo intactos) [wave 4]
+
+### ✅ Phase 23: El boton de ejecucion invoca el importador de comprobantes — COMPLETA 2026-09-07
+
+**Milestone:** v2.4 (TBD) — rama `feat/boton-ejecucion`
+**Goal:** El disparo manual (`POST /api/schedule/:taskId/trigger`) encadena `startChildProcess()` despues de `forResponse()` dentro del MISMO lock `background-cycle`, con paridad exacta con el cron (`CronScheduler.js:100-109`), para que el boton "Ejecutar proceso ahora" complete la cadena Portal → XML → `ImportaFacturasFocaltec.exe COPDAT` → Sage. Hoy el boton corre los 7 pasos pero nunca invoca el importador, asi que la factura se descarga y se queda en `downloads\`.
+**Origen:** reunion 31-ago-2026 (Yahir + Hortensia + Santiago) — decision acordada: reusar la logica de llamada existente, incluyendo el parametro de base de datos.
+**Requirements:** [REQ-23-01, REQ-23-02, REQ-23-03, REQ-23-04, REQ-23-05, REQ-23-06, REQ-23-07, REQ-23-08, REQ-23-09, REQ-23-10, REQ-23-11]
+**Plans:** 4 plans (2 waves) — 23-04 anadido tras la revision de codigo (blocker CR-01)
+
+Plans:
+- [x] 23-01-PLAN.md — Encadenar startChildProcess al disparo manual + tests de comportamiento + asercion de paridad sobre el fuente [wave 1]
+- [x] 23-02-PLAN.md — Tercer estado del boton en ejecucion.html (Importando comprobantes a Sage) [wave 1]
+- [x] 23-04-PLAN.md — Guarda de propiedad del candado (CR-01) + paridad que no pasa sobre codigo comentado [wave 2]
+- [x] 23-03-PLAN.md — Verificacion en zcl-rds-test: IMPORT_CFDIS_ROUTE + prueba end-to-end con evidencia [wave 2, despues de 23-04]
+
+### 📋 Phase 24: Paginar la descarga de CFDIs (corregir el tope de 200)
+
+**Milestone:** v2.4 (TBD) — rama `feat/paginar-descarga-cfdi` (sale de `origin/master` `dde4bd0`)
+**Goal:** `getTypeI`, `getTypeE` y `getCfdisByProvider` reciben **todas** las facturas que el portal reporta en `total` (hoy se cortan en 200 y las autorizadas tarde nunca bajan), con el filtro "ya está en Sage" en bloque para que el paso downloadCFDI siga dentro de su presupuesto de 5 min, y una línea de log que hace visible cualquier corte.
+**Origen:** causa raíz verificada en producción (05-oct-2026) y reunión del 07-oct-2026: liberar la corrección ya, sin esperar la migración. Insumo: handoff local del 08-oct (decisiones D1-D12).
+**Requirements:** [REQ-24-01, REQ-24-02, REQ-24-03, REQ-24-04, REQ-24-05, REQ-24-06, REQ-24-07, REQ-24-08, REQ-24-09, REQ-24-10, REQ-24-11, REQ-24-12, REQ-24-13, REQ-24-14, REQ-24-15] (detalle en `24-SPEC.md`)
+**Plans:** 4 plans (4 waves)
+
+Plans:
+- [x] 24-01-PLAN.md — Paginación compartida (fetchCfdiPages) + getPendingToPayInvoices con su contrato intacto + getCfdisByProvider paginada (providerId, presupuesto) + línea de corte de getTypeP + suite P-01..P-25 [wave 1]
+- [x] 24-02-PLAN.md — Filtro "ya está en Sage" en bloque + getTypeI/getTypeE paginadas + registro [FILTRO-SAGE] + suite F-01..F-18 con paridad CI/CS [wave 2]
+- [x] 24-03-PLAN.md — Compuerta final local: regresión contra la línea base, alcance, prueba negativa consolidada y evidencia por criterio del SPEC [wave 3]
+- [x] 24-04-PLAN.md — Publicar la rama con OK de Yahir y verificar un ciclo en zcl-rds-test; criterios para producción [wave 4]
+
+
 ### Phase 20: Cron retry policy + EOM notification
 **Goal**: Operators stop losing PO/payment uploads when authorization isn't on cron tick day, and get a monthly view of what's still pending. Replace the `MAX(Autoriza_OC_detalle.Fecha) = CAST(GETDATE() AS DATE)` filter in both the PO uploader (`src/controller/PortalOC_Creator.js`) and the payment uploader (`src/controller/PortalPaymentController.js`) with a configurable scope (`current_month` default, env-overridable to rolling N-day window) plus exponential-backoff retry derived from existing rows in `fesa.dbo.fesaOCFocaltec` / `fesa.dbo.fesaPagosFocaltec` (no schema change). Add the end-of-month operator email to `MAILING_NOTICES` (CC `MAILING_CC`) with HTML tables of pending POs + pagos, gated by an `EOM_NOTIFICATION_ENABLED` kill-switch and a per-month sentinel file.
 **Depends on**: Nothing (first phase of v2.4; master branch)
@@ -289,3 +331,6 @@ Plans:
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
 | 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
+| 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
+| 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
+| 24. Paginar descarga CFDIs    | v2.4      | 4/4            | In Progress | —          |

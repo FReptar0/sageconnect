@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SageConnect - Ejecutar proceso</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-KK94CHFLLe+nY2dmCWGMq91rCGa5gtU4mk92HdvYe+M/SXH301p5ILy+dN9+nJOZ" crossorigin="anonymous">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-ENjdO4Dr2bkBIFxQpeoTz1HIcje39Wm4jDKdf19U8gI4ddQ3GYNS7NTKfAdVQSZe"
+        crossorigin="anonymous"></script>
+</head>
+
+<style>
+    body {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        min-height: 100vh;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card {
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        border: none;
+        background: rgba(255, 255, 255, 0.97);
+        max-width: 520px;
+        width: 100%;
+    }
+
+    .card-header {
+        background: linear-gradient(45deg, #2c3e50, #3498db);
+        color: white;
+        border-radius: 15px 15px 0 0 !important;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    #btn-ejecutar {
+        font-size: 1.25rem;
+        padding: 0.85rem 1rem;
+    }
+</style>
+
+<body>
+    <div class="p-3 w-100 d-flex justify-content-center">
+        <div class="card">
+            <div class="card-header py-3">
+                <i class="fas fa-cogs me-2"></i>SageConnect
+            </div>
+            <div class="card-body p-4 text-center">
+                <p class="text-muted mb-4">Ejecucion manual del proceso</p>
+
+                <div class="row text-start mb-4">
+                    <div class="col-6">
+                        <div class="text-muted small">Ultima ejecucion:</div>
+                        <div class="fw-bold" id="last-run">-</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-muted small">Proxima ejecucion:</div>
+                        <div class="fw-bold" id="next-run">-</div>
+                    </div>
+                </div>
+
+                <div class="d-grid mb-3">
+                    <button id="btn-ejecutar" class="btn btn-primary btn-lg" type="button">
+                        <i class="fas fa-play me-2"></i>Ejecutar proceso ahora
+                    </button>
+                </div>
+
+                <div id="msg" class="mb-0"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shared JS -->
+    <script src="js/shared.js"></script>
+
+    <script>
+        /* ====================================================================
+         * Estado de módulo del poll de ciclo
+         *
+         * POLL_INTERVAL_MS  Intervalo del poll a GET /api/operations/status (D-01).
+         * pollHandle        Id del setInterval. La disciplina always-on de
+         *                   CLAUDE.md §3 exige que TODO timer declare cómo se
+         *                   limpia: éste se libera con clearInterval en el
+         *                   listener de 'beforeunload' al final del script.
+         *                   Aunque esta página corra en el cliente y no en el
+         *                   servicio, se respeta la convención del repo (mismo
+         *                   patrón que activeOpPollHandle en schedule.html:278).
+         * triggerInFlight   true desde el click hasta que el POST de disparo se
+         *                   resuelve. Mientras esté arriba, ejecutar() es dueña
+         *                   única del botón y el poll no lo toca (D-04).
+         * lastKnownRunning  Último estado observado por un poll EXITOSO.
+         *                   null = desconocido (poll fallido). Sirve para
+         *                   detectar el flanco corriendo -> detenido (D-07)
+         *                   sin fabricar flancos falsos ante un parpadeo de red.
+         * ==================================================================== */
+
+        const POLL_INTERVAL_MS = 3500;
+        let pollHandle = null;
+        let triggerInFlight = false;
+        let lastKnownRunning = null;
+
+        /* ====================================================================
+         * Estado / última y próxima ejecución
+         *
+         * `nextRun` sale de GET /api/schedule — lo calcula node-cron y es el
+         * dato correcto para "cuándo vuelve a correr solo".
+         *
+         * `lastRun` de ESE MISMO endpoint sólo refleja corridas del cron: la
+         * variable se asigna dentro del callback de node-cron
+         * (CronScheduler.js:172) y el disparo manual entra por otro camino
+         * (schedule-routes.js llama forResponse() directo) sin tocarla. Para
+         * el operador eso es engañoso: pica el botón, el ciclo corre completo,
+         * y "Ultima ejecucion" se queda igual.
+         *
+         * Por eso la última ejecución se toma del HISTORIAL
+         * (GET /api/schedule/history), donde SÍ quedan registradas ambas
+         * fuentes: cron y disparo manual llaman los dos a addHistory().
+         * El historial es un ring buffer en memoria al que se hace push al
+         * TERMINAR cada ciclo, así que la última entrada es la más reciente.
+         *
+         * Fallback: si el historial viene vacío (es volátil — se pierde al
+         * reiniciar el servicio) se usa el lastRun del cron. Si tampoco hay,
+         * formatDateTime(null) rinde "No disponible" (shared.js:294).
+         * ==================================================================== */
+
+        async function loadStatus() {
+            let lastRunValue = null;
+            let nextRunValue = null;
+
+            try {
+                const res = await apiCall('GET', '/api/schedule');
+                if (res && res.success && res.data && res.data.tasks) {
+                    // `tasks` SÍ es un array (a diferencia del mapa `operations`).
+                    const task = res.data.tasks.find(t => t.taskId === 'background-cycle');
+                    if (task) {
+                        nextRunValue = task.nextRun;
+                        lastRunValue = task.lastRun;    // respaldo; el historial manda
+                    }
+                }
+            } catch (err) {
+                // Estado no crítico: si falla, seguimos e intentamos el historial.
+                console.warn('No se pudo cargar el estado:', err.message);
+            }
+
+            try {
+                const hist = await apiCall('GET', '/api/schedule/history');
+                if (hist && hist.success && hist.data && Array.isArray(hist.data.executions)) {
+                    const runs = hist.data.executions.filter(
+                        e => e && e.taskId === 'background-cycle' && e.finishedAt
+                    );
+                    if (runs.length > 0) {
+                        lastRunValue = runs[runs.length - 1].finishedAt;
+                    }
+                }
+            } catch (err) {
+                // El historial es complementario: si falla queda el lastRun del cron.
+                console.warn('No se pudo cargar el historial:', err.message);
+            }
+
+            document.getElementById('last-run').textContent = formatDateTime(lastRunValue);
+            document.getElementById('next-run').textContent = formatDateTime(nextRunValue);
+        }
+
+        /* ====================================================================
+         * Máquina de estados del botón.
+         * Única dueña de escribir en el botón fuera de ejecutar().
+         * Todo el innerHTML es STRING ESTÁTICO: nunca se interpola nada que
+         * venga de la respuesta del API (T-LKI-01), por eso esta página no
+         * necesita escapeHtml() como schedule.html.
+         *
+         * El estado 'importing' (D-11 de la Fase 23) NO relaja esa regla: el
+         * nombre del paso llega del API, así que nunca se interpola. Se COMPARA
+         * contra el literal 'startChildProcess' en pollCycleState() y aquí se
+         * pinta un texto fijo. Las tres ramas de abajo son literales estáticos.
+         * ==================================================================== */
+
+        function applyButtonState(running, importing) {
+            // D-04: mientras el POST de disparo esté en vuelo, ejecutar() manda.
+            if (triggerInFlight) return;
+
+            const btn = document.getElementById('btn-ejecutar');
+            if (!btn) return;
+
+            // D-10 (Fase 23): tres estados en lugar de dos. `importing` es
+            // opcional — si llega undefined se comporta como false, así ninguna
+            // llamada previa cambia de significado. Sólo pesa cuando hay ciclo
+            // vivo: sin `running` el botón vuelve a 'idle' pase lo que pase.
+            let desired = 'idle';
+            if (running) {
+                desired = importing ? 'importing' : 'running';
+            }
+
+            // D-06: escritura idempotente. Reescribir el innerHTML cada 3.5s
+            // reiniciaría la animación del spinner y produciría un tironeo visible.
+            if (btn.dataset.uiState === desired) return;
+
+            if (desired === 'importing') {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Importando comprobantes a Sage...';
+            } else if (desired === 'running') {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Sincronizando...';
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play me-2"></i>Ejecutar proceso ahora';
+            }
+
+            btn.dataset.uiState = desired;
+        }
+
+        /* ====================================================================
+         * Poll del estado REAL del ciclo — adaptación de pollActiveOperation()
+         * de schedule.html (~L709-738).
+         *
+         * Usa fetch directo y NO apiCall() (D-02): apiCall() dispara
+         * showToast('Error de red: ...') en cada rechazo de fetch
+         * (public/js/shared.js:92); con un poll cada 3.5s, una laptop que pierde
+         * el wifi apilaría una cascada de toasts en la cara del operador.
+         * loadStatus() y ejecutar() SÍ siguen usando apiCall(): ahí hay una
+         * acción del usuario detrás y el toast es deseable.
+         * ==================================================================== */
+
+        async function pollCycleState() {
+            try {
+                const headers = { 'Accept': 'application/json' };
+
+                // El endpoint sólo exige licencia (no requireApiKey), pero mandar
+                // la clave es consistente con el resto de la página e inofensivo.
+                const apiKey = resolveApiKey();
+                if (apiKey) {
+                    headers['x-api-key'] = apiKey;
+                }
+
+                const res = await fetch('/api/operations/status', { headers });
+
+                if (!res.ok) {
+                    console.warn('Poll de estado: respuesta no OK (' + res.status + ')');
+                    lastKnownRunning = null;
+                    applyButtonState(false, false);
+                    return;
+                }
+
+                const json = await res.json();
+
+                if (!json || !json.success || !json.data || !json.data.operations) {
+                    console.warn('Poll de estado: shape inesperado en la respuesta');
+                    lastKnownRunning = null;
+                    applyButtonState(false, false);
+                    return;
+                }
+
+                // Bug D-04 de la Fase 17: `operations` es un MAPA con clave
+                // operationType, NO un array. Acceso directo; NUNCA .find(),
+                // que sobre un objeto plano siempre devuelve undefined en silencio.
+                const cycleOp = json.data.operations['background-cycle'];
+                const running = Boolean(cycleOp);
+
+                // D-12 (Fase 23): el paso en curso es la ÚLTIMA entrada de
+                // stepProgress con finishedAt falsy. Misma semántica que
+                // findLastOpenStep() de src/utils/AdminEmailSender.js:73-79,
+                // reimplementada aquí porque el navegador no puede hacer
+                // require() de un módulo de Node.
+                //
+                // D-13, defensivo por defecto: si no hay operación, si
+                // stepProgress falta, no es un array o está todo cerrado,
+                // importing queda en false. Esta derivación nunca lanza — de ahí
+                // la guarda por entrada, que findLastOpenStep no necesita porque
+                // del lado del servidor el arreglo lo construye OperationManager.
+                let importing = false;
+                const steps = cycleOp && cycleOp.stepProgress;
+
+                if (Array.isArray(steps)) {
+                    for (let i = steps.length - 1; i >= 0; i--) {
+                        if (steps[i] && !steps[i].finishedAt) {
+                            // D-11 / T-LKI-01: el nombre del paso viene del API,
+                            // así que se COMPARA contra el literal y nunca se
+                            // interpola. El texto que se pinta es fijo.
+                            importing = steps[i].step === 'startChildProcess';
+                            break;
+                        }
+                    }
+                }
+
+                // D-07: sólo en el flanco corriendo -> detenido, y sólo desde un
+                // poll exitoso, refrescamos Ultima/Proxima ejecucion. Sigue
+                // dependiendo SÓLO de `running`: el paso de importación no
+                // fabrica flancos.
+                if (lastKnownRunning === true && running === false) {
+                    loadStatus();
+                }
+
+                lastKnownRunning = running;
+                applyButtonState(running, importing);
+            } catch (err) {
+                // D-03 fail-safe: sin toast y sin re-lanzar. Ante cualquier fallo
+                // tratamos el ciclo como detenido y dejamos el botón habilitado.
+                // Un click de más devuelve un 409 inofensivo; un botón trabado
+                // para siempre deja al operador sin salida.
+                console.warn('Poll de estado fallido:', err && err.message ? err.message : err);
+                lastKnownRunning = null;
+                applyButtonState(false, false);
+            }
+        }
+
+        /* ====================================================================
+         * Disparo manual — replica el patrón de triggerCycle() de schedule.html:
+         *   deshabilitar + spinner + "Iniciando…", POST al endpoint de disparo,
+         *   éxito -> operationId presente; 409 -> res.errors con contenido.
+         * Al terminar: re-habilitar el botón y refrescar el estado.
+         * ==================================================================== */
+
+        async function ejecutar() {
+            const btn = document.getElementById('btn-ejecutar');
+            const msg = document.getElementById('msg');
+
+            // D-04: tomar propiedad del botón ANTES de tocarlo, para que un tick
+            // del poll no pise "Iniciando..." ni lo re-habilite con el POST en vuelo.
+            triggerInFlight = true;
+
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Iniciando...';
+            msg.innerHTML = '';
+
+            // D-05: true en las dos ramas que implican que hay un ciclo vivo.
+            let startedOk = false;
+
+            try {
+                const res = await apiCall('POST', '/api/schedule/background-cycle/trigger');
+
+                if (res && res.success && res.data && res.data.operationId) {
+                    startedOk = true;
+                    msg.innerHTML = '<div class="alert alert-success mb-0">Proceso iniciado &#10003;</div>';
+                } else if (res && res.errors && res.errors.length > 0) {
+                    // 409 u otro error de API (el ciclo ya está corriendo): igual hay ciclo vivo.
+                    startedOk = true;
+                    msg.innerHTML = '<div class="alert alert-warning mb-0">El ciclo ya esta en ejecucion</div>';
+                } else {
+                    msg.innerHTML = '<div class="alert alert-danger mb-0">Error al iniciar el proceso</div>';
+                }
+            } catch (err) {
+                msg.innerHTML = '<div class="alert alert-danger mb-0">Error al iniciar el proceso: ' + err.message + '</div>';
+            } finally {
+                // Soltar la propiedad del botón antes de delegar en applyButtonState().
+                triggerInFlight = false;
+
+                if (startedOk) {
+                    // D-05: estado optimista. Evita un parpadeo de hasta 3.5s en el
+                    // que el botón se vería habilitado justo después de disparar.
+                    lastKnownRunning = true;
+                    // Reset OBLIGATORIO: ejecutar() dejó el botón mostrando
+                    // "Iniciando...", pero el dataset podría seguir marcando
+                    // 'running'; la guarda de idempotencia (D-06) haría que
+                    // applyButtonState no escribiera nada y ese label quedaría congelado.
+                    btn.dataset.uiState = 'idle';
+                    // El ciclo acaba de arrancar: está en el primer paso, no
+                    // importando. El siguiente poll corrige si hiciera falta.
+                    applyButtonState(true, false);
+                } else {
+                    btn.dataset.uiState = null;
+                    applyButtonState(false, false);
+                }
+
+                loadStatus();
+                // Poll inmediato: reconcilia con la verdad del servidor sin
+                // esperar al siguiente tick de POLL_INTERVAL_MS.
+                pollCycleState();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('btn-ejecutar').addEventListener('click', ejecutar);
+            loadStatus();
+            // Llamada inicial: cubre abrir la página con un ciclo ya corriendo.
+            pollCycleState();
+            pollHandle = setInterval(pollCycleState, POLL_INTERVAL_MS);
+        });
+
+        /* ====================================================================
+         * Cleanup — CLAUDE.md §3: todo timer declara cómo se libera.
+         * Mismo patrón que schedule.html:917-930.
+         * ==================================================================== */
+
+        window.addEventListener('beforeunload', function () {
+            if (pollHandle) {
+                clearInterval(pollHandle);
+                pollHandle = null;
+            }
+        });
+    </script>
+</body>
+
+</html>
