@@ -12,6 +12,13 @@ const { getCurrentDate } = require('./utils/TimezoneHelper');
 const { formatDurationMin, withStepTimeout } = require('./utils/duration');
 const config = require('./config');
 const notifier = require('node-notifier');
+const fs = require('fs');
+const path = require('path');
+const { runQuery } = require('./utils/SQLServerConnection');
+const { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, escapeHtml } = require('./utils/EomNotification');
+const { sendOperatorReport } = require('./utils/EmailSender');
+const { sendAdminAlert } = require('./utils/AdminEmailSender');
+const { buildScopeWhere } = require('./utils/RetryPolicy');
 
 /**
  * SageConnect Background Processes
@@ -31,6 +38,71 @@ async function forResponse(options = {}) {
     const date = getCurrentDate();
     const delay = config.schedule?.operationDelayMs ?? 5000;
     logGenerator(logFileName, 'info', `[START] Inicio del proceso forResponse a las ${date.toISOString()}`);
+
+    // EOM-01..05 (D-08, D-09, D-10, D-11, D-14): cron-tick guard for end-of-month operator email.
+    // Runs BEFORE the tenant loop so a slow EOM query doesn't block the rest of the tick.
+    // Failure does NOT re-throw — EOM is best-effort, the cron tick must continue.
+    if (!config.eom.notificationEnabled) {
+        logGenerator('EomNotification', 'info', '[EOM-SKIP] reason=enabled-false');
+    } else {
+        const __step = 'eomDispatch';
+        try {
+            await withStepTimeout(
+                dispatchEomIfDue(date, config),
+                config.schedule.stepTimeoutMs,
+                `step=${__step}`
+            );
+        } catch (stepErr) {
+            const __stepError = stepErr.message || String(stepErr);
+            if (/Step timeout/.test(__stepError)) {
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=${__step} tenant=global url=n/a ` +
+                    `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+            }
+            // Per PATTERNS.md + SPEC Constraints "SMTP error budget":
+            // EOM failure must NOT block the cron tick — log and continue.
+            logGenerator('EomNotification', 'error', `[EOM-DISPATCH] Failed: ${__stepError}`);
+        }
+    }
+
+    // Q3-03 / Q3-04: la misma compuerta, ahora para el reporte quincenal de pagos pendientes.
+    // Va en su PROPIO bloque y no dentro del try de arriba a proposito: si dispatchEomIfDue
+    // lanza, ese catch se dispara y el reporte quincenal nunca correria — un fallo del cierre
+    // de mes silenciaria un reporte que no tiene nada que ver con el. Q3-04 pide interruptores
+    // de apagado independientes, y dominios de fallo independientes son ese mismo requisito
+    // expresado en tiempo de ejecucion.
+    //
+    // El nombre del paso, paymentReport, es distinto del de cierre de mes a proposito, para que
+    // una linea [TIMEOUT] nombre el flujo que de verdad se atoro. withStepTimeout por paso es
+    // el patron ya establecido aqui — forResponse envuelve cada uno de sus siete pasos
+    // por tenant — asi que esto no anade ningun nivel a la cadena de CLAUDE.md §9:
+    // STEP_TIMEOUT_MS sigue acotando cada paso y LOCK_TIMEOUT_MS sigue acotando el tick.
+    //
+    // Reutiliza `date`, el reloj ya capturado al inicio del tick. Dos lecturas dentro de un
+    // mismo tick podrian caer a distintos lados de la medianoche o de la hora y poner a los dos
+    // despachadores en dias distintos: un bug que asomaria una vez al ano y no se reproduciria.
+    if (!config.notifications.paymentReport.enabled) {
+        logGenerator('EomNotification', 'info', '[PAYREPORT-SKIP] reason=enabled-false');
+    } else {
+        const __step = 'paymentReport';
+        try {
+            await withStepTimeout(
+                dispatchPaymentReportIfDue(date, config),
+                config.schedule.stepTimeoutMs,
+                `step=${__step}`
+            );
+        } catch (stepErr) {
+            const __stepError = stepErr.message || String(stepErr);
+            if (/Step timeout/.test(__stepError)) {
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=${__step} tenant=global url=n/a ` +
+                    `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+            }
+            // Mismo criterio que el bloque de cierre de mes: el reporte es best-effort y el
+            // tick del cron debe continuar. No se re-lanza.
+            logGenerator('EomNotification', 'error', `[PAYREPORT-DISPATCH] Failed: ${__stepError}`);
+        }
+    }
 
     const tenantIds = config.portal.tenants.map(t => t.id);
     for (let i = 0; i < tenantIds.length; i++) {
@@ -326,6 +398,321 @@ async function forResponse(options = {}) {
 }
 
 /**
+ * EOM dispatch — sends two consolidated emails (POs + payments) to the operator
+ * mailbox if the cron-tick gate is open (last day of month, hour >= notificationHour,
+ * sentinel missing). Per CONTEXT D-08, D-09, D-10, D-11, D-14.
+ *
+ * Best-effort: the AdminEmailSender fallback fires on READING the delivery outcome,
+ * not on catching an exception; sentinel always written; does NOT re-throw — caller
+ * (forResponse) catches and continues.
+ *
+ * Fase 20.6 (D-01): el canal de correo del operador no rechaza, devuelve el desenlace de
+ * la entrega. Lo que hasta ayer era una rama de fallo inalcanzable —y con ella el respaldo
+ * al buzón de administración— es hoy una rama sobre ese valor, leída en cerrado: sólo
+ * cuenta como entregado un resultado que lo afirme, y un valor ausente o malformado cae
+ * del lado de la no entrega.
+ *
+ * El respaldo se conserva a propósito (D-11), en vez de borrarse junto con la rama muerta:
+ * este correo es el control compensatorio de la alerta de OCs bajo D-03 de la 20.5 —una
+ * alerta perdida no se reintenta, la OC reaparece al cierre de mes—, así que si el control
+ * falla en silencio no queda nada. Es donde un escalamiento se gana el sueldo.
+ *
+ * @param {Date} now - current time (injected for testability per D-16)
+ * @param {object} cfg - config object (injected for testability)
+ * @returns {Promise<void>}
+ */
+async function dispatchEomIfDue(now, cfg) {
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyyMm = `${yyyy}-${mm}`;
+    const tenantsList = cfg.portal.tenants;
+
+    for (const category of ['pos', 'payments']) {
+        const sentinelPath = path.join(cfg.paths.logs, `eom-${yyyyMm}-${category}.sent`);
+        if (!shouldDispatchEom(now, sentinelPath, cfg.eom)) {
+            logGenerator('EomNotification', 'info', `[EOM-SKIP] category=${category} reason=gate-false`);
+            continue;
+        }
+        logGenerator('EomNotification', 'info',
+            `[EOM-GATE] category=${category} day=last hour=${now.getHours()} sentinel=missing`);
+
+        // Aggregate rows across all tenants. Per CONTEXT D-09: HARDCODED current_month scope.
+        const allRows = [];
+        for (let i = 0; i < tenantsList.length; i++) {
+            const tenantDb = tenantsList[i].database;
+            try {
+                const sql = buildEomDataQuery(category, tenantDb);
+                const { recordset } = await runQuery(sql, tenantDb);
+                if (recordset && recordset.length > 0) {
+                    allRows.push(...recordset);
+                }
+            } catch (qErr) {
+                logGenerator('EomNotification', 'warn',
+                    `[EOM-DISPATCH] category=${category} tenant=${tenantDb} query-failed err=${qErr.message}`);
+                // Continue to next tenant; partial data better than no data
+            }
+        }
+
+        // Per CONTEXT D-10: empty categories STILL send the email (with "Sin pendientes" body)
+        const html = buildEomEmailHtml(allRows, category);
+        const subject = `[SageConnect] Pendientes fin de mes — ${category === 'pos' ? 'POs' : 'Pagos'} — ${yyyyMm}`;
+        const delivery = await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
+        let sentinelPayload;
+        if (delivery && delivery.delivered === true) {
+            sentinelPayload = { timestamp: new Date().toISOString(), success: true, rowCount: allRows.length };
+            logGenerator('EomNotification', 'info',
+                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=true`);
+        } else {
+            const deliveryError = (delivery && delivery.error) ? delivery.error : 'unknown delivery failure';
+            sentinelPayload = {
+                timestamp: new Date().toISOString(),
+                success: false,
+                error: deliveryError,
+                rowCount: allRows.length,
+            };
+            logGenerator('EomNotification', 'error',
+                `[EOM-DISPATCH] category=${category} rows=${allRows.length} sent=false err=${deliveryError}`);
+            // Respaldo al buzón de administración por REQ EOM-04, hoy alcanzable (D-11).
+            await sendAdminAlert(
+                `[SageConnect] EOM email FAILED for ${yyyyMm} - ${category}`,
+                `<p>EOM dispatch failed for category ${escapeHtml(category)} on ${escapeHtml(yyyyMm)}.</p><p>Error: ${escapeHtml(deliveryError)}</p><p>Row count was ${escapeHtml(allRows.length)}.</p>`,
+                'EomNotification'
+            );
+        }
+
+        // ALWAYS write sentinel (success or fail) per SPEC EOM-04 + CONTEXT D-07
+        try {
+            writeSentinelAtomically(sentinelPath, sentinelPayload);
+            logGenerator('EomNotification', 'info',
+                `[EOM-SENTINEL] path=${sentinelPath} payload=${JSON.stringify(sentinelPayload)}`);
+        } catch (fsErr) {
+            logGenerator('EomNotification', 'error',
+                `[EOM-SENTINEL] path=${sentinelPath} write-failed err=${fsErr.message}`);
+        }
+    }
+}
+
+/**
+ * Q3-03 — despacho del reporte quincenal de pagos pendientes.
+ *
+ * Hermano de dispatchEomIfDue, no una rama suya: cadencia distinta (dos veces al mes contra
+ * cierre de mes), ventana distinta (last_n_days contra el mes en curso) y su propio
+ * interruptor de apagado, independiente del de cierre de mes (D-09 / Q3-04). Cuentas por
+ * pagar paga dos veces al mes, así que el reporte sigue un ritmo que ya existe.
+ *
+ * El periodo lo lleva la RUTA del centinela — payment-report-YYYY-MM-{1|2}.sent, D-06 — y no
+ * un término de día dentro del predicado. Por eso la compuerta abre en el PRIMER tick a
+ * partir del inicio del periodo, no sólo el día 1 o el 16 exactos (D-07): un servicio caído
+ * el 16 sigue reportando el 20, tarde pero completo. Por eso también el log de compuerta
+ * incluye el día — un operador que lee period=2 day=20 ve que el reporte salió tarde, en vez
+ * de preguntarse si salió.
+ *
+ * Sin respaldo al buzón de administración, a diferencia de dispatchEomIfDue, cuyo catch sí lo
+ * usa: LICENSE_ADMIN_EMAIL está
+ * reservado al timeout del proceso hijo (D-15) y no debe recibir correo de operación.
+ *
+ * Fase 20.6 — el envío ya no va envuelto en try/catch: el canal de correo del operador no
+ * rechaza, devuelve el desenlace de la entrega (D-01). Lo que hasta ayer era una rama de
+ * fallo inalcanzable es hoy una rama sobre ese valor, leída en cerrado: sólo cuenta como
+ * entregado un resultado que lo afirme, y un valor ausente o malformado cae del lado de la
+ * no entrega. De ahí sale el payload del centinela, que antes decía que el correo había
+ * salido pasara lo que pasara (D-10).
+ *
+ * El rótulo del periodo se arma una sola vez, arriba, y viaja al asunto y al cuerpo. Dos
+ * derivaciones serían dos relojes, y un tick que cruce la medianoche del 15 al 16 los
+ * pondría en periodos distintos (D-08).
+ *
+ * Best-effort: no re-lanza. El llamador (forResponse) atrapa y continúa.
+ *
+ * @param {Date} now - hora actual (inyectada para poder probarla, D-16)
+ * @param {object} cfg - config (inyectada para poder probarla)
+ * @returns {Promise<void>}
+ */
+async function dispatchPaymentReportIfDue(now, cfg) {
+    const period = paymentPeriodOf(now);
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const yyyyMm = `${yyyy}-${mm}`;
+
+    const sentinelPath = path.join(cfg.paths.logs, `payment-report-${yyyyMm}-${period}.sent`);
+    if (!shouldDispatchPaymentReport(now, sentinelPath, cfg.notifications.paymentReport)) {
+        logGenerator('EomNotification', 'info', `[PAYREPORT-SKIP] period=${period} reason=gate-false`);
+        return;
+    }
+    logGenerator('EomNotification', 'info',
+        `[PAYREPORT-GATE] period=${period} day=${now.getDate()} hour=${now.getHours()} sentinel=missing`);
+
+    // Agregación por tenant, con la misma forma que dispatchEomIfDue: la base muerta de un
+    // tenant no puede silenciar a los demás. Datos parciales valen más que ningún dato.
+    const tenantsList = cfg.portal.tenants;
+    const allRows = [];
+    for (let i = 0; i < tenantsList.length; i++) {
+        const tenantDb = tenantsList[i].database;
+        try {
+            const sql = buildEomDataQuery('payments', tenantDb, {
+                scope: 'last_n_days',
+                lookbackDays: cfg.notifications.paymentReport.lookbackDays,
+            });
+            const { recordset } = await runQuery(sql, tenantDb);
+            if (recordset && recordset.length > 0) {
+                allRows.push(...recordset);
+            }
+        } catch (qErr) {
+            logGenerator('EomNotification', 'warn',
+                `[PAYREPORT-DISPATCH] period=${period} tenant=${tenantDb} query-failed err=${qErr.message}`);
+            // Sigue con el siguiente tenant.
+        }
+    }
+
+    // Un solo origen para el rótulo del periodo: el que ya calculó la compuerta, y de ahí
+    // al asunto y al cuerpo. La tabla de pagos y su pie de nota 20.2-05 no cambian con la
+    // variante de quincena; el pie sigue declarando que el sistema de control todavía no
+    // registra el detalle del error de cada pago (CR-03, diferido), así que el correo sigue
+    // siendo honesto sobre su propio hueco incluso cuando llega vacío.
+    const periodLabel = `quincena ${period} — ${yyyyMm}`;
+    const html = buildEomEmailHtml(allRows, 'payments', 'payment-report', { periodLabel });
+    const subject = `[SageConnect] Pagos pendientes — ${periodLabel}`;
+
+    const delivery = await sendOperatorReport({ subject, html, callerLogFile: 'EomNotification' });
+    let sentinelPayload;
+    if (delivery && delivery.delivered === true) {
+        sentinelPayload = { timestamp: new Date().toISOString(), success: true, rowCount: allRows.length };
+        logGenerator('EomNotification', 'info',
+            `[PAYREPORT-DISPATCH] period=${period} rows=${allRows.length} sent=true`);
+    } else {
+        const deliveryError = (delivery && delivery.error) ? delivery.error : 'unknown delivery failure';
+        sentinelPayload = {
+            timestamp: new Date().toISOString(),
+            success: false,
+            error: deliveryError,
+            rowCount: allRows.length,
+        };
+        logGenerator('EomNotification', 'error',
+            `[PAYREPORT-DISPATCH] period=${period} rows=${allRows.length} sent=false err=${deliveryError}`);
+        // Aquí NO va un respaldo al buzón de administración: ver el encabezado (D-15).
+    }
+
+    // El centinela se escribe SIEMPRE, haya salido el correo o no — misma regla que EOM-04.
+    // Un periodo que falló queda registrado como intentado, para que un servidor de correo
+    // muerto no convierta el reporte en un reintento cada quince minutos contra el buzón del
+    // operador.
+    try {
+        writeSentinelAtomically(sentinelPath, sentinelPayload);
+        logGenerator('EomNotification', 'info',
+            `[PAYREPORT-SENTINEL] path=${sentinelPath} payload=${JSON.stringify(sentinelPayload)}`);
+    } catch (fsErr) {
+        logGenerator('EomNotification', 'error',
+            `[PAYREPORT-SENTINEL] path=${sentinelPath} write-failed err=${fsErr.message}`);
+    }
+}
+
+/**
+ * Build the pending-items query for a category.
+ * Per CLAUDE.md §6 #1: template-literal SQL with controlled tenant DB interpolation.
+ *
+ * Q3-05 / D-08 — por qué el alcance es un parámetro OPCIONAL y no un cambio directo.
+ * Esta función sirve a dos correos con cadencias distintas. El de cierre de mes omite el
+ * tercer argumento y recibe exactamente la misma cadena que producía antes de la fase 20.5,
+ * que es lo que Q3-05 exige al pie de la letra. El reporte quincenal pasa
+ * { scope: 'last_n_days', lookbackDays: config.notifications.paymentReport.lookbackDays },
+ * que es lo que D-08 pide: un pago pendiente desde un mes anterior hoy es invisible incluso
+ * en el cierre de mes, porque la consulta se limita al mes en curso. Reemplazar el alcance
+ * sin condición habría cambiado en silencio el contenido de un correo que la fase declara
+ * fuera de alcance, y ninguna aserción existente lo habría detectado.
+ *
+ * Ambas ramas honran el parámetro, no sólo la de pagos. Un constructor que ignora en
+ * silencio el alcance que le pasa quien lo llama es la trampa de valor por omisión implícito
+ * que CLAUDE.md §6 #2 registra contra runQuery(query, db = ...), la misma que rompió siete
+ * llamadores en el PR #16. La rama de OCs no recibe hoy ningún valor distinto al de omisión;
+ * lo acepta de todos modos para no poder mentir al respecto más adelante.
+ *
+ * Por qué la ventana ampliada sigue acotada, sin mecanismo nuevo: buildScopeWhere LANZA ante
+ * un alcance que no reconoce en vez de emitir SQL sin cota, y la guarda de arranque de
+ * config.js encierra lookbackDays en [30, 3650]. Entre las dos, la consulta conserva siempre
+ * su cota inferior DATEADD y no puede degenerar en un barrido completo del histórico de pagos
+ * de Sage.
+ *
+ * RETRY-S3 / D-10 / D-11: the two branches are deliberately asymmetric. The POs branch reports
+ * an error description per row because its own control table genuinely stores one, and stays
+ * untouched. The payments branch reports pending payments WITHOUT one: its control table
+ * `fesa.dbo.fesaPagosFocaltec` has only four columns (idCia, NoPagoSage, status, idFocaltec —
+ * production schema read 2026-07-27), so no column can hold an error description or an error
+ * timestamp. Recording payment failures is CR-03, deliberately deferred.
+ */
+function buildEomDataQuery(category, tenantDb, scope = { scope: 'current_month' }) {
+    if (category === 'pos') {
+        const dateField = `(SELECT MAX(Fecha) FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle WHERE Empresa = '${tenantDb}' AND PONumber = A.PONUMBER)`;
+        return `
+            SELECT
+                '${tenantDb}' AS tenant,
+                RTRIM(A.PONUMBER) AS idOrPo,
+                ${dateField} AS fechaAuth,
+                COALESCE(ef.errorCount, 0) AS attempts,
+                ef.lastError AS lastError
+            FROM ${tenantDb}.dbo.POPORH1 A
+            LEFT OUTER JOIN Autorizaciones_electronicas.dbo.Autoriza_OC X
+              ON A.PONUMBER = X.PONumber
+            OUTER APPLY (
+                SELECT
+                    COUNT(*) AS errorCount,
+                    (SELECT TOP 1 responseAPI FROM fesa.dbo.fesaOCFocaltec
+                     WHERE ocSage = A.PONUMBER AND idDatabase = '${tenantDb}' AND status = 'ERROR'
+                     ORDER BY lastUpdate DESC) AS lastError
+                FROM fesa.dbo.fesaOCFocaltec
+                WHERE ocSage = A.PONUMBER
+                  AND idDatabase = '${tenantDb}'
+                  AND status = 'ERROR'
+            ) AS ef
+            WHERE X.Autorizada = 1
+              AND X.Empresa = '${tenantDb}'
+              AND ${buildScopeWhere(scope, { dateField })}
+              AND NOT EXISTS (
+                SELECT 1 FROM fesa.dbo.fesaOCFocaltec
+                WHERE ocSage = A.PONUMBER AND idDatabase = '${tenantDb}' AND status = 'POSTED'
+              )
+        `;
+    }
+    // category === 'payments'
+    const dateField = 'CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))';
+    // RETRY-S3 / D-10: este OUTER APPLY solo puede contar filas. `fesa.dbo.fesaPagosFocaltec`
+    // tiene exactamente cuatro columnas (idCia, NoPagoSage, status, idFocaltec) segun la lectura
+    // del esquema de produccion del 2026-07-27, asi que no existe columna alguna que pueda
+    // guardar la descripcion de un error ni su fecha. El sub-select de descripcion de error y su
+    // ordenamiento que vivian aqui referenciaban columnas inexistentes: SQL Server abortaba toda
+    // la consulta, el try/catch de dispatchEomIfDue lo convertia en cero filas, y el correo de
+    // pagos siempre decia "Sin pendientes". Registrar los fallos de pago es CR-03 (diferido);
+    // el pie de nota del correo (EomNotification.buildEomEmailHtml) declara ese hueco.
+    return `
+        SELECT
+            '${tenantDb}' AS tenant,
+            RTRIM(P.DOCNBR) AS idOrPo,
+            CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))) AS fechaAuth,
+            COALESCE(ef.errorCount, 0) AS attempts
+        FROM APBTA B
+        JOIN BKACCT BK ON B.IDBANK = BK.BANK
+        JOIN APTCR P ON B.PAYMTYPE = P.BTCHTYPE AND B.CNTBTCH = P.CNTBTCH
+        OUTER APPLY (
+            SELECT
+                COUNT(*) AS errorCount
+            FROM fesa.dbo.fesaPagosFocaltec
+            WHERE NoPagoSage = P.DOCNBR
+              AND idCia = '${tenantDb}'
+              AND status NOT IN ('PAID', 'PARTIAL')
+        ) AS ef
+        WHERE B.PAYMTYPE = 'PY'
+          AND B.BATCHSTAT = 3
+          AND P.ERRENTRY = 0
+          AND P.RMITTYPE = 1
+          AND ${buildScopeWhere(scope, { dateField })}
+          AND P.DOCNBR NOT IN (
+            SELECT NoPagoSage FROM fesa.dbo.fesaPagosFocaltec
+            WHERE idCia = P.AUDTORG AND NoPagoSage = P.DOCNBR
+              AND status IN ('PAID', 'PARTIAL')
+          )
+    `;
+}
+
+/**
  * Handles the child process for CFDI import
  * @returns {Promise} Promise that resolves when child process completes
  */
@@ -536,5 +923,8 @@ module.exports = {
     startBackgroundProcesses,
     forResponse,
     startChildProcess,
-    showStartupNotification
+    showStartupNotification,
+    dispatchEomIfDue,
+    dispatchPaymentReportIfDue,
+    buildEomDataQuery,
 };

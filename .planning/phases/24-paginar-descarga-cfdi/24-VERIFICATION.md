@@ -1,11 +1,13 @@
 ---
 phase: 24-paginar-descarga-cfdi
 verified: 2026-10-16T19:05:33Z
-status: human_needed
-score: 9/10 must-haves verified
+status: passed
+score: 10/10 must-haves verified
 # Requisitos REQ-24-01 a REQ-24-15: 15/15 verificados.
-# Criterios de aceptación del SPEC: 18/19 completos; el 19 parcial (addenda sin ejercitar en vivo).
+# Criterios de aceptación del SPEC: 19/19 completos. El 19 quedó completo el 2026-10-16 con la verificación humana
+# de la addenda en zcl-rds-test (build 9313354 de master f68ef2f); ver "Resultado de la verificación humana".
 overrides_applied: 0
+human_verified: 2026-10-16T20:10:00Z
 human_verification:
   - test: "Descargar al menos un XML con el GetTypesCFDI.js de la fase (build 96cd3e6 o cualquier build cuyo GetTypesCFDI.js tenga la huella 0a4a4ee262e3) y abrirlo en la carpeta de descargas del servidor"
     expected: "El XML trae cfdi:Addenda > cfdi:AddendaEmisor con cfdi:DoctoDatosAdi y cfdi:Proveedor (provider_id e IdBase), y esos datos son de esa misma factura (el provider_id corresponde al emisor del XML y la OC/AFE, si aplica, es la suya); en GetTypesCFDI.log su UUID aparece una sola vez con resultado=a-descargar"
@@ -327,6 +329,23 @@ overrides:
     accepted_by: "{nombre}"
     accepted_at: "{timestamp ISO}"
 ```
+
+### Resultado de la verificación humana (2026-10-16): aprobada
+
+Se comprobó en zcl-rds-test con el build `9313354`, generado del merge `f68ef2f` del PR #28. Es el mismo artefacto que se instalará en producción, y su `GetTypesCFDI.js` es el verificado arriba.
+
+- **Ciclo con el botón, 16-oct 13:50.** Las tres consultas quedaron completas, todas en `[INFO]` y con `corte=completo`:
+  - getTypeE: 0 de 0;
+  - getTypeI: 7 de 7;
+  - getTypeP: 3 de 3.
+- **Filtro contra Sage:** `[FILTRO-SAGE] getTypeI recibidas=7 ya_en_sage=3 error_sql=0 a_descargar=4`. Cada UUID aparece una sola vez con `resultado=a-descargar`.
+- **Bitácora:** 0 líneas `[ERROR]` o `[WARN]` en `GetTypesCFDI.log`, y no se creó `CFDI_Downloader.log` (no hubo error de descarga ni XML borrados por falta de banco). downloadCFDI corrió de 13:50:21 a 13:50:25.
+- **XML descargados:** los 4 están en la carpeta de descargas, nombrados por su UUID (`41C179E1…`, `709A9E7A…`, `E955D4EF…`, `FF014CE9…`).
+  - Cada uno trae `cfdi:Addenda` → `cfdi:AddendaEmisor`, con `cfdi:DoctoDatosAdi` (la OC) y `cfdi:Proveedor` (`provider_id`, `external_id` e `IdBase="COPDAT"`).
+  - Se cotejó cada XML contra el portal del sandbox con un GET de solo lectura sobre la misma consulta de `getTypeI`. En los 4, el `provider_id`, el proveedor de Sage y la OC de la addenda son los del portal para ese UUID, y el RFC del emisor del XML es el del proveedor.
+  - Son 2 proveedores distintos, 1 factura de uno y 3 del otro, y no hay addendas cruzadas.
+
+Con esto el criterio 19 queda completo y el estado pasa a `passed`, sin override. En el registro no se copian nombres, RFC ni datos de contacto de los XML.
 
 ## Fuera del alcance de la fase (condiciones para producción; sólo para trazabilidad)
 

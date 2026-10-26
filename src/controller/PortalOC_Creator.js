@@ -18,6 +18,12 @@ const { logGenerator } = require('../utils/LogGenerator');
 const { groupOrdersByNumber } = require('../utils/OC_GroupOrdersByNumber');
 const { parseExternPurchaseOrders } = require('../utils/parseExternPurchaseOrders');
 const { validateExternPurchaseOrder } = require('../models/PurchaseOrder');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
+const { getPurchaseOrderByExternalId } = require('../utils/GetPurchaseOrders');
+// Fase 20.5 / Q3-01: la alerta inmediata de OCs que fallaron al subir. Ninguno de los dos modulos
+// tiene efectos secundarios al cargar, asi que requerirlos aqui no cambia el arranque del servicio.
+const { sendOperatorReport } = require('../utils/EmailSender');
+const { buildEomEmailHtml } = require('../utils/EomNotification');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -29,6 +35,38 @@ const externalId = config.portal.tenants.map(t => t.externalId);
 const urlBase = (index) => `${config.portal.url}/api/1.0/extern/tenants/${tenantIds[index]}`;
 
 async function createPurchaseOrders(index) {
+  // 20.4 D-01: origen del reloj para el presupuesto de sondeo del tick. Va aquí, como PRIMERA
+  // sentencia de la función, y NO justo antes del for de más abajo. El techo que se protege es el
+  // del STEP, no el de la sonda: un origen puesto antes del bucle gastaría los 120 s de presupuesto
+  // ENCIMA de lo que ya consumió el SELECT con OUTER APPLY sobre una tabla de control de 9,032
+  // filas, y el step podría seguir reventando sus 300 s con el tope plenamente instalado. Medir
+  // desde la entrada vuelve al presupuesto una REBANADA del step en vez de un tiempo que se gasta
+  // aparte. Costo aceptado: un SELECT anormalmente lento puede dejar el tick en cero sondas —
+  // fail-closed y correcto, y visible para el operador en el campo deferred= de la línea de resumen.
+  //
+  // WR-01 / WR-02, y hay que leerlo antes de razonar sobre este presupuesto: lo que acota es CUÁNTO
+  // SONDEO hace un tick, NO el step. La condición se evalúa en el borde de iteración, sólo antes de
+  // admitir cada OC, así que una OC ya admitida corre después su ciclo completo por encima del
+  // presupuesto — hasta 30 s de GET + 30 s de POST + 180 s del requestTimeout de mssql. Y el
+  // presupuesto se cobra ese POST y ese INSERT, porque viven en el mismo bucle y se miden desde
+  // este mismo origen. Quien acota el step sigue siendo STEP_TIMEOUT_MS vía withStepTimeout
+  // (background.js:237). La aritmética completa está en el comentario de la guarda relacional de
+  // config.js y NO se repite aquí, para que exista un solo sitio donde mantenerla.
+  // D-02: Date.now() y no process.hrtime.bigint(). Un reloj monótono sería más correcto ante un
+  // salto de NTP a media tanda, pero no hay precedente de hrtime en este codebase, es bastante más
+  // difícil de fijar de forma determinista en Jest, y una corrección de NTP cayendo justo dentro de
+  // una ventana de cinco minutos en un Windows Server sincronizado por dominio es teórica. El trade
+  // fue deliberado: no lo "mejores" sin volver a pasar por ese razonamiento.
+  // D-03: esto NO es el caso dbNow de la fase 20.2. Allá se lee el reloj de SQL Server porque se
+  // compara contra timestamps que el propio SQL Server escribió, y mezclar relojes produjo el sesgo
+  // de -360 min que impedía que [RETRY-DEFER] disparara. Aquí los dos extremos de la medición salen
+  // del MISMO reloj de proceso, así que no existe comparación entre relojes y dbNow no aplica. Sin
+  // esta nota, un lector futuro siguiendo la doctrina de la 20.2 convertiría esto en un round-trip
+  // a SQL por iteración del bucle únicamente para medir tiempo transcurrido.
+  // Always-on (CLAUDE.md §3): tickStart es un const function-scoped, inalcanzable en cuanto
+  // createPurchaseOrders() retorna. No es cache, no crece entre ticks y no hay nada que liberar. Un
+  // origen en scope de módulo haría que el presupuesto del tick N dependiera del tick N−1.
+  const tickStart = Date.now();
   const today = getCurrentDateString(); // 'YYYY-MM-DD'
   const logFileName = 'PortalOC_Creator';
   
@@ -146,7 +184,17 @@ select
     (CASE WHEN A.TXEXCLUDE3>0 THEN 0 ELSE A.TXEXCLUDE3 END) +
     (CASE WHEN A.TXEXCLUDE4>0 THEN 0 ELSE A.TXEXCLUDE4 END) +
     (CASE WHEN A.TXEXCLUDE5>0 THEN 0 ELSE A.TXEXCLUDE5 END)
-  )                                            as [WITHHOLD_TAX_SUM]
+  )                                            as [WITHHOLD_TAX_SUM],
+  -- RETRY-D3: se proyecta SOLO errorCount. lastErrorAt del OUTER APPLY sigue sin proyectarse:
+  -- es MAX(lastUpdate) sobre una columna date, bloqueado por CR-04 / D-ITEM-03. Alias en
+  -- camelCase adrede: row.errorCount se lee abajo (attempts=) y en 20.3-03 gatea el chequeo.
+  ef.errorCount                                AS errorCount,
+  -- D-01: reloj único. Sale del MISMO SELECT que lastErrorAt, así que la reinterpretación de
+  -- zona horaria del driver aplica a ambos operandos y se cancela en la resta. D-05: GETDATE()
+  -- es constante de runtime por statement, así que todas las filas del tick comparten un dbNow.
+  -- El alias va en camelCase a propósito — el resto de este archivo usa MAYÚSCULAS, pero el
+  -- lado JS lee row.dbNow y la misma clave se usa en los cinco call sites de la fase.
+  GETDATE()                                    as [dbNow]
 from ${databases[index]}.dbo.POPORH1 A
 left outer join ${databases[index]}.dbo.POPORH2 A1
   on A.PORHSEQ = A1.PORHSEQ
@@ -173,15 +221,17 @@ left outer join ${databases[index]}.dbo.ICLOC F
   on B.[LOCATION] = F.[LOCATION]
 left outer join Autorizaciones_electronicas.dbo.Autoriza_OC X
   on A.PONUMBER = X.PONumber
+${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaOCFocaltec', joinColumn: 'ocSage', joinKey: 'A.PONUMBER', dbAlias: databases[index], dbColumn: 'idDatabase', timestampColumn: 'lastUpdate' })}
 where
   X.Autorizada = 1
   and X.Empresa = '${databases[index]}'
-  and (
-    select max(Fecha)
-      from Autorizaciones_electronicas.dbo.Autoriza_OC_detalle
-     where Empresa = '${databases[index]}'
-       and PONumber = A.PONUMBER
-  ) = CAST(GETDATE() AS DATE)
+  AND ${buildScopeWhere(config.retry, { dateField: '(SELECT MAX(Fecha) FROM Autorizaciones_electronicas.dbo.Autoriza_OC_detalle WHERE Empresa = \'' + databases[index] + '\' AND PONumber = A.PONUMBER)' })}
+  AND NOT EXISTS (
+    SELECT 1 FROM fesa.dbo.fesaOCFocaltec
+    WHERE ocSage = A.PONUMBER
+      AND idDatabase = '${databases[index]}'
+      AND status IN ('CLOSED', 'POSTED')
+  )
   ${skipCondition}
 order by A.PONUMBER, B.PORLREV;
 `;
@@ -198,6 +248,113 @@ order by A.PONUMBER, B.PORLREV;
     return;
   }
 
+  // RETRY-C4 (D-01, D-04, D-05): JS post-filter de reintentos con intervalo fijo.
+  // El OUTER APPLY ef trajo errorCount + lastErrorAt por fila; se difieren las filas
+  // cuyo último ERROR aún no cumple el intervalo de la OC (config.retry.interval.po).
+  // La regla de elegibilidad vive completa en computeRetryEligibility — incluida la de
+  // "primer intento" (sin lastErrorAt => elegible ya): no se replica aquí para que no
+  // pueda divergir entre los dos controladores y el diagnóstico. errorCount ya no
+  // interviene en el cálculo (D-04); sobrevive solo como contexto de operador (attempts=).
+  //
+  // 20.2 D-01: `now` ya NO es el reloj del proceso Node — se toma del dbNow que proyecta el
+  // mismo SELECT que produjo lastErrorAt, resuelto una sola vez por lote (D-05). Medido el
+  // 2026-07-27 en el host SQL desplegado: DATEDIFF(mi, GETUTCDATE(), GETDATE()) = -360, seis
+  // horas — más que ambos intervalos configurados (240 OC, 30 pago), así que con el reloj de
+  // Node toda fila candidata salía elegible siempre y el log de diferimiento por fila
+  // (etiqueta RETRY-DEFER) no podía dispararse nunca.
+  const candidatesCount = recordset.length;
+  const dbNow = candidatesCount > 0 ? recordset[0].dbNow : null;
+  // Una sola línea por tick, nunca por fila (CLAUDE.md §3): el helper no puede distinguir un
+  // dbNow ausente de una omisión deliberada, así que la condición se vuelve grepeable.
+  if (candidatesCount > 0 && !dbNow) {
+    logGenerator(logFileName, 'warn',
+      `[RETRY-CLOCK] tenant=${databases[index]} dbNow=missing fallback=node-clock`);
+  }
+  const intervalMin = getRetryIntervalMinutes(config.retry.interval, 'po');
+  const deferred = [];
+  recordset = recordset.filter((row) => {
+    const { eligible, nextEligibleAt } = computeRetryEligibility({
+      lastErrorAt: row.lastErrorAt,
+      intervalMinutes: intervalMin,
+      now: dbNow,
+    });
+    if (!eligible) {
+      deferred.push({ id: row.EXTERNAL_ID, attempts: row.errorCount || 0, nextEligibleAt });
+      return false;
+    }
+    return true;
+  });
+  // Por fila diferida: entrada [RETRY-DEFER] (operadores buscan un PO específico)
+  deferred.forEach((d) => {
+    logGenerator(logFileName, 'info',
+      `[RETRY-DEFER] PO ${d.id} tenant=${databases[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+  });
+  // Resumen [RETRY] por tick (operadores buscan la métrica agregada)
+  logGenerator(logFileName, 'info',
+    `[RETRY] tenant=${databases[index]} candidates=${candidatesCount} deferred=${deferred.length} processing=${recordset.length}`);
+  // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
+  const retryWindow = config.retry.scope === 'last_n_days'
+    ? `last ${config.retry.lookbackDays} days`
+    : 'current calendar month';
+  logGenerator(logFileName, 'info',
+    `[CRON] retry-scope=${config.retry.scope} window=${retryWindow}`);
+
+  // RETRY-D4 (D-02): lookup de errorCount por OC, construido desde el recordset YA post-filtrado
+  // (recordset se reasigna arriba), que es exactamente el conjunto que se vuelve ordersToSend.
+  // Por qué un Map y no pasar el valor por parámetro: errorCount se destruye dos veces aguas
+  // abajo — OC_GroupOrdersByNumber.js:20 minuscula toda clave de columna (errorCount pasa a ser
+  // errorcount) y parseExternPurchaseOrders.js:86-119 lo suelta por completo, porque devuelve un
+  // objeto literal de lista blanca donde ese campo no está. Editar cualquiera de esas dos
+  // utilerías compartidas es la trampa de radio de impacto de CLAUDE.md §6 #2 (PR #16 rompió 7
+  // llamadores así), y este Map evita tocarlas.
+  // Always-on (CLAUDE.md §3): el Map es const dentro de createPurchaseOrders() y queda inalcanzable
+  // en cuanto la función retorna. No es cache, no crece entre ticks y no hay nada que liberar.
+  // La consulta devuelve una fila por LÍNEA de OC, así que muchas filas comparten EXTERNAL_ID y
+  // traen el mismo COUNT(*): gana la última escritura y es correcto. Una OC ausente del Map cae en
+  // el default 0, es decir, se comporta exactamente como hoy (sin sonda).
+  const errorCounts = new Map();
+  recordset.forEach((row) => {
+    // S-5: || '' antes de .trim(). Un EXTERNAL_ID nulo lanzaría aquí y mataría el tick a media tanda.
+    errorCounts.set(String(row.EXTERNAL_ID || '').trim(), row.errorCount || 0);
+  });
+
+  // Contadores del tick para la línea de resumen. Function-scoped, igual que el Map.
+  // 20.4 D-10: probeDeferred se cuenta FUERA de probed y se incrementa únicamente en el camino
+  // fail-closed del tope, nunca dentro del try de la sonda. Esa colocación es justamente lo que
+  // mantiene `probed === probeFound + probeAbsent + probeSkipped + probeUnknown` cierto byte a
+  // byte, y eso importa porque verificar esa invariante contra respuestas reales del portal sigue
+  // siendo el punto 2 del UAT humano pendiente de la fase 20.3. Incrementar dentro del try es
+  // exactamente como WR-02 rompió la invariante la primera vez.
+  let probed = 0;
+  let probeFound = 0;
+  let probeAbsent = 0;
+  let probeSkipped = 0;
+  let probeUnknown = 0;
+  let probeDeferred = 0;
+
+  // Acumulador de la alerta inmediata (fase 20.5, Q3-01/Q3-02).
+  // Always-on (CLAUDE.md §3): el acumulador es un const dentro de createPurchaseOrders() y queda
+  // inalcanzable en cuanto la función retorna. No es cache, no crece entre ticks, nada que liberar.
+  // Su tamaño máximo es el número de OCs que fallan POR PRIMERA VEZ en este tick, acotado por
+  // ordersToSend.length.
+  //
+  // D-03 — el estado "ya se alertó" es DERIVADO, no se almacena nada. La condición es que el
+  // errorCount PREVIO de la OC sea 0, leído del Map errorCounts que la fase 20.3 ya construye
+  // arriba a partir del mismo SELECT. Las dos alternativas obvias quedaron rechazadas y deben
+  // seguir rechazadas:
+  //   - un archivo por OC (logs/po-alert-<oc>.sent) crece sin cota contra una tabla que ya tiene
+  //     3,313 filas ERROR y nada lo recolecta jamás: exactamente la clase de estado retenido que
+  //     CLAUDE.md §3 prohíbe;
+  //   - un Map en scope de módulo sobrevive a los ticks y nunca se libera en un servicio que no
+  //     termina. La misma violación, y peor.
+  // Derivarlo cuesta CERO estado nuevo, se limpia solo por construcción y no necesita consulta
+  // nueva: el dato ya viene en el recordset.
+  //
+  // D-04, consecuencia buscada: toda OC detrás de las 3,313 filas ERROR acumuladas ya tiene
+  // errorCount > 0, así que el primer tick tras el despliegue emite CERO alertas. El requisito de
+  // "no inundar" de Q3-02 queda satisfecho por construcción, no por un mecanismo de supresión.
+  const poAlerts = [];
+
   // 3) Agrupar y parsear al formato de envío
   const grouped = groupOrdersByNumber(recordset);
   const ordersToSend = parseExternPurchaseOrders(grouped);
@@ -205,26 +362,219 @@ order by A.PONUMBER, B.PORLREV;
   // 4) Procesar cada PO
   for (let i = 0; i < ordersToSend.length; i++) {
     const po = ordersToSend[i];
+
+    // 4.1) [PORTAL-CHECK] — segunda opinión del portal antes de volver a hacer POST (RETRY-D4..D7).
+    // D-01: este bloque va PRIMERO en el cuerpo del bucle, por delante del bloque 4.3 de Joi. El
+    // camino de fallo de Joi inserta una fila ERROR, y correrlo para una OC que el portal YA tiene
+    // fabricaría exactamente el ruido que esta fase existe para eliminar.
+    // RETRY-D4: solo se pregunta por OCs que ya fallaron al menos una vez. Una OC con cero fallos
+    // llega al POST sin que se emita ningún GET, igual que hoy.
+    const ocKey = String(po.external_id || '').trim();
+    const priorErrors = errorCounts.get(ocKey) || 0;
+    if (priorErrors > 0) {
+      // 20.4 D-04 — el tope por tick. Este `if` anidado es la PRIMERA sentencia dentro de la
+      // compuerta y su cuerpo son exactamente dos sentencias: contar y saltar.
+      //
+      // HAZARD DE LECTURA, lo más importante de esta fase: la redacción de RETRY-E1 ("la compuerta
+      // exige además que quede presupuesto y quede conteo") se lee con toda naturalidad como
+      // extender la compuerta de arriba con `&& quedaPresupuesto && quedaConteo` en vez de anidar.
+      // ESA FORMA ES UN BUG. Cuando la compuerta se vuelve falsa hoy, el control NO termina el
+      // turno: cae al bloque 4.3 de Joi y de ahí al POST. Con la conjunción sobre la compuerta, una
+      // OC diferida acabaría POSTeada — literalmente el POST duplicado / 409 que la fase 20.3
+      // existe para eliminar, refabricado por el mecanismo que venía a protegerlo. Solo la forma
+      // ANIDADA satisface RETRY-E1 y RETRY-E3 a la vez. No "simplifiques" esto juntando ambas
+      // condiciones en la compuerta.
+      // (La forma prohibida NO se escribe literal en este comentario a propósito: hay una aserción
+      // estructural que cuenta esa subcadena en este archivo y debe dar cero. Documentarla textual
+      // dejaría a esa guarda ciega para siempre — no podría distinguir el bug escrito del bug
+      // citado. Se describe, no se transcribe.)
+      //
+      // D-05: el conteo se compara PRIMERO porque es gratis y la lectura del reloj no lo es, y el
+      // || corta el segundo término cuando el primero ya es verdadero. Es legibilidad, no
+      // comportamiento: el resultado es el mismo en cualquier orden.
+      //
+      // D-06: el camino diferido NO emite línea por fila, solo el agregado. Las líneas por fila de
+      // la 20.3 están acotadas por lo que efectivamente se sondeó; el conjunto diferido está
+      // acotado solo por el tamaño de ordersToSend, que es precisamente el caso para el que existe
+      // esta fase. Una línea por fila escupiría miles de renglones en el peor tick — el único tick
+      // que el operador de verdad necesita poder leer. El conteo va en el resumen.
+      if (probed >= config.portal.probeMaxPerTick
+          || (Date.now() - tickStart) >= config.portal.probeBudgetMs) {
+        probeDeferred++;
+        continue;
+      }
+      // S-3: nada de este bloque puede lanzar hacia afuera. En un servicio que no termina entre
+      // ticks, una excepción aquí aborta el tick completo a media tanda (CLAUDE.md §3;
+      // RetryPolicy.js documenta la misma doctrina). La sonda nunca lanza, así que la única fuente
+      // realista de excepción es runQuery en la escritura de reconciliación.
+      // Los tres sitios de escritura preexistentes se dejan con su postura actual a propósito:
+      // retrofitearlos ensancha el diff y queda fuera del alcance de este plan.
+      //
+      // El try abarca TRES etapas —la sonda, la escritura de reconciliación y las llamadas de
+      // bitácora— y el catch tiene que poder distinguirlas: en prod no hay SSMS ni depurador
+      // (HANDOFF §6), la bitácora es el único canal, y afirmar siempre `write-failed` mandaba al
+      // operador a revisar una escritura que a veces ni se había intentado. `logGenerator` sí puede
+      // lanzar (su ruta de respaldo hace fs.mkdirSync fuera de todo try, LogGenerator.js:53-56) y
+      // console.* puede dar EPIPE mientras Servy rota servy-stdout.log.
+      let stage = 'probe';
+      try {
+        probed++;
+        const probe = await getPurchaseOrderByExternalId(index, ocKey);
+
+        // RETRY-D7, garantía ESTRUCTURAL y no enumerativa: llegar al camino de creación exige
+        // acertar un valor concreto ('absent'), no fallar una lista. Por eso todo lo que no sea
+        // 'absent' — cualquier status encontrado, cualquier reason, y un probe indefinido, nulo o
+        // con un outcome no reconocido — termina en el `continue` único del final de este bloque.
+        // Un status que nadie anticipó no puede caer al POST.
+        if (!probe || probe.outcome !== 'absent') {
+          let result;
+          // localStatus es un literal LOCAL, nunca texto del portal: solo 'POSTED' o 'CLOSED'.
+          // Que siga siendo null es lo que decide que NO se escriba fila.
+          let localStatus = null;
+          let reason = 'n/a';
+
+          if (probe && probe.outcome === 'found') {
+            // Comparación estricta contra los cuatro literales del enum y SIN plegar mayúsculas:
+            // normalizar 'open' a 'OPEN' ascendería en silencio una variante no reconocida a
+            // reconocida, que es justo lo que RETRY-D7 prohíbe.
+            const portalStatus = probe.status;
+            if (portalStatus === 'OPEN' || portalStatus === 'GENERATED') {
+              result = 'found';
+              localStatus = 'POSTED';
+            } else if (portalStatus === 'CLOSED') {
+              result = 'found';
+              localStatus = 'CLOSED';
+            } else if (portalStatus === 'CANCELLED') {
+              result = 'cancelled';
+            } else {
+              result = 'unknown';
+              reason = 'unrecognised-status';
+            }
+          } else if (probe && probe.outcome === 'unknown' && probe.reason === 'ambiguous') {
+            result = 'ambiguous';
+            reason = 'ambiguous';
+          } else {
+            // 'unknown' con cualquier otro reason, y todo objeto malformado o inesperado.
+            result = 'unknown';
+            reason = (probe && probe.reason) ? probe.reason : 'unrecognised-outcome';
+          }
+
+          // RETRY-D6: cuando el portal confirma que ya tiene la OC se escribe UNA fila nueva de
+          // reconciliación. Las filas ERROR históricas se quedan intactas — no se emite ninguna
+          // sentencia de actualización contra la tabla de control por ningún camino de código.
+          // El único valor de origen portal que cruza a este template es probe.id, ya validado
+          // contra la forma de 24 hexadecimales dentro de la propia sonda (RETRY-D8 / D-05).
+          if (localStatus) {
+            const sqlCheck = `
+        INSERT INTO fesa.dbo.fesaOCFocaltec
+          (idFocaltec, ocSage, status, lastUpdate, createdAt, responseAPI, idDatabase)
+        VALUES
+          ('${probe.id}',
+           '${ocKey}',
+           '${localStatus}',
+           GETDATE(),
+           GETDATE(),
+           'PORTAL-CHECK',
+           '${databases[index]}'
+          )
+      `;
+            stage = 'write';
+            await runQuery(sqlCheck, 'FESA');
+            // IN-04 (revisión de la 20.3): la fila y su bitácora llevan `ocKey`, la MISMA clave con
+            // la que se preguntó al portal y con la que se leyó `errorCounts` — no `po.external_id`
+            // crudo. Hoy los dos valores coinciden porque `groupOrdersByNumber` recorta los strings
+            // (OC_GroupOrdersByNumber.js:21), y el dedupe sobreviviría de todos modos porque la
+            // comparación `=` de SQL Server ignora los blancos a la derecha. O sea: no era un fallo
+            // vivo. Se corrige para que la fila deje de depender de que una utilería compartida siga
+            // recortando —nada lo obliga— y para que el valor almacenado sea el mismo que se consultó.
+            logGenerator(logFileName, 'info', `[OK] PO ${ocKey} reconciliada desde el portal en FESA como ${localStatus} con idFocaltec: ${probe.id}`);
+          }
+
+          stage = 'log';
+          const level = (result === 'unknown' || result === 'ambiguous') ? 'warn' : 'info';
+          const idField = (probe && probe.outcome === 'found') ? probe.id : 'n/a';
+          // El status viene del portal y va a parar a la bitácora de auditoría de winston: se
+          // sanea en línea para que un salto de línea hostil no pueda forjar una segunda entrada.
+          const statusField = (probe && probe.outcome === 'found')
+            ? (String(probe.status == null ? '' : probe.status).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || 'n/a')
+            : 'n/a';
+          const checkMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=${result} id=${idField} status=${statusField} reason=${reason}`;
+          if (level === 'warn') {
+            console.warn(checkMsg);
+          } else {
+            console.log(checkMsg);
+          }
+          logGenerator(logFileName, level, checkMsg);
+
+          // WR-06 (20.4): los tres incrementos van AL FINAL de la etapa `log`, después de que la
+          // bitácora ya salió, y ése es el punto entero de dónde están escritos.
+          //
+          // Estaban arriba, justo después de `stage = 'log'`, y con `console.*` y `logGenerator`
+          // por delante. Ese orden rompía `probed === found + absent + skipped + unknown` cuando el
+          // que fallaba era el emisor de bitácora: el desenlace ya se había contado en su bucket, y
+          // el `probeUnknown++` del catch lo contaba OTRA VEZ. Un tick con dos OCs encontradas y un
+          // fallo de bitácora imprimía `probed=2 found=2 unknown=1` — tres desenlaces para dos
+          // sondas. Que los dos emisores fallen no es hipotético y este mismo bloque lo dice más
+          // arriba: `logGenerator` hace `fs.mkdirSync` fuera de todo try en su ruta de respaldo
+          // (LogGenerator.js:53-56) y `console.*` puede dar EPIPE mientras Servy rota
+          // servy-stdout.log.
+          //
+          // Contando al final no hace falta compensación de ningún tipo: si la bitácora lanza, el
+          // bucket nunca se tocó y el `probeUnknown++` del catch queda como el ÚNICO conteo de esa
+          // OC. La invariante se cumple sola. Es deliberadamente distinto de la compensación
+          // explícita (`probeAbsent--`) que el tramo `log-absent` trae desde la fase 20.3: aquélla
+          // corrige después, ésta no da lugar a la corrección. No "uniformices" ninguna de las dos
+          // hacia la otra sin re-hacer este razonamiento — la invariante no es interna, verificarla
+          // contra respuestas reales del portal es el punto 2 del UAT humano pendiente de la 20.3.
+          //
+          // No mover arriba, no mover dentro del `if (localStatus)`, no fusionar con el catch.
+          if (result === 'found') {
+            probeFound++;
+          } else if (result === 'cancelled') {
+            probeSkipped++;
+          } else {
+            probeUnknown++;
+          }
+          continue;
+        }
+
+        // 'absent': el portal contestó 200 y no tiene la OC. Único camino que sigue al bloque 4.2
+        // y hace POST exactamente como antes de esta fase.
+        probeAbsent++;
+        stage = 'log-absent';
+        const absentMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=absent id=n/a status=n/a reason=n/a`;
+        console.log(absentMsg);
+        logGenerator(logFileName, 'info', absentMsg);
+      } catch (probeErr) {
+        // Fail-closed (RETRY-D5): si no se pudo completar, no se hace POST y no se escribe nada.
+        // Nunca se relanza.
+        if (stage === 'log-absent') {
+          // El tramo absent ya había contado probeAbsent, y abajo se cuenta probeUnknown: sin este
+          // decremento el resumen imprimiría absent=1 unknown=1 con probed=1 y la invariante
+          // probed === found + absent + skipped + unknown (ver el cierre del bucle) dejaría de
+          // cumplirse. El desenlace efectivo de esta OC es unknown, no absent: no se posteó.
+          probeAbsent--;
+        }
+        probeUnknown++;
+        const detail = (probeErr && probeErr.message) ? probeErr.message : String(probeErr);
+        // La etapa se nombra en `reason=` en vez de afirmar siempre una escritura fallida: la
+        // bitácora es el único canal de diagnóstico en prod y decir `write-failed` de un fallo de
+        // la sonda o de la propia bitácora manda al operador al lugar equivocado.
+        const stageReason = stage === 'write' ? 'write-failed' : `${stage}-failed`;
+        const failMsg = `[PORTAL-CHECK] PO ${po.external_id} tenant=${databases[index]} result=unknown id=n/a status=n/a reason=${stageReason}`;
+        console.warn(failMsg);
+        console.error(`   -> ${detail}`);
+        logGenerator(logFileName, 'warn', failMsg);
+        logGenerator(logFileName, 'error', `[ERROR] Fallo en la etapa ${stage} de la sonda de PO ${po.external_id}: ${detail}`);
+        continue;
+      }
+    }
+
     // Imprimir el PO que realmente se enviará al API (después de limpiar placeholders y validación)
     let poToSend = { ...po };
     if (poToSend.cfdi_payment_method === '') delete poToSend.cfdi_payment_method;
     if (poToSend.requisition_number === 0) delete poToSend.requisition_number;
     //console.log('[DEBUG] PO FINAL a enviar al API:', JSON.stringify(poToSend, null, 2));
-
-    // 4.1) Comprobar si ya existe en fesaOCFocaltec
-    const checkSql = `
-      SELECT idFocaltec
-      FROM fesa.dbo.fesaOCFocaltec
-      WHERE ocSage    = '${po.external_id}'
-        AND idDatabase= '${databases[index]}'
-        AND idFocaltec IS NOT NULL
-        AND status = 'POSTED'
-    `;
-    const { recordset: existing } = await runQuery(checkSql, 'FESA');
-    if (existing.length > 0) {
-      logGenerator(logFileName, 'warn', `[WARN] PO ${po.external_id} ya procesada (POSTED), se omite.`);
-      continue;
-    }
 
     // 4.2) Limpiar placeholders
     //delete po.company_external_id;
@@ -258,6 +608,30 @@ order by A.PONUMBER, B.PORLREV;
           )
       `;
       await runQuery(sqlErr, 'FESA');
+
+      // Q3-01, sitio de captura 1 de 2 (fallo de Joi). Los dos sitios escriben una fila ERROR, así
+      // que los dos son "la subida falló"; cubrir sólo el POST dejaría muda toda rechazo de Joi.
+      //
+      // D-01 — AQUÍ NO SE MANDA CORREO. Este bloque corre una vez POR CADA OC que falla, dentro del
+      // bucle de tenants: un await a SMTP aquí multiplicaría los viajes de red por el número de
+      // fallos, gastaría justo el presupuesto de paso que la fase 20.4 existe para proteger, y
+      // produciría N correos donde el requisito pide UNO. El push es un append síncrono a un array;
+      // el único envío vive al final de la función, después de [PORTAL-CHECK-SUMMARY].
+      //
+      // Se usa ocKey, la clave RECORTADA — no po.external_id. Es la regla IN-04 de la 20.3: la fila
+      // debe llevar la clave con la que se preguntó a la tabla de control y con la que se leyó
+      // errorCounts, o un EXTERNAL_ID con espacios produciría una alerta con clave distinta de la
+      // fila que describe. respAPI va CRUDO: buildEomEmailHtml escapa y trunca a 100 caracteres, y
+      // hacerlo aquí lo aplicaría dos veces.
+      if (priorErrors === 0) {
+        poAlerts.push({
+          tenant: databases[index],
+          idOrPo: ocKey,
+          fechaAuth: today,
+          attempts: priorErrors + 1,
+          lastError: respAPI,
+        });
+      }
       continue;
     }
 
@@ -329,6 +703,135 @@ order by A.PONUMBER, B.PORLREV;
       `;
       await runQuery(sqlErr, 'FESA');
       logGenerator(logFileName, 'info', `[INFO] PO ${po.external_id} marcada ERROR en FESA: ${respAPI}`);
+
+      // Q3-01, sitio de captura 2 de 2 (fallo del POST al portal). Idéntico al sitio de Joi y bajo
+      // la misma condición derivada.
+      //
+      // D-01 — AQUÍ TAMPOCO SE MANDA CORREO, por las mismas tres razones: un await a SMTP dentro
+      // del bucle multiplica los viajes de red por el número de fallos, gasta el presupuesto de
+      // paso de la 20.4 y produce N correos donde el requisito pide UNO. Además este catch está en
+      // el bloque cuyo comentario S-3 de la 20.3 afirma que nada puede lanzar hacia afuera, y ya se
+      // sabe que esa afirmación no es cierta para logGenerator.
+      if (priorErrors === 0) {
+        poAlerts.push({
+          tenant: databases[index],
+          idOrPo: ocKey,
+          fechaAuth: today,
+          attempts: priorErrors + 1,
+          lastError: respAPI,
+        });
+      }
+    }
+  }
+
+  // Resumen [PORTAL-CHECK-SUMMARY] por tick (D-06), nunca por fila. Invariante que debe cumplirse
+  // siempre: probed === found + absent + skipped + unknown. Se omite cuando probed es 0 — el tick
+  // silencioso es el abrumadoramente común y una línea vacía por tick vuelve ilegible la bitácora.
+  //
+  // 20.4 D-07: la condición se ensancha con probeDeferred. Con el origen del reloj en la entrada de
+  // la función (D-01), el estado `probed === 0 && probeDeferred > 0` es ALCANZABLE: un SELECT que
+  // se come el presupuesto difiere la primera OC elegible sin haber sondeado ni una. Bajo la
+  // condición vieja ese tick no imprimía nada, así que el ÚNICO escenario verdaderamente malo era
+  // también el único mudo, y RETRY-E4 ("el rezago se vuelve visible") quedaba incumplido justo
+  // donde importa. Esto no contradice el razonamiento de la 20.3 para la omisión ("el tick
+  // silencioso es el abrumadoramente común"): un tick con deferred > 0 no es un tick silencioso, y
+  // un tick con ambos contadores en cero sigue sin imprimir nada.
+  //
+  // D-09: los cinco campos preexistentes conservan nombre, orden y ortografía; deferred= se agrega
+  // AL FINAL y no se reordena nada. Las aserciones de la 20.3 anclan el fin de línea con $, así que
+  // ese anclaje sigue prohibiendo un séptimo campo.
+  //
+  // D-08: la línea se queda en nivel info y NO se agrega una hermana en warn. El SPEC ya fija el
+  // criterio de escalamiento en su sección de riesgo aceptado — un deferred= que se mantenga
+  // distinto de cero en ticks consecutivos se vuelve un hallazgo propio con su propia fase — y un
+  // warn ahora se adelantaría a ese criterio con otro distinto.
+  //
+  // OJO al homónimo: deferred= también es un campo de la línea [RETRY] de más arriba, donde
+  // significa "retenida por el intervalo de reintento", no "retenida por el presupuesto de sondeo
+  // del tick". Son dos métricas distintas que comparten nombre de campo; lo que las desambigua es
+  // la ETIQUETA. Ni se renombran ni se fusionan, y cualquier cosa que parsee estas líneas debe
+  // anclar en la etiqueta, nunca en el nombre del campo suelto.
+  if (probed > 0 || probeDeferred > 0) {
+    const summaryMsg = `[PORTAL-CHECK-SUMMARY] tenant=${databases[index]} probed=${probed} found=${probeFound} absent=${probeAbsent} skipped=${probeSkipped} unknown=${probeUnknown} deferred=${probeDeferred}`;
+    console.log(summaryMsg);
+    logGenerator(logFileName, 'info', summaryMsg);
+  }
+
+  // Alerta inmediata de OCs que fallaron al subir (Q3-01, Q3-02 y la mitad de OCs de Q3-04).
+  //
+  // D-01, la decisión más importante de esta fase: el ÚNICO envío vive aquí, después del resumen y
+  // FUERA del bucle. Cuesta exactamente un viaje SMTP por tick sin importar cuántas OCs fallaron.
+  // DEVIATIONS.md proponía dispararlo desde el catch; eso daría N correos y N viajes de red.
+  //
+  // Las dos condiciones son necesarias y se leen anidadas a propósito: la exterior por el conteo,
+  // la interior por el interruptor de apagado. Escritas como una sola conjunción, el `else` que
+  // deja rastro del silenciamiento también se dispararía en cada tick limpio e imprimiría
+  // `pos=0 sent=false` para siempre. Anidadas, el tick sin fallos no emite nada (Q3-01) y el
+  // interruptor se lee UNA sola vez, en el sitio del envío y en ningún otro (Q3-04).
+  //
+  // El try/catch NO es sobre SMTP. sendOperatorReport sigue SIN lanzar: se traga el fallo de correo
+  // y lo registra en warn internamente (EmailSender.js), y eso no cambia — un servidor de correo
+  // muerto tiene que degradar las notificaciones y nada más. Lo que sí cambió en la fase 20.6 es
+  // que ahora DEVUELVE el desenlace del envío, así que este sitio de llamada por fin puede
+  // enterarse. Por eso el envío tiene DOS líneas de bitácora y no una, y por eso la de entrega
+  // perdida sube a warn nombrando las claves de las OCs afectadas: hasta hoy la bitácora afirmaba
+  // una entrega que no constaba. La lectura del resultado es fail-closed a propósito — sólo cuenta
+  // como entregado un resultado que lo AFIRME, y un valor ausente o malformado cuenta como perdido.
+  // No se agrega estado para reintentar la alerta perdida (D-03 de la 20.5 se conserva): lo que se
+  // gana es que el operador pueda encontrar con un grep las OCs cuyo aviso se perdió, y sepa que su
+  // rezago sólo reaparecerá en el correo consolidado de cierre de mes.
+  //
+  // El catch sigue haciendo falta por el RESTO del camino de notificación, que corre entero aquí:
+  // buildEomEmailHtml, el armado del asunto y el propio logGenerator — que según la nota S-3 de la
+  // 20.3 SÍ puede lanzar. createPurchaseOrders se ejecuta dentro de withStepTimeout dentro de
+  // forResponse, así que una excepción en este bloque reprobaría el paso completo del tenant
+  // DESPUÉS de que los INSERT de la tabla de control ya se comprometieron, y a cambio de un correo.
+  // La asimetría no admite discusión: la alerta es una notificación, el tick es el trabajo.
+  //
+  // JAMÁS relanzar desde este catch. Relanzar es exactamente el único cambio que volvería a poner
+  // el tick a merced del camino de notificación. Y no se pierde nada silenciosamente: la OC
+  // alertada y no resuelta sigue apareciendo en el correo consolidado de cierre de mes (Q3-05), que
+  // es el respaldo que vuelve segura la semántica de "una sola alerta" (D-05).
+  //
+  // La etiqueta PO-ALERT es deliberada: la Guarda 9 de la 20.3 prohíbe cualquier hermana del
+  // prefijo PORTAL-CHECK que no sea la de resumen, y PO-ALERT queda fuera de ese espacio de
+  // nombres. NO renombrarla a una hermana de ese prefijo — la guarda la rechazaría, y con razón.
+  // Ningún comentario de este archivo escribe un nombre de etiqueta ENTRE CORCHETES: las guardas
+  // leen el fuente entero, comentarios incluidos, y las cuentan por aparición literal. Mencionar
+  // una etiqueta entre corchetes en prosa la contaría como un sitio de emisión más.
+  // Una línea por tick, jamás por fila: el punto entero del acumulador es que la bitácora del
+  // operador no escale con el número de fallos.
+  const poAlertCount = poAlerts.length;
+  if (poAlertCount > 0) {
+    if (config.notifications.poAlert.enabled) {
+      try {
+        const subject = `[SageConnect] OCs con fallo de carga — ${databases[index]} — ${poAlertCount}`;
+        const html = buildEomEmailHtml(poAlerts, 'pos', 'po-alert');
+        const delivery = await sendOperatorReport({ subject, html, callerLogFile: logFileName });
+        if (delivery && delivery.delivered === true) {
+          logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=true`);
+        } else {
+          // La cota de 20 claves y los 200 caracteres del texto de error son deliberados: la línea
+          // sigue siendo UNA por tick, jamás una por fila, y su longitud queda acotada aunque el
+          // lote sea grande. El recorte es síncrono sobre el array local que ya existe — no nace
+          // ninguna estructura de módulo, no se guarda nada y no se lee nada de disco.
+          //
+          // Se emiten las claves RECORTADAS (regla IN-04 de la 20.3), las mismas con las que se
+          // preguntó a la tabla de control, para que el grep del operador case con la fila que
+          // describe. Del error sale sólo el texto que la fase 20.6 dejó en el resultado, con los
+          // espacios colapsados para que un mensaje multilínea no arrastre contexto a la bitácora.
+          const ocs = poAlerts.slice(0, 20).map((a) => a.idOrPo).join(',');
+          const overflow = poAlertCount > 20 ? `,+${poAlertCount - 20}` : '';
+          const why = String((delivery && delivery.error) || 'sin detalle').replace(/\s+/g, ' ').trim().slice(0, 200);
+          logGenerator(logFileName, 'warn', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=undelivered ocs=${ocs}${overflow} err=${why}`);
+        }
+      } catch (alertErr) {
+        // Nivel warn, no error: el tick hizo su trabajo y sólo se perdió la notificación.
+        logGenerator(logFileName, 'warn', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=error: ${alertErr.message}`);
+      }
+    } else {
+      // Una alerta silenciada que no deja rastro es indistinguible de una rota.
+      logGenerator(logFileName, 'info', `[PO-ALERT] tenant=${databases[index]} pos=${poAlertCount} sent=false reason=disabled`);
     }
   }
 }

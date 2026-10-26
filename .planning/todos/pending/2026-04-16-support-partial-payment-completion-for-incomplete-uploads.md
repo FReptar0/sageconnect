@@ -2,6 +2,7 @@
 created: 2026-04-16T14:48:22.382Z
 title: Support partial payment completion for incomplete uploads
 area: api
+resolves_phase: 21
 files:
   - src/controller/PortalPaymentController.js
   - src/scripts/payment-reconciliation.js

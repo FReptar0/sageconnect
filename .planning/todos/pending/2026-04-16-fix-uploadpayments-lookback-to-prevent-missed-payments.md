@@ -2,6 +2,7 @@
 created: 2026-04-16T14:48:22.382Z
 title: Fix uploadPayments lookback to prevent missed payments
 area: api
+resolves_phase: 20
 files:
   - src/controller/PortalPaymentController.js:70
   - src/scripts/payment-reconciliation.js:545

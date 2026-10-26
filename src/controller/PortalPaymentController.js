@@ -1,11 +1,11 @@
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
-const { getCurrentDateCompact } = require('../utils/TimezoneHelper');
 const { resolveProviderIdByExternalId } = require('../services/ProviderIdResolver');
 const { resolveUuidByFolio } = require('../services/UuidResolver');
 const portalClient = require('../utils/PortalClient');
 const notifier = require('node-notifier');
 const config = require('../config');
+const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -16,9 +16,7 @@ const database = config.portal.tenants.map(t => t.database);
 async function uploadPayments(index) {
     const logFileName = 'PortalPaymentController';
     try {
-        const currentDate = getCurrentDateCompact();
-
-        console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]} - Fecha desde: ${currentDate}`);
+        console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]}`);
 
         const queryEncabezadosPago = `
 SELECT A.* FROM (
@@ -58,16 +56,24 @@ SELECT A.* FROM (
             RIGHT(LEFT(RIGHT('00000000' + CONVERT(varchar(8), P.AUDTTIME), 8), 6), 2)
         ),
         SYSDATETIME()
-    ) AS DIFERENCIA_MINUTOS
+    ) AS DIFERENCIA_MINUTOS,
+    ef.errorCount  AS errorCount,
+    ef.lastErrorAt AS lastErrorAt,
+    -- D-01: reloj único para la comparación de reintentos. Sale del MISMO SELECT que
+    -- lastErrorAt, así que cualquier reinterpretación de zona horaria del driver aplica a
+    -- ambos operandos y se cancela en la resta. D-05: GETDATE() en una lista SELECT es una
+    -- constante de runtime por statement, así que todas las filas del tick comparten un dbNow.
+    GETDATE()      AS dbNow
     FROM APBTA B
     JOIN BKACCT BK ON B.IDBANK    = BK.BANK
     JOIN APTCR   P  ON B.PAYMTYPE  = P.BTCHTYPE
         AND B.CNTBTCH   = P.CNTBTCH
+    ${buildErrorStatsApply({ fesaTable: 'fesa.dbo.fesaPagosFocaltec', joinColumn: 'NoPagoSage', joinKey: 'P.DOCNBR', dbAlias: database[index], dbColumn: 'idCia', timestampColumn: 'none' })}
     WHERE B.PAYMTYPE   = 'PY'
         AND B.BATCHSTAT  = 3
         AND P.ERRENTRY   = 0
         AND P.RMITTYPE   = 1
-        AND P.AUDTDATE   >= ${currentDate}
+        AND ${buildScopeWhere(config.retry, { dateField: 'CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE))' })}
         AND P.DOCNBR NOT IN (
     SELECT NoPagoSage
         FROM fesa.dbo.fesaPagosFocaltec
@@ -107,6 +113,58 @@ SELECT A.* FROM (
             });
 
         console.log(`[INFO] Recuperados ${payments.recordset.length} registros de pagos (con al menos 60 minutos de antigüedad).`);
+
+        // RETRY-C4 (D-01, D-04, D-05): JS post-filter for the fixed retry interval.
+        // OUTER APPLY ef gave us errorCount + lastErrorAt per payment row; defer rows whose last
+        // ERROR is still inside the payment interval (config.retry.interval.payment).
+        // The whole eligibility rule — including "first attempt" (no lastErrorAt => eligible now) —
+        // lives in computeRetryEligibility and is deliberately NOT re-implemented here, so it
+        // cannot drift from the PO controller or po-cron-diagnostic. errorCount no longer feeds
+        // the timing math (D-04); it survives only as operator log context (attempts=).
+        //
+        // 20.2 D-01: `now` ya NO es el reloj del proceso Node — se toma del dbNow que proyecta
+        // el mismo SELECT que produjo lastErrorAt, resuelto una sola vez por lote (D-05).
+        // Nota (CR-03): para pagos, lastErrorAt es estructuralmente siempre null —
+        // fesa.dbo.fesaPagosFocaltec tiene sólo cuatro columnas (idCia, NoPagoSage, status,
+        // idFocaltec) y ninguna de tiempo, así que el fragmento emite CAST(NULL AS datetime).
+        // Ninguna fila puede diferirse hasta que CR-03 agregue la columna; el reloj único queda
+        // correcto de antemano para que ese día no haya que volver a tocar esta ruta.
+        const _candidatesCount = payments.recordset.length;
+        const _dbNow = _candidatesCount > 0 ? payments.recordset[0].dbNow : null;
+        // Una sola línea por tick, nunca por fila (CLAUDE.md §3): el helper no puede distinguir
+        // un dbNow ausente de una omisión deliberada, así que la condición se hace grepeable.
+        if (_candidatesCount > 0 && !_dbNow) {
+            logGenerator(logFileName, 'warn',
+                `[RETRY-CLOCK] tenant=${database[index]} dbNow=missing fallback=node-clock`);
+        }
+        const _intervalMin = getRetryIntervalMinutes(config.retry.interval, 'payment');
+        const _deferred = [];
+        payments.recordset = payments.recordset.filter((row) => {
+            const { eligible, nextEligibleAt } = computeRetryEligibility({
+                lastErrorAt: row.lastErrorAt,
+                intervalMinutes: _intervalMin,
+                now: _dbNow,
+            });
+            if (!eligible) {
+                _deferred.push({ id: row.external_id, attempts: row.errorCount || 0, nextEligibleAt });
+                return false;
+            }
+            return true;
+        });
+        // Per CONTEXT D-05: per-row [RETRY-DEFER] log entries
+        _deferred.forEach((d) => {
+            logGenerator(logFileName, 'info',
+                `[RETRY-DEFER] Pago ${d.id} tenant=${database[index]} attempts=${d.attempts} nextEligibleAt=${d.nextEligibleAt.toISOString()}`);
+        });
+        // Per CONTEXT D-05: rolled-up [RETRY] summary
+        logGenerator(logFileName, 'info',
+            `[RETRY] tenant=${database[index]} candidates=${_candidatesCount} deferred=${_deferred.length} processing=${payments.recordset.length}`);
+        // ROADMAP SC4: línea observable por tick — confirma que un cambio de RETRY_SCOPE surtió efecto.
+        const _retryWindow = config.retry.scope === 'last_n_days'
+            ? `last ${config.retry.lookbackDays} days`
+            : 'current calendar month';
+        logGenerator(logFileName, 'info',
+            `[CRON] retry-scope=${config.retry.scope} window=${_retryWindow}`);
 
         // Log de información sobre minutos transcurridos para cada pago
         if (payments.recordset.length > 0) {

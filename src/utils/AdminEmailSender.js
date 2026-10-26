@@ -23,6 +23,51 @@ const config = require('../config');
 const { logGenerator } = require('./LogGenerator');
 
 /**
+ * CR-01 (fase 20.6): los tres timeouts de nodemailer -- el de la conexion TCP, el del saludo
+ * 220 y el de inactividad del socket, tal como se declaran abajo en el unico transportConfig
+ * de este modulo -- salen de una sola variable, MAIL_TIMEOUT_MS, igual que en los dos call
+ * sites de src/utils/EmailSender.js desde la fase 20.5 (Q3-06).
+ *
+ * Esto NO agrega un tier a la invariante de CLAUDE.md §9: mete este remitente en el tier SMTP
+ * que ya existia. Hasta la fase 20.6 el unico `await sendAdminAlert(...)` que corria dentro de
+ * un paso vivia en una rama inalcanzable, de modo que la invariante se sostenia por vacio;
+ * volver alcanzable esa rama la puso a prueba de verdad. Sin estas tres opciones el envio
+ * hereda los defaults de la libreria, y el mas largo de ellos es mayor que el presupuesto de
+ * paso: un SMTP que acepta el TCP y se queda mudo se come el paso entero y le sobrevive como
+ * continuacion fantasma.
+ *
+ * Los nombres de las tres opciones se escriben UNICAMENTE en el transportConfig y no en este
+ * comentario, a proposito: la fase verifica por conteo de OCURRENCIAS que cada nombre aparezca
+ * exactamente una vez -- este modulo tiene un solo call site, a diferencia de EmailSender.js,
+ * que tiene dos y por eso su guarda vale 2 -- y ese conteo es la guarda que detectaria un call
+ * site al que le falte una opcion. Mencionarlos aqui inflaria el conteo y la cegaria.
+ *
+ * La conjuncion `config.notifications && ...` es load-bearing, no defensiva por gusto:
+ * tests/controller/Providers_Downloader.xml-error.test.js mockea ../../src/config SIN la llave
+ * `notifications` y carga este modulo REAL. Con un acceso directo esa suite verde de 5 casos
+ * se pondria roja con un TypeError. El respaldo NO es fail-open: src/config.js sale con exit 1
+ * al arranque salvo que la llave sea entera, >= 1000 y estrictamente < STEP_TIMEOUT_MS, asi que
+ * en un servicio corriendo esta rama es inalcanzable.
+ *
+ * Se lee POR ENVIO y no se captura al cargar el modulo, por la misma razon que en
+ * EmailSender.js: toda otra lectura de configuracion de este codigo resuelve en el punto de
+ * uso, y congelarla en el require la volveria materialmente mas dificil de ejercitar desde una
+ * prueba.
+ *
+ * El numero de respaldo de abajo es el default DOCUMENTADO y debe seguir siendo igual al
+ * default de MAIL_TIMEOUT_MS en src/config.js y al de .env.example. Si uno de los tres se
+ * mueve, se mueven los tres.
+ *
+ * El accesor es PRIVADO del modulo: no se exporta, asi que no hay llamador rio abajo.
+ *
+ * @returns {number} milisegundos para los tres timeouts de nodemailer
+ */
+function mailTimeoutMs() {
+    const configured = config.notifications && config.notifications.mailTimeoutMs;
+    return Number.isInteger(configured) ? configured : 30000;
+}
+
+/**
  * Send an alert email to the LICENSE_ADMIN_EMAIL recipient.
  *
  * @param {string} subject       — already includes the [SageConnect] prefix when called.
@@ -34,10 +79,15 @@ const { logGenerator } = require('./LogGenerator');
 async function sendAdminAlert(subject, html, callerLogFile) {
     const logFile = callerLogFile || 'AdminEmailSender';
     try {
+        // CR-01: un solo valor por envio, para que un mismo send no use tres numeros distintos.
+        const mailTimeout = mailTimeoutMs();
         const transportConfig = {
             host: config.mailing.server,
             port: config.mailing.port,
             secure: config.mailing.ssl,
+            connectionTimeout: mailTimeout,
+            greetingTimeout: mailTimeout,
+            socketTimeout: mailTimeout,
         };
         if (config.mailing.password) {
             transportConfig.auth = {
