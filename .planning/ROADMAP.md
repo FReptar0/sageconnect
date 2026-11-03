@@ -19,6 +19,7 @@
 - [ ] **Phase 20.4: Bound the portal existence probe per tick** (INSERTED) — Tope doble (presupuesto de tiempo + tope de conteo, lo que ocurra primero) sobre la sonda de la fase 20.3, para que no pueda consumir los 5 min del paso `createPurchaseOrders`. Lo que rebase el tope se difiere fail-closed al siguiente tick y aparece como `deferred=` en `[PORTAL-CHECK-SUMMARY]`. Cierra WR-05.
 - [ ] **Phase 20.5: Q3 differentiated alerts** (INSERTED) — Cierra la desviacion Q3 del acta del 2026-05-20: **POs con alerta inmediata** al detectar el fallo de carga (agrupada por tick, una sola alerta por OC derivada de `errorCount` — sin estado nuevo) y **pagos con reporte quincenal** de pendientes acumulados (periodos naturales 1-15 / 16-fin). El correo de cierre de mes de la fase 20 se conserva: responde una pregunta distinta (Q1).
 - [x] **Phase 20.6: Correo quincenal con variante propia y entrega de correo senalizada** (completed 2026-09-10) — Cierra los dos BLOCKER de la revision de codigo de la 20.5: el reporte quincenal sale con el texto del cierre de mes (CR-02), y «enviado» se registra aunque SMTP falle, lo que apaga para siempre la alerta de esa OC (CR-03).
+- [ ] **Phase 20.7: Resumen diario de reintentos sin exito** (INSERTED) — Un solo correo al final del día con lo que se reintentó sin éxito (OCs y pagos, agrupado por motivo) en lugar del aviso inmediato por OC. Apagado por omisión.
 - [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
 <details>
@@ -287,6 +288,15 @@ Plans:
 - [x] 20.6-07-PLAN.md (wave 2, dep 06, gap_closure, separable) — WR-01: `escapeHtml` se exporta de `EomNotification.js` y envuelve las cuatro interpolaciones del cuerpo del escalamiento (`src/background.js:478`), donde entraba cruda la respuesta del servidor SMTP. Se cito la aprobacion `aprobar-ambos-06-07` en vez de abrir un segundo punto de control. Dos lineas de `src/background.js` y ni una mas: el comentario que el plan pedia NO se escribio, por respetar el alcance acotado por escrito. Verificado por **tres** mutaciones en vivo — la del plan sobre el asunto resulto un no-op semantico (novena ocurrencia del defecto de conteo de la fase) y se sustituyo por una sobre el centinela, que si discrimina [WR-01]
 - [x] 20.6-08-PLAN.md (wave 1, gap_closure, separable) — WR-04: seis casos que fijan por asercion la propiedad «ausente o malformado = no entregado» en los tres sitios de llamada. Cero lineas de `src/` tocadas; verificado por **cinco** mutaciones en vivo — las dos del plan (M-1 ausente-como-entregado, M-2 igualdad laxa) mas **M-3** (sin guarda de nulidad), anadida porque sin ella no quedaba demostrado que el doble ausente hiciera falta [WR-04]
 
+### Phase 20.7: Resumen diario de reintentos sin exito (INSERTED)
+**Goal**: Sustituir el aviso inmediato por OC de la 20.5 por UN correo al final del día con lo que se reintentó sin éxito ese día — OCs y pagos, agrupado por motivo —, como se acordó con Santiago en la revisión del 2026-10-29. Sale apagado por omisión y se enciende con una línea del `.env` cuando se limpie el rezago.
+**Depends on**: Phase 20.6 (la capa de notificación tal como quedó en `b0b40e7`).
+**Requirements**: por definir en `20.7-SPEC.md`.
+**Plans**: 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 20.7 to break down)
+
 
 ### Phase 21: Partial payment completion policy
 **Goal**: Decide and implement what happens when a multi-CFDI payment fails partway through upload, so operators stop seeing inconsistent partial state in the portal vs. the control table. Introduce `PARTIAL_PAYMENT_POLICY` env with three valid values — `atomic` (mark entire payment ERROR + surface to operator), `resume` (retry only the unfinished CFDIs), `idempotent` (re-POST the whole payment relying on portal dedupe by `external_id`). The default is set in `.env.example` based on the engineering verification of portal dedupe semantics in the sandbox (PARTIAL-02), which is part of the phase and blocks `/gsd-plan-phase`.
@@ -330,6 +340,7 @@ Plans:
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
 | 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
+| 20.7 Resumen diario           | v2.4      | 0/0            | Pending  | —          |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
