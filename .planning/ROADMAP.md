@@ -291,7 +291,7 @@ Plans:
 ### Phase 20.7: Resumen diario de reintentos sin exito (INSERTED)
 **Goal**: Sustituir el aviso inmediato por OC de la 20.5 por UN correo al final del día con lo que se reintentó sin éxito ese día — OCs y pagos, agrupado por motivo —, como se acordó con Santiago en la revisión del 2026-10-29. Sale apagado por omisión y se enciende con una línea del `.env` cuando se limpie el rezago.
 **Depends on**: Phase 20.6 (la capa de notificación tal como quedó en `b0b40e7`).
-**Requirements**: por definir en `20.7-SPEC.md`.
+**Requirements**: RD-01, RD-02, RD-03, RD-04, RD-05, RD-06, RD-07, RD-08, RD-09, RD-10, RD-11, RD-12, RD-13, RD-14 (definidos en `20.7-SPEC.md`, 28 casillas de aceptación).
 **Plans**: 0 plans
 
 Plans:
