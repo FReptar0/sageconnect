@@ -18,6 +18,7 @@ const { runQuery } = require('./utils/SQLServerConnection');
 const { shouldDispatchEom, shouldDispatchPaymentReport, paymentPeriodOf, buildEomEmailHtml, writeSentinelAtomically, escapeHtml } = require('./utils/EomNotification');
 const { sendOperatorReport } = require('./utils/EmailSender');
 const { sendAdminAlert } = require('./utils/AdminEmailSender');
+const { dispatchDailySummaryIfDue } = require('./services/DailySummaryService');
 const { buildScopeWhere } = require('./utils/RetryPolicy');
 
 /**
@@ -379,6 +380,35 @@ async function forResponse(options = {}) {
                 });
             }
             // Continue with next tenant even if current one fails
+        }
+    }
+
+    // Fase 20.7 (D-03, D-10): el resumen diario de lo que se reintentó sin éxito. Va después
+    // del recorrido de empresas porque resume lo que esta ejecución acaba de hacer, y usa el
+    // reloj tomado al empezar la ejecución, el mismo de los dos bloques de aviso de arriba.
+    // Corre en toda ejecución, automática o desde el botón: el candado del ciclo las serializa
+    // y el estado del día en disco decide si toca enviar. Tiene su propio paso envuelto y su
+    // propio catch, así que no reprueba la ejecución. No agrega pasos al panel: el aviso de
+    // terminación sale después, con un retraso acotado por el tiempo de un paso. La llave se
+    // lee con encadenamiento opcional (D-40): si no existe cuenta como apagada y no se arma nada.
+    if (config.notifications?.dailySummary?.enabled === true) {
+        const __step = 'dailySummary';
+        try {
+            await withStepTimeout(
+                dispatchDailySummaryIfDue(date, config),
+                config.schedule.stepTimeoutMs,
+                `step=${__step}`
+            );
+        } catch (stepErr) {
+            const __stepError = stepErr.message || String(stepErr);
+            if (/Step timeout/.test(__stepError)) {
+                logGenerator(logFileName, 'error',
+                    `[TIMEOUT] step=${__step} tenant=global url=n/a ` +
+                    `durationMs=${config.schedule.stepTimeoutMs} err=${__stepError}`);
+            }
+            // Mismo criterio que los dos bloques de aviso de arriba: el resumen es best-effort y
+            // la ejecución debe terminar. No se relanza.
+            logGenerator('EomNotification', 'error', `[DAILY-SUMMARY] status=dispatch-failed err=${__stepError}`);
         }
     }
 
