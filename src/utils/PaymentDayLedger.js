@@ -257,20 +257,24 @@ function emptyPaymentDayLedger(dateISO) {
  * Mezcla la corrida de una empresa en el registro del día. Devuelve un objeto NUEVO y no muta
  * `data`: conserva los campos de la raíz, incluido `recoveredAt`, y las demás empresas tal cual.
  *
- * Empresa: `{ runs, lastRunAt, queryFailures, lastQueryError, payments }`. `runs` suma 1 y
- * `lastRunAt = runAt` en cada llamada, aunque `results` venga vacío (D-18: un archivo ausente
- * quiere decir que ese día no corrió la subida de pagos). Un `queryError` presente suma 1 a
- * `queryFailures` y queda en `lastQueryError`, para que el resumen no confunda una consulta
- * fallida con un día sin pendientes (D-27).
+ * Empresa: `{ runs, lastRunAt, queryFailures, lastQueryError, runFailures, lastRunError,
+ * payments }`. `runs` suma 1 y `lastRunAt = runAt` en cada llamada, aunque `results` venga vacío
+ * (D-18: un archivo ausente quiere decir que ese día no corrió la subida de pagos). Un
+ * `queryError` presente suma 1 a `queryFailures` y queda en `lastQueryError`, para que el resumen
+ * no confunda una consulta fallida con un día sin pendientes (D-27). Un `runError` presente (la
+ * corrida se interrumpió en el catch externo de uploadPayments) suma 1 a `runFailures` y queda en
+ * `lastRunError`, por la misma razón (WR-05). Un registro escrito antes de esos dos campos cuenta
+ * desde cero.
  *
  * Pago: `{ outcome, code, description, vendor, fechaRegistro, attempts, firstAt, lastAt,
  * invoices? }` (buildPaymentEntry). Un resultado con `outcome` fuera de LEDGER_OUTCOMES o con un
  * DOCNBR vacío se ignora. Textos a 500 caracteres y facturas a 50 por pago (RD-10).
  *
  * @param {object} data - Registro del día, legible o vacío.
- * @param {{tenantDb: string, runAt: string, results: (Map|Array), queryError: *}} run - `results`
- *   es un Map (o un arreglo de pares) DOCNBR → `{ outcome, code?, description?, vendor?,
- *   fechaRegistro?, invoices? }`; `runAt` es `YYYY-MM-DDTHH:MM:SS`.
+ * @param {{tenantDb: string, runAt: string, results: (Map|Array), queryError: *, runError: *}} run
+ *   `results` es un Map (o un arreglo de pares) DOCNBR → `{ outcome, code?, description?, vendor?,
+ *   fechaRegistro?, invoices? }`; `runAt` es `YYYY-MM-DDTHH:MM:SS`. `queryError` y `runError`
+ *   undefined o null quieren decir que no hubo esa falla.
  * @returns {object}
  * @throws {TypeError} Si `data`, `tenantDb`, `runAt` o `results` no tienen la forma esperada.
  */
@@ -278,7 +282,7 @@ function mergePaymentRun(data, run) {
     if (!isPlainObject(data)) {
         throw new TypeError('mergePaymentRun: data debe ser un objeto');
     }
-    const { tenantDb, runAt, results, queryError } = isPlainObject(run) ? run : {};
+    const { tenantDb, runAt, results, queryError, runError } = isPlainObject(run) ? run : {};
     if (typeof tenantDb !== 'string' || tenantDb.trim() === '' || tenantDb === '__proto__') {
         throw new TypeError('mergePaymentRun: tenantDb debe ser texto no vacío');
     }
@@ -305,11 +309,15 @@ function mergePaymentRun(data, run) {
 
     const failed = queryError !== undefined && queryError !== null;
     const prevFailures = isCount(prevTenant.queryFailures) ? prevTenant.queryFailures : 0;
+    const interrupted = runError !== undefined && runError !== null;
+    const prevRunFailures = isCount(prevTenant.runFailures) ? prevTenant.runFailures : 0;
     const tenantEntry = {
         runs: (isCount(prevTenant.runs) ? prevTenant.runs : 0) + 1,
         lastRunAt: runAt,
         queryFailures: failed ? prevFailures + 1 : prevFailures,
         lastQueryError: failed ? errorText(queryError) : presentText(prevTenant.lastQueryError),
+        runFailures: interrupted ? prevRunFailures + 1 : prevRunFailures,
+        lastRunError: interrupted ? errorText(runError) : presentText(prevTenant.lastRunError),
         payments,
     };
 
@@ -328,9 +336,10 @@ function mergePaymentRun(data, run) {
  * él (WR-02). Mezcla con mergePaymentRun y escribe con writeSentinelAtomically (el temporal y
  * luego el rename): si algo falla, el archivo anterior queda intacto.
  *
- * @param {{logsRoot: string, dateISO: string, tenantDb: string, runAt: string, results: (Map|Array), queryError: *}} args
+ * @param {{logsRoot: string, dateISO: string, tenantDb: string, runAt: string, results: (Map|Array), queryError: *, runError: *}} args
  *   `runAt` es la hora de pared en TIMEZONE (`YYYY-MM-DDTHH:MM:SS`) de la misma lectura del reloj
- *   que dio `dateISO`; la toma quien llama, una vez por corrida.
+ *   que dio `dateISO`; la toma quien llama, una vez por corrida. `queryError` y `runError` pasan
+ *   tal cual a mergePaymentRun.
  * @returns {{ok: boolean, previous: ('missing'|'ok'|'unreadable'|'corrupt'|null), recovered: boolean, file: (string|null), error: (string|null)}}
  *   `previous` es lo que se encontró en disco (`null` si no se llegó a leer); `recovered` solo es
  *   `true` si el archivo dañado sí quedó reiniciado.
@@ -339,7 +348,7 @@ function recordPaymentRun(args) {
     let file = null;
     let previous = null;
     try {
-        const { logsRoot, dateISO, tenantDb, runAt, results, queryError } = isPlainObject(args) ? args : {};
+        const { logsRoot, dateISO, tenantDb, runAt, results, queryError, runError } = isPlainObject(args) ? args : {};
         file = ledgerFilePath(logsRoot, dateISO);
         const current = readPaymentDayLedger(file, dateISO);
         previous = current.status;
@@ -359,7 +368,7 @@ function recordPaymentRun(args) {
         } else {
             base = emptyPaymentDayLedger(dateISO);
         }
-        const next = mergePaymentRun(base, { tenantDb, runAt, results, queryError });
+        const next = mergePaymentRun(base, { tenantDb, runAt, results, queryError, runError });
         writeSentinelAtomically(file, next);
         return { ok: true, previous, recovered, file, error: null };
     } catch (err) {

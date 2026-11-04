@@ -1343,6 +1343,33 @@ describe('buildDailySummaryModel: cifras y notas de fuentes que faltan (RD-04, R
         expect(model.notes[0]).toContain('2 de 5');
     });
 
+    test('WR-05: una subida de pagos interrumpida en 2 de 5 corridas → una nota que lo dice y, sin pendientes, el asunto dice «datos incompletos» y no «sin pendientes»', () => {
+        const model = buildModel({
+            ledger: okLedger({ COPDAT: tenantLedger({ PY0001: ledgerEntry('uploaded') }, {
+                runs: 5,
+                runFailures: 2,
+                lastRunError: "Cannot read properties of null (reading 'toString')",
+            }) }),
+        });
+        expect(model.notes).toEqual(["La subida de pagos de COPDAT se interrumpió en 2 de 5 corridas del día (último error: Cannot read properties of null (reading 'toString'))."]);
+        expect(model.incomplete).toBe(true);
+        expect(model.pendingTotal).toBe(0);
+        expect(buildDailySummarySubject(model)).toBe('[SageConnect] Resumen del día 2026-11-03 — datos incompletos');
+        expect(buildDailySummaryHtml(model)).toContain('No se encontraron pendientes, pero los datos están incompletos');
+    });
+
+    test('WR-05: sin último error la nota de la corrida interrumpida no lleva paréntesis; runFailures en 0 o ausente no deja nota', () => {
+        const without = buildModel({
+            ledger: okLedger({ COPDAT: tenantLedger({}, { runs: 3, runFailures: 1, lastRunError: null }) }),
+        });
+        expect(without.notes).toEqual(['La subida de pagos de COPDAT se interrumpió en 1 de 3 corridas del día.']);
+        const zero = buildModel({
+            ledger: okLedger({ COPDAT: tenantLedger({}, { runFailures: 0, lastRunError: null }) }),
+        });
+        expect(zero.notes).toEqual([]);
+        expect(zero.incomplete).toBe(false);
+    });
+
     test('oc-errors fallida → nota con la empresa y el error; si fue la única empresa, ocPending es null', () => {
         const model = buildModel({ sourceFailures: [{ tenant: 'COPDAT', source: 'oc-errors', error: "Invalid object name 'Autoriza_OC'" }] });
         expect(model.notes).toEqual(["No se pudieron leer las OCs con error de COPDAT: Invalid object name 'Autoriza_OC'."]);

@@ -471,20 +471,34 @@ describe('mergePaymentRun', () => {
 
     test('un Map vacío suma 1 a runs y fija lastRunAt', () => {
         const out = mergePaymentRun(emptyPaymentDayLedger(D), { tenantDb: TENANT, runAt: T1, results: new Map() });
-        expect(out.tenants[TENANT]).toEqual({ runs: 1, lastRunAt: T1, queryFailures: 0, lastQueryError: null, payments: {} });
+        expect(out.tenants[TENANT]).toEqual({ runs: 1, lastRunAt: T1, queryFailures: 0, lastQueryError: null, runFailures: 0, lastRunError: null, payments: {} });
         const again = mergePaymentRun(out, { tenantDb: TENANT, runAt: T2, results: new Map() });
-        expect(again.tenants[TENANT]).toEqual({ runs: 2, lastRunAt: T2, queryFailures: 0, lastQueryError: null, payments: {} });
+        expect(again.tenants[TENANT]).toEqual({ runs: 2, lastRunAt: T2, queryFailures: 0, lastQueryError: null, runFailures: 0, lastRunError: null, payments: {} });
     });
 
     test('queryError suma 1 a queryFailures y guarda el texto; una corrida sin error no lo borra', () => {
         const message = 'Timeout: Request failed to complete in 180000ms';
         const first = mergePaymentRun(emptyPaymentDayLedger(D), { tenantDb: TENANT, runAt: T1, results: new Map(), queryError: message });
-        expect(first.tenants[TENANT]).toEqual({ runs: 1, lastRunAt: T1, queryFailures: 1, lastQueryError: message, payments: {} });
+        expect(first.tenants[TENANT]).toEqual({ runs: 1, lastRunAt: T1, queryFailures: 1, lastQueryError: message, runFailures: 0, lastRunError: null, payments: {} });
         const second = mergePaymentRun(first, { tenantDb: TENANT, runAt: T2, results: new Map(), queryError: null });
-        expect(second.tenants[TENANT]).toEqual({ runs: 2, lastRunAt: T2, queryFailures: 1, lastQueryError: message, payments: {} });
+        expect(second.tenants[TENANT]).toEqual({ runs: 2, lastRunAt: T2, queryFailures: 1, lastQueryError: message, runFailures: 0, lastRunError: null, payments: {} });
         const third = mergePaymentRun(second, { tenantDb: TENANT, runAt: T3, results: new Map(), queryError: 'ECONNRESET' });
         expect(third.tenants[TENANT].queryFailures).toBe(2);
         expect(third.tenants[TENANT].lastQueryError).toBe('ECONNRESET');
+    });
+
+    test('WR-05: runError suma 1 a runFailures y guarda el texto, aparte de queryFailures; una corrida sin error no lo borra', () => {
+        const message = "Cannot read properties of null (reading 'toString')";
+        const first = mergePaymentRun(emptyPaymentDayLedger(D), { tenantDb: TENANT, runAt: T1, results: new Map(), runError: message });
+        expect(first.tenants[TENANT]).toEqual({ runs: 1, lastRunAt: T1, queryFailures: 0, lastQueryError: null, runFailures: 1, lastRunError: message, payments: {} });
+        const second = mergePaymentRun(first, { tenantDb: TENANT, runAt: T2, results: new Map(), runError: null });
+        expect(second.tenants[TENANT]).toEqual({ runs: 2, lastRunAt: T2, queryFailures: 0, lastQueryError: null, runFailures: 1, lastRunError: message, payments: {} });
+        const third = mergePaymentRun(second, { tenantDb: TENANT, runAt: T3, results: new Map(), runError: 'x'.repeat(600) });
+        expect(third.tenants[TENANT].runFailures).toBe(2);
+        expect(third.tenants[TENANT].lastRunError).toBe('x'.repeat(500));
+        // Un registro escrito antes de WR-05, sin los dos campos, cuenta desde cero.
+        const legacy = mergePaymentRun(validLedger(), { tenantDb: TENANT, runAt: T2, results: new Map(), runError: 'boom' });
+        expect(legacy.tenants[TENANT]).toEqual(expect.objectContaining({ runs: 2, runFailures: 1, lastRunError: 'boom', queryFailures: 0 }));
     });
 
     test('un data con recoveredAt en la raíz devuelve el mismo recoveredAt y los demás campos de la raíz', () => {
@@ -524,7 +538,7 @@ describe('mergePaymentRun', () => {
         expect(Object.keys(out.tenants[TENANT].payments.PY1).sort()).toEqual([
             'attempts', 'code', 'description', 'fechaRegistro', 'firstAt', 'invoices', 'lastAt', 'outcome', 'vendor',
         ]);
-        expect(Object.keys(out.tenants[TENANT]).sort()).toEqual(['lastQueryError', 'lastRunAt', 'payments', 'queryFailures', 'runs']);
+        expect(Object.keys(out.tenants[TENANT]).sort()).toEqual(['lastQueryError', 'lastRunAt', 'lastRunError', 'payments', 'queryFailures', 'runFailures', 'runs']);
     });
 
     test.each([
@@ -563,6 +577,8 @@ describe('recordPaymentRun', () => {
                     lastRunAt: T1,
                     queryFailures: 0,
                     lastQueryError: null,
+                    runFailures: 0,
+                    lastRunError: null,
                     payments: {
                         PY1: {
                             outcome: 'uploaded', code: null, description: null, vendor: 'PROV01', fechaRegistro: '2026-10-20',
@@ -666,6 +682,18 @@ describe('recordPaymentRun', () => {
         expect(tenant.runs).toBe(2);
         expect(tenant.queryFailures).toBe(1);
         expect(tenant.lastQueryError).toBe('Connection lost - read ECONNRESET');
+    });
+
+    test('WR-05: una corrida interrumpida queda contada por empresa con su error, y lo que alcanzó a anotar se guarda', () => {
+        const root = newLogsRoot();
+        expect(record(root, T1, new Map([['PY1', { outcome: 'uploaded' }]]), { runError: "Cannot read properties of null (reading 'toString')" }).ok).toBe(true);
+        expect(record(root, T2, new Map()).ok).toBe(true);
+        const tenant = readJson(root).tenants[TENANT];
+        expect(tenant.runs).toBe(2);
+        expect(tenant.runFailures).toBe(1);
+        expect(tenant.lastRunError).toBe("Cannot read properties of null (reading 'toString')");
+        expect(tenant.queryFailures).toBe(0);
+        expect(tenant.payments.PY1).toEqual(expect.objectContaining({ outcome: 'uploaded', attempts: 1 }));
     });
 
     test('si el rename falla: ok false con el mensaje y el archivo anterior queda byte a byte igual', () => {

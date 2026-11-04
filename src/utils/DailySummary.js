@@ -732,6 +732,18 @@ function queryFailuresNote(tenant, entry) {
     return `${base} (último error: ${noteDetail(entry.lastQueryError)}).`;
 }
 
+// WR-05 (D-27): la subida de pagos de la empresa se interrumpió (el catch externo de
+// uploadPayments) en algunas corridas: los pagos que faltaban no se intentaron, así que el día no
+// se puede presentar como limpio.
+function runFailuresNote(tenant, entry) {
+    const runs = Number.isInteger(entry.runs) ? String(entry.runs) : '?';
+    const base = `La subida de pagos de ${tenant} se interrumpió en ${entry.runFailures} de ${runs} corridas del día`;
+    if (entry.lastRunError == null) {
+        return `${base}.`;
+    }
+    return `${base} (último error: ${noteDetail(entry.lastRunError)}).`;
+}
+
 // D-14: los NoPagoSage de la empresa como diccionario de textos recortados, o `null` si su tabla
 // de control no se leyó y el cruce no es posible. Acepta un arreglo o un Set.
 function controlSetOf(controlByTenant, tenant) {
@@ -858,7 +870,8 @@ function addPendingPayment(out, tenant, docnbr, entry, lastDay) {
 
 // Pagos del registro del día (D-14, D-17, D-19), solo con un registro legible. Lo subido se
 // cuenta; un fallo cuyo DOCNBR ya tiene fila en la tabla de control de su empresa, de cualquier
-// estado, no está pendiente; los demás fallos sí. Lo que falta se dice en `notes`.
+// estado, no está pendiente; los demás fallos sí. Lo que falta se dice en `notes`, incluidas las
+// consultas de encabezados que fallaron (D-27) y las corridas que se interrumpieron (WR-05).
 function collectPayments(ledger, dateISO, retry, tenants, controlByTenant, failures, notes) {
     const out = {
         rejected: Object.create(null),
@@ -902,6 +915,9 @@ function collectPayments(ledger, dateISO, retry, tenants, controlByTenant, failu
         }
         if (Number.isInteger(tenantEntry.queryFailures) && tenantEntry.queryFailures > 0) {
             notes.push(queryFailuresNote(tenant, tenantEntry));
+        }
+        if (Number.isInteger(tenantEntry.runFailures) && tenantEntry.runFailures > 0) {
+            notes.push(runFailuresNote(tenant, tenantEntry));
         }
         const control = controlSetOf(controlByTenant, tenant);
         let tenantPending = 0;

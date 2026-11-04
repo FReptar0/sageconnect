@@ -534,13 +534,13 @@ describe('PortalPaymentController — registro diario de pagos (fase 20.7, plan 
                 version: 1,
                 date: DAY,
                 tenants: {
-                    COPDAT: { runs: 1, lastRunAt: RUN_AT, queryFailures: 0, lastQueryError: null, payments: {} },
+                    COPDAT: { runs: 1, lastRunAt: RUN_AT, queryFailures: 0, lastQueryError: null, runFailures: 0, lastRunError: null, payments: {} },
                 },
             });
             expect(mockPortalPost).not.toHaveBeenCalled();
         });
 
-        test('catch externo: el primer pago sube y el segundo lanza; el archivo guarda el primero y notifier.notify se llamó', async () => {
+        test('catch externo: el primer pago sube y el segundo lanza; el archivo guarda el primero, marca la corrida interrumpida (WR-05) y notifier.notify se llamó', async () => {
             routeQueries({
                 headers: [
                     paymentRow({ external_id: 'PY0000801', LotePago: 801, provider_external_id: 'V801' }),
@@ -562,6 +562,12 @@ describe('PortalPaymentController — registro diario de pagos (fase 20.7, plan 
             expect(tenant.payments).toEqual({
                 PY0000801: expect.objectContaining({ outcome: 'uploaded', vendor: 'V801' }),
             });
+            // WR-05: la corrida interrumpida queda marcada con su propio campo, para que el resumen no
+            // la lea como un día limpio; no es una falla de la consulta de encabezados.
+            expect(tenant.runFailures).toBe(1);
+            expect(tenant.lastRunError).toBe("Cannot read properties of null (reading 'toString')");
+            expect(tenant.queryFailures).toBe(0);
+            expect(tenant.lastQueryError).toBeNull();
             expect(insertCalls()).toHaveLength(1);
         });
 
@@ -622,6 +628,8 @@ describe('PortalPaymentController — registro diario de pagos (fase 20.7, plan 
                 lastRunAt: RUN_AT,
                 queryFailures: 1,
                 lastQueryError: 'Connection lost - read ECONNRESET',
+                runFailures: 0,
+                lastRunError: null,
                 payments: {},
             });
             expect(mockLogGenerator).toHaveBeenCalledWith('PortalPaymentController', 'error',

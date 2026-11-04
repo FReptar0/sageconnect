@@ -53,7 +53,7 @@ const config = require('../../src/config');
 const service = require('../../src/services/DailySummaryService');
 const { buildOcDayQuery, buildOcUploadedQuery, buildPaymentsControlQuery, collectDailySummary } = service;
 const { recordPaymentRun } = require('../../src/utils/PaymentDayLedger');
-const { localStamp } = require('../../src/utils/DailySummary');
+const { localStamp, buildDailySummarySubject } = require('../../src/utils/DailySummary');
 
 const DAY = '2026-11-03';
 // El reloj de SQL Server que devuelve la cuenta de OCs subidas (D-35), uno por empresa.
@@ -495,6 +495,26 @@ describe('collectDailySummary', () => {
         expect(model.incomplete).toBe(true);
         expect(docnbrsOf(model.sections.rejected)).toEqual(['PY0000701']);
         expect(ledgerWarns()).toEqual([]);
+    });
+
+    test('WR-05: una corrida de pagos interrumpida llega al correo como nota y, sin otros pendientes, el asunto dice «datos incompletos», no «sin pendientes»', async () => {
+        const run = recordPaymentRun({
+            logsRoot: tmpRoot,
+            dateISO: DAY,
+            tenantDb: 'COPDAT',
+            runAt: '2026-11-03T14:07:00',
+            results: new Map([['PY0000801', { outcome: 'uploaded', vendor: 'PROV01', fechaRegistro: '2026-10-30' }]]),
+            runError: "Cannot read properties of null (reading 'toString')",
+        });
+        expect(run.ok).toBe(true);
+        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { uploaded: 4 } }));
+
+        const model = await collectDailySummary(DAY, config);
+
+        expect(model.notes).toEqual(["La subida de pagos de COPDAT se interrumpió en 1 de 1 corridas del día (último error: Cannot read properties of null (reading 'toString'))."]);
+        expect(model.incomplete).toBe(true);
+        expect(model.pendingTotal).toBe(0);
+        expect(buildDailySummarySubject(model)).toBe('[SageConnect] Resumen del día 2026-11-03 — datos incompletos');
     });
 
     // ---- Reloj de SQL Server (D-35) ----------------------------------------------------------

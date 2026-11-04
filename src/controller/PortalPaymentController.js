@@ -44,7 +44,7 @@ function openLedgerRun() {
         if (dateISO === null || runAt === null) {
             return null;
         }
-        return { logsRoot, dateISO, runAt, results: new Map(), queryError: null };
+        return { logsRoot, dateISO, runAt, results: new Map(), queryError: null, runError: null };
     } catch (_err) {
         return null;
     }
@@ -68,8 +68,8 @@ function noteLedgerResult(run, docnbr, outcome, extra) {
 }
 
 // Texto de un error para el registro: su mensaje si lo trae y, si no, el valor como texto. Un
-// rechazo que no es Error no trae mensaje, y el registro lee un queryError undefined o null como
-// corrida sin falla (contrato de PaymentDayLedger). Siempre devuelve texto no vacío.
+// rechazo que no es Error no trae mensaje, y el registro lee un queryError o un runError undefined
+// o null como corrida sin falla (contrato de PaymentDayLedger). Siempre devuelve texto no vacío.
 function ledgerErrorText(err) {
     try {
         const text = err && err.message ? String(err.message) : String(err);
@@ -114,6 +114,7 @@ function flushLedgerRun(run, tenantDb) {
             runAt: run.runAt,
             results: run.results,
             queryError: run.queryError,
+            runError: run.runError,
         });
         if (!written.ok) {
             logGenerator('EomNotification', 'warn',
@@ -576,6 +577,10 @@ SELECT A.* FROM (
         }
 
     } catch (err) {
+        // WR-05 (D-27): la corrida se interrumpió y los pagos que faltaban no se intentaron. Se marca
+        // en su propio campo, para que el resumen no la lea como un día limpio ni diga que falló la
+        // consulta de encabezados. Va primero, así se anota aunque el resto de este catch falle.
+        if (ledgerRun) ledgerRun.runError = ledgerErrorText(err);
         console.error('[ERROR] Error inesperado en uploadPayments:', err.message);
         logGenerator(logFileName, 'error', `Unexpected error: ${err.message}`);
         notifier.notify({
