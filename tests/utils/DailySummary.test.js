@@ -1,6 +1,8 @@
 // tests/utils/DailySummary.test.js
 // Fase 20.7 (D-01, D-05 a D-09, D-29): agenda del resumen diario con relojes simulados,
 // validación del estado del día y ayudantes de fecha de src/utils/DailySummary.js.
+// Parte B (plan 20.7-04, D-13 a D-15, D-17, D-19, D-23 a D-28): motivos, ventana y marca de
+// último día contra el día resumido, el modelo del correo, la línea de cifras, el HTML y el asunto.
 
 // Doble de config VACÍO, declarado antes de cualquier require. Es el conjunto exacto de llaves
 // que necesitan los planes 20.7-02 y 20.7-04: la parte A del módulo no lee config, y desde la
@@ -28,6 +30,12 @@ const {
     formatAttemptLogLine,
     formatAbandonLogLine,
     formatClockWarnLine,
+    classifyOcReason,
+    classifyPaymentRejection,
+    isWithinRetryWindow,
+    isLastRetryDay,
+    buildDailySummaryModel,
+    formatCountsLine,
 } = DailySummary;
 
 // Constructores en hora local, igual que getCurrentDate(): sus campos locales son la hora de
@@ -684,5 +692,792 @@ describe('exports del módulo', () => {
     test('exporta los 15 nombres del contrato; lo que sume el plan 20.7-04 no rompe este caso', () => {
         expect(CONTRACT_EXPORTS).toHaveLength(15);
         expect(Object.keys(DailySummary)).toEqual(expect.arrayContaining(CONTRACT_EXPORTS));
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Parte B (plan 20.7-04). Mismo D = 2026-11-03, ventana de 30 días y la empresa COPDAT.
+// ---------------------------------------------------------------------------------------------
+
+const RETRY_30 = Object.freeze({ scope: 'last_n_days', lookbackDays: 30 });
+const RETRY_MONTH = Object.freeze({ scope: 'current_month' });
+
+// Un renglón tal como lo devuelve la consulta de OCs del plan 20.7-06.
+function ocRow(overrides = {}) {
+    return {
+        tenant: 'COPDAT',
+        idOrPo: 'PO0001',
+        attemptsToday: 1,
+        lastError: '1300: OC duplicada',
+        isValidation: 0,
+        fechaAuth: '2026-10-20',
+        ...overrides,
+    };
+}
+
+// Una entrada del registro de pagos con la forma de D-16 (plan 20.7-03).
+function ledgerEntry(outcome, overrides = {}) {
+    return {
+        outcome,
+        code: null,
+        description: null,
+        vendor: 'PROV01',
+        fechaRegistro: '2026-10-20',
+        attempts: 1,
+        firstAt: '2026-11-03T08:00:00',
+        lastAt: '2026-11-03T08:00:00',
+        ...overrides,
+    };
+}
+
+function tenantLedger(payments, overrides = {}) {
+    return { runs: 4, lastRunAt: '2026-11-03T23:30:00', queryFailures: 0, lastQueryError: null, ...overrides, payments };
+}
+
+// El valor de readPaymentDayLedger con status ok. `root` agrega campos a la RAÍZ (recoveredAt).
+function okLedger(tenants, root = {}, date = D) {
+    return { status: 'ok', data: { version: 1, date, ...root, tenants } };
+}
+
+// Entrada completa del modelo para un día limpio: una empresa, sin OCs y un registro sin pagos.
+function buildModel(overrides = {}) {
+    const dateISO = overrides.dateISO || D;
+    return buildDailySummaryModel({
+        dateISO,
+        retry: RETRY_30,
+        tenants: ['COPDAT'],
+        ocRows: [],
+        ocUploadedByTenant: { COPDAT: 0 },
+        ledger: okLedger({ COPDAT: tenantLedger({}) }, {}, dateISO),
+        controlByTenant: { COPDAT: [] },
+        sourceFailures: [],
+        clock: null,
+        ...overrides,
+    });
+}
+
+const groupSummary = (section) => section.groups.map((group) => [group.title, group.rows.length]);
+const allRows = (section) => section.groups.flatMap((group) => group.rows);
+
+// Un proveedor sin ID que bloquea 3 pagos. Lo usan el conteo por documento y el asunto.
+const PROVIDER_BLOCKS_3 = Object.freeze({
+    PY0201: ledgerEntry('no-provider-id', { vendor: 'PROV20', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-21' }),
+    PY0202: ledgerEntry('no-provider-id', { vendor: 'PROV20', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-22' }),
+    PY0203: ledgerEntry('no-provider-id', { vendor: 'PROV20', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-23' }),
+});
+
+describe('classifyOcReason: los cuatro motivos de las OCs (D-13)', () => {
+    test('idFocaltec vacío → validation / «Validación de datos»', () => {
+        expect(classifyOcReason({ isValidation: 1 })).toEqual({ key: 'validation', title: 'Validación de datos' });
+        expect(classifyOcReason({ isValidation: 1, lastError: '"provider_external_id" is required' })).toEqual({ key: 'validation', title: 'Validación de datos' });
+    });
+
+    test("'1300: OC duplicada' → portal-1300 / «Portal 1300»", () => {
+        expect(classifyOcReason({ isValidation: 0, lastError: '1300: OC duplicada' })).toEqual({ key: 'portal-1300', title: 'Portal 1300' });
+    });
+
+    test("'undefined: undefined' → portal-no-code / «Respuesta del portal sin código»", () => {
+        expect(classifyOcReason({ isValidation: 0, lastError: 'undefined: undefined' })).toEqual({ key: 'portal-no-code', title: 'Respuesta del portal sin código' });
+    });
+
+    test("'timeout of 30000ms exceeded' → no-response / «Sin respuesta del portal»", () => {
+        expect(classifyOcReason({ isValidation: 0, lastError: 'timeout of 30000ms exceeded' })).toEqual({ key: 'no-response', title: 'Sin respuesta del portal' });
+    });
+
+    test('la marca de validación gana aunque el texto empiece con un código', () => {
+        expect(classifyOcReason({ isValidation: 1, lastError: '1300: OC duplicada' }).key).toBe('validation');
+        expect(classifyOcReason({ isValidation: true, lastError: '1300: OC duplicada' }).key).toBe('validation');
+    });
+
+    test('sin el espacio después de los dos puntos no es un código; un texto o una entrada nulos van a sin respuesta, sin lanzar', () => {
+        expect(classifyOcReason({ isValidation: 0, lastError: '1300:OC duplicada' }).key).toBe('no-response');
+        expect(classifyOcReason({ isValidation: 0, lastError: null }).key).toBe('no-response');
+        expect(classifyOcReason(null).key).toBe('no-response');
+        expect(classifyOcReason(undefined).key).toBe('no-response');
+    });
+});
+
+describe('classifyPaymentRejection: rechazos por código y sin respuesta (RD-06)', () => {
+    test('rejected → «Portal <código>»; el 1827 se agrupa como cualquier otro código, sin marca de «sin acción»', () => {
+        const r1827 = classifyPaymentRejection(ledgerEntry('rejected', { code: '1827' }));
+        expect(r1827).toEqual({ key: 'portal-1827', title: 'Portal 1827' });
+        expect(JSON.stringify(r1827)).not.toMatch(/sin acci/i);
+        expect(classifyPaymentRejection(ledgerEntry('rejected', { code: 'HTTP 502' }))).toEqual({ key: 'portal-HTTP 502', title: 'Portal HTTP 502' });
+    });
+
+    test('rejected sin código → «Portal sin código»', () => {
+        for (const code of [null, undefined, '', '   ']) {
+            expect(classifyPaymentRejection(ledgerEntry('rejected', { code }))).toEqual({ key: 'portal-no-code', title: 'Portal sin código' });
+        }
+    });
+
+    test('no-response → «Sin respuesta del portal»', () => {
+        expect(classifyPaymentRejection(ledgerEntry('no-response', { description: 'timeout of 30000ms exceeded' }))).toEqual({ key: 'no-response', title: 'Sin respuesta del portal' });
+    });
+
+    test('lo subido y lo detenido por datos de Sage no son rechazos → null', () => {
+        for (const outcome of ['uploaded', 'no-provider-id', 'missing-uuid', 'no-invoices', 'otro']) {
+            expect(classifyPaymentRejection(ledgerEntry(outcome))).toBeNull();
+        }
+        expect(classifyPaymentRejection(null)).toBeNull();
+        expect(classifyPaymentRejection(undefined)).toBeNull();
+    });
+});
+
+describe('isWithinRetryWindow e isLastRetryDay contra el día resumido (D-15, RD-08)', () => {
+    test.each([
+        ['2026-10-03', 'D−31', false, false],
+        ['2026-10-04', 'D−30', true, true],
+        ['2026-10-05', 'D−29', true, false],
+        ['2026-11-03', 'D', true, false],
+    ])('last_n_days 30: %s (%s) → dentro %s, último día %s', (doc, _label, within, lastDay) => {
+        expect(isWithinRetryWindow(doc, D, RETRY_30)).toBe(within);
+        expect(isLastRetryDay(doc, D, RETRY_30)).toBe(lastDay);
+    });
+
+    test('una fecha null queda fuera y nunca es último día', () => {
+        expect(isWithinRetryWindow(null, D, RETRY_30)).toBe(false);
+        expect(isLastRetryDay(null, D, RETRY_30)).toBe(false);
+    });
+
+    test('el borde cruza el año: con D = 2026-01-15 y 30 días es el 2025-12-16', () => {
+        expect(isWithinRetryWindow('2025-12-15', '2026-01-15', RETRY_30)).toBe(false);
+        expect(isLastRetryDay('2025-12-16', '2026-01-15', RETRY_30)).toBe(true);
+    });
+
+    test('current_month con D a mitad de mes: octubre queda fuera y ningún documento está en su último día', () => {
+        expect(isWithinRetryWindow('2026-10-31', D, RETRY_MONTH)).toBe(false);
+        expect(isWithinRetryWindow('2026-11-01', D, RETRY_MONTH)).toBe(true);
+        expect(isLastRetryDay('2026-11-01', D, RETRY_MONTH)).toBe(false);
+        expect(isLastRetryDay(D, D, RETRY_MONTH)).toBe(false);
+    });
+
+    test('current_month con D en el último día del mes: todo el mes lleva la marca y el mes anterior sigue fuera', () => {
+        expect(isLastRetryDay('2026-11-01', '2026-11-30', RETRY_MONTH)).toBe(true);
+        expect(isLastRetryDay('2026-11-30', '2026-11-30', RETRY_MONTH)).toBe(true);
+        expect(isWithinRetryWindow('2026-10-31', '2026-11-30', RETRY_MONTH)).toBe(false);
+        expect(isLastRetryDay('2026-10-31', '2026-11-30', RETRY_MONTH)).toBe(false);
+        expect(isLastRetryDay('2026-02-10', '2026-02-28', RETRY_MONTH)).toBe(true);
+        expect(isLastRetryDay('2026-12-01', '2026-12-31', RETRY_MONTH)).toBe(true);
+    });
+
+    test('entrada inválida o alcance desconocido → false en las dos', () => {
+        const cases = [
+            ['2026-10-20', D, { scope: 'otro', lookbackDays: 30 }],
+            ['2026-10-20', D, null],
+            ['2026-10-20', D, undefined],
+            ['2026-10-20', D, { scope: 'last_n_days' }],
+            ['2026-10-20', D, { scope: 'last_n_days', lookbackDays: 1.5 }],
+            ['2026-10-20', D, { scope: 'last_n_days', lookbackDays: '30' }],
+            ['2026-10-20', D, { scope: 'last_n_days', lookbackDays: -1 }],
+            ['2026-10-20', 'ayer', RETRY_30],
+            ['2026-10-20', null, RETRY_30],
+            ['2026-11-01', '2026-11-03T23:45:00', RETRY_MONTH],
+            ['2026-02-30', D, RETRY_30],
+            ['20/10/2026', D, RETRY_30],
+            [20261020, D, RETRY_30],
+            ['2026-11-01', D, 'current_month'],
+        ];
+        for (const [doc, day, retry] of cases) {
+            expect(isWithinRetryWindow(doc, day, retry)).toBe(false);
+            expect(isLastRetryDay(doc, day, retry)).toBe(false);
+        }
+    });
+});
+
+describe('buildDailySummaryModel: OCs (RD-05, RD-08, D-13, D-15)', () => {
+    test('RD-05: dos OCs con el mismo código y una de validación → «Portal 1300» con 2 renglones y «Validación de datos» con 1', () => {
+        const model = buildModel({
+            ocRows: [
+                ocRow({ idOrPo: 'PO0001' }),
+                ocRow({ idOrPo: 'PO0002', isValidation: 1, lastError: '"provider_external_id" is required' }),
+                ocRow({ idOrPo: 'PO0003' }),
+            ],
+        });
+        expect(model.sections.oc.title).toBe('OCs sin subir');
+        expect(groupSummary(model.sections.oc)).toEqual([['Portal 1300', 2], ['Validación de datos', 1]]);
+        expect(model.sections.oc.groups.map((group) => group.key)).toEqual(['portal-1300', 'validation']);
+        expect(model.counts.ocPending).toBe(3);
+    });
+
+    test('cada renglón de OC lleva tenant, idOrPo, fechaAuth, attemptsToday, lastError y lastDay', () => {
+        const model = buildModel({ ocRows: [ocRow({ attemptsToday: 4 })] });
+        expect(model.sections.oc.groups[0].rows).toEqual([{
+            tenant: 'COPDAT',
+            idOrPo: 'PO0001',
+            fechaAuth: '2026-10-20',
+            attemptsToday: 4,
+            lastError: '1300: OC duplicada',
+            lastDay: false,
+        }]);
+    });
+
+    test('la ventana se calcula contra el día resumido: D−31 y null quedan fuera, D−30 entra con marca y D−29 sin ella', () => {
+        const model = buildModel({
+            ocRows: [
+                ocRow({ idOrPo: 'PO-31', fechaAuth: '2026-10-03' }),
+                ocRow({ idOrPo: 'PO-30', fechaAuth: '2026-10-04' }),
+                ocRow({ idOrPo: 'PO-29', fechaAuth: '2026-10-05' }),
+                ocRow({ idOrPo: 'PO-NULL', fechaAuth: null }),
+            ],
+        });
+        expect(allRows(model.sections.oc).map((row) => [row.idOrPo, row.lastDay])).toEqual([['PO-30', true], ['PO-29', false]]);
+        expect(model.counts.ocPending).toBe(2);
+    });
+
+    test('RD-08: de dos renglones de hace 30 y 29 días solo el primero lleva la marca y el total de marcados es 1', () => {
+        // El modelo no recibe la fecha de hoy: la ventana sale solo de dateISO, así que la
+        // reposición del 2026-11-04 conserva el renglón del 2026-10-04 (Advertencia C).
+        const model = buildModel({
+            ocRows: [
+                ocRow({ idOrPo: 'PO-29', fechaAuth: addDaysISO(D, -29) }),
+                ocRow({ idOrPo: 'PO-30', fechaAuth: addDaysISO(D, -30) }),
+            ],
+        });
+        expect(allRows(model.sections.oc).map((row) => [row.idOrPo, row.fechaAuth, row.lastDay])).toEqual([
+            ['PO-30', '2026-10-04', true],
+            ['PO-29', '2026-10-05', false],
+        ]);
+        expect(model.counts.lastDay).toBe(1);
+    });
+
+    test('current_month: con D = 2026-11-30 una OC de octubre queda fuera y las del mes llevan la marca', () => {
+        const model = buildModel({
+            dateISO: '2026-11-30',
+            retry: RETRY_MONTH,
+            ocRows: [
+                ocRow({ idOrPo: 'PO-OCT', fechaAuth: '2026-10-31' }),
+                ocRow({ idOrPo: 'PO-NOV1', fechaAuth: '2026-11-01' }),
+                ocRow({ idOrPo: 'PO-NOV2', fechaAuth: '2026-11-20' }),
+            ],
+        });
+        expect(allRows(model.sections.oc).map((row) => [row.idOrPo, row.lastDay])).toEqual([['PO-NOV1', true], ['PO-NOV2', true]]);
+        expect(model.counts.lastDay).toBe(2);
+    });
+
+    test('una ventana de reintentos que no se reconoce no lista OCs: ocPending null y una nota, nunca «sin pendientes»', () => {
+        const model = buildModel({ retry: { scope: 'otro' }, ocRows: [ocRow()] });
+        expect(model.sections.oc.groups).toEqual([]);
+        expect(model.counts.ocPending).toBeNull();
+        expect(model.notes).toEqual(['No se aplicó la ventana de reintentos porque su configuración no es válida: no se listan OCs ni se marca el último día de reintento.']);
+        expect(model.incomplete).toBe(true);
+    });
+});
+
+describe('buildDailySummaryModel: pagos (RD-06, RD-07, D-14, D-17)', () => {
+    test('RD-06: dos rechazos 1827 y uno 1800 → dos grupos de 2 y 1; lo subido y lo que ya tiene fila de control no aparecen', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura ya está pagada' }),
+                    PY0002: ledgerEntry('rejected', { code: '1800', description: 'Cuenta bancaria no encontrada' }),
+                    PY0003: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura ya está pagada' }),
+                    PY0004: ledgerEntry('uploaded'),
+                    PY0005: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura ya está pagada' }),
+                }),
+            }),
+            controlByTenant: { COPDAT: ['PY0005'] },
+        });
+        expect(model.sections.rejected.title).toBe('Pagos rechazados por el portal');
+        expect(groupSummary(model.sections.rejected)).toEqual([['Portal 1827', 2], ['Portal 1800', 1]]);
+        expect(allRows(model.sections.rejected).map((row) => row.docnbr)).toEqual(['PY0001', 'PY0003', 'PY0002']);
+        expect(model.counts.paymentsUploaded).toBe(1);
+        expect(model.counts.paymentsPending).toBe(3);
+    });
+
+    test('D-14: un pago con fila de control no está pendiente aunque su último resultado sea un fallo, con arreglo o con Set', () => {
+        const ledger = okLedger({
+            COPDAT: tenantLedger({
+                PY0005: ledgerEntry('rejected', { code: '1827' }),
+                PY0006: ledgerEntry('no-response', { description: 'timeout of 30000ms exceeded' }),
+                PY0007: ledgerEntry('no-provider-id', { vendor: 'PROV07' }),
+            }),
+        });
+        for (const control of [['PY0005', 'PY0006 ', 'PY0007'], new Set(['PY0005', 'PY0006', 'PY0007'])]) {
+            const model = buildModel({ ledger, controlByTenant: { COPDAT: control } });
+            expect(model.sections.rejected.groups).toEqual([]);
+            expect(model.sections.sage.groups).toEqual([]);
+            expect(model.counts.paymentsPending).toBe(0);
+        }
+    });
+
+    test('«Sin respuesta del portal» es su propio grupo; cada renglón lleva tenant, docnbr, vendor, fechaRegistro, attempts, description y lastDay', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0011: ledgerEntry('no-response', { description: 'timeout of 30000ms exceeded', attempts: 3, vendor: 'PROV11' }),
+                    PY0012: ledgerEntry('rejected', { code: '1800', description: 'Cuenta bancaria no encontrada' }),
+                }),
+            }),
+        });
+        expect(groupSummary(model.sections.rejected)).toEqual([['Portal 1800', 1], ['Sin respuesta del portal', 1]]);
+        const noResponse = model.sections.rejected.groups.find((group) => group.key === 'no-response');
+        expect(noResponse.rows).toEqual([{
+            tenant: 'COPDAT',
+            docnbr: 'PY0011',
+            vendor: 'PROV11',
+            fechaRegistro: '2026-10-20',
+            attempts: 3,
+            description: 'timeout of 30000ms exceeded',
+            lastDay: false,
+        }]);
+    });
+
+    test('RD-07: proveedor sin ID con 3 pagos → 1 renglón con sus 3 pagos; pago con 2 facturas sin UUID → 1 renglón; pago sin facturas → tercer grupo; ninguno entre los rechazos', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0101: ledgerEntry('no-provider-id', { vendor: 'PROV09', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-12' }),
+                    PY0102: ledgerEntry('no-provider-id', { vendor: 'PROV09', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-04' }),
+                    PY0103: ledgerEntry('no-provider-id', { vendor: 'PROV09', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-27' }),
+                    PY0104: ledgerEntry('missing-uuid', { vendor: 'PROV10', description: '2 factura(s) sin UUID', invoices: ['FAC-0001', 'FAC-0002'], fechaRegistro: '2026-10-22' }),
+                    PY0105: ledgerEntry('no-invoices', { vendor: 'PROV11', description: 'Sage no devolvió facturas para el pago', fechaRegistro: '2026-10-29' }),
+                }),
+            }),
+        });
+        const sage = model.sections.sage;
+        expect(sage.title).toBe('Pagos detenidos por datos de Sage');
+        const byKey = Object.fromEntries(sage.groups.map((group) => [group.key, group]));
+        expect(Object.keys(byKey).sort()).toEqual(['missing-uuid', 'no-invoices', 'no-provider-id']);
+        expect(byKey['no-provider-id'].title).toBe('Proveedores sin ID del portal');
+        expect(byKey['no-provider-id'].rows).toEqual([{
+            tenant: 'COPDAT',
+            vendor: 'PROV09',
+            payments: [
+                { docnbr: 'PY0102', fechaRegistro: '2026-10-04', lastDay: true },
+                { docnbr: 'PY0101', fechaRegistro: '2026-10-12', lastDay: false },
+                { docnbr: 'PY0103', fechaRegistro: '2026-10-27', lastDay: false },
+            ],
+            lastDay: true,
+        }]);
+        expect(byKey['missing-uuid'].title).toBe('Pagos con facturas sin UUID');
+        expect(byKey['missing-uuid'].rows).toEqual([{
+            tenant: 'COPDAT',
+            docnbr: 'PY0104',
+            vendor: 'PROV10',
+            invoices: ['FAC-0001', 'FAC-0002'],
+            fechaRegistro: '2026-10-22',
+            lastDay: false,
+        }]);
+        expect(byKey['no-invoices'].title).toBe('Pagos sin facturas en Sage');
+        expect(byKey['no-invoices'].rows).toEqual([{
+            tenant: 'COPDAT',
+            docnbr: 'PY0105',
+            vendor: 'PROV11',
+            detail: 'Sage no devolvió facturas para el pago',
+            fechaRegistro: '2026-10-29',
+            lastDay: false,
+        }]);
+        expect(model.sections.rejected.groups).toEqual([]);
+        expect(model.counts.paymentsPending).toBe(5);
+    });
+
+    test('pendientes por documento: un proveedor sin ID que bloquea 3 pagos suma 3, no su único renglón; con una OC más el total es 4', () => {
+        const ledger = okLedger({ COPDAT: tenantLedger({ ...PROVIDER_BLOCKS_3 }) });
+        const alone = buildModel({ ledger });
+        expect(allRows(alone.sections.sage)).toHaveLength(1);
+        expect(alone.counts.paymentsPending).toBe(3);
+        expect(alone.pendingTotal).toBe(3);
+
+        const withOc = buildModel({ ledger, ocRows: [ocRow()] });
+        expect(withOc.counts.ocPending).toBe(1);
+        expect(withOc.pendingTotal).toBe(4);
+    });
+
+    test('un pago rechazado con fila de control y uno subido no suman a paymentsPending', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    ...PROVIDER_BLOCKS_3,
+                    PY0204: ledgerEntry('rejected', { code: '1827' }),
+                    PY0205: ledgerEntry('uploaded'),
+                }),
+            }),
+            controlByTenant: { COPDAT: ['PY0204'] },
+        });
+        expect(model.counts.paymentsPending).toBe(3);
+        expect(model.counts.paymentsUploaded).toBe(1);
+        expect(model.pendingTotal).toBe(3);
+    });
+
+    test('el mismo proveedor en dos empresas son dos renglones, y el mismo DOCNBR en dos empresas son dos pagos', () => {
+        const model = buildModel({
+            tenants: ['COPDAT', 'EMPRESA2'],
+            ledger: okLedger({
+                COPDAT: tenantLedger({ PY0001: ledgerEntry('no-provider-id', { vendor: 'PROV20' }) }),
+                EMPRESA2: tenantLedger({ PY0001: ledgerEntry('no-provider-id', { vendor: 'PROV20' }) }),
+            }),
+            controlByTenant: { COPDAT: [], EMPRESA2: [] },
+        });
+        expect(allRows(model.sections.sage).map((row) => [row.tenant, row.vendor, row.payments.length])).toEqual([
+            ['COPDAT', 'PROV20', 1],
+            ['EMPRESA2', 'PROV20', 1],
+        ]);
+        expect(model.counts.paymentsPending).toBe(2);
+    });
+
+    test('counts.lastDay cuenta documentos marcados: OCs y pagos, incluidos los de cada proveedor', () => {
+        const model = buildModel({
+            ocRows: [ocRow({ idOrPo: 'PO0001', fechaAuth: '2026-10-04' }), ocRow({ idOrPo: 'PO0002', fechaAuth: '2026-10-05' })],
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('rejected', { code: '1827', fechaRegistro: '2026-10-04' }),
+                    PY0002: ledgerEntry('no-provider-id', { vendor: 'PROV30', fechaRegistro: '2026-10-04' }),
+                    PY0003: ledgerEntry('no-provider-id', { vendor: 'PROV30', fechaRegistro: '2026-10-04' }),
+                    PY0004: ledgerEntry('no-provider-id', { vendor: 'PROV30', fechaRegistro: '2026-10-10' }),
+                }),
+            }),
+        });
+        expect(model.counts.lastDay).toBe(4);
+    });
+});
+
+describe('buildDailySummaryModel: cifras y notas de fuentes que faltan (RD-04, RD-09, D-19, D-25, D-27)', () => {
+    test('RD-04: 12 OCs subidas, 3 sin éxito, 30 pagos subidos y 2 sin éxito → las cuatro cifras y la línea que las dice', () => {
+        const payments = {};
+        for (let i = 1; i <= 30; i += 1) {
+            payments[`PY${String(i).padStart(4, '0')}`] = ledgerEntry('uploaded');
+        }
+        payments.PY9001 = ledgerEntry('rejected', { code: '1800', description: 'Cuenta bancaria no encontrada' });
+        payments.PY9002 = ledgerEntry('no-response', { description: 'timeout of 30000ms exceeded' });
+        const model = buildModel({
+            ocUploadedByTenant: { COPDAT: 12 },
+            ocRows: [ocRow({ idOrPo: 'PO0001' }), ocRow({ idOrPo: 'PO0002' }), ocRow({ idOrPo: 'PO0003', isValidation: 1 })],
+            ledger: okLedger({ COPDAT: tenantLedger(payments) }),
+        });
+        expect(model.counts).toEqual({ ocUploaded: 12, paymentsUploaded: 30, ocPending: 3, paymentsPending: 2, lastDay: 0 });
+        expect(model.pendingTotal).toBe(5);
+        const line = formatCountsLine(model);
+        for (const fragment of ['12 OCs', '30 pagos', '3 OCs', '2 pagos']) {
+            expect(line).toContain(fragment);
+        }
+        expect(line).toBe('El 2026-11-03 se subieron 12 OCs y 30 pagos; quedaron sin subir 3 OCs y 2 pagos.');
+    });
+
+    test('formatCountsLine dice la fecha y no «hoy», «1 OC» y «1 pago» en singular, y la marca del último día solo si hay', () => {
+        const model = buildModel({
+            ocUploadedByTenant: { COPDAT: 1 },
+            ocRows: [ocRow({ fechaAuth: '2026-10-04' })],
+            ledger: okLedger({ COPDAT: tenantLedger({ PY0001: ledgerEntry('uploaded'), PY0002: ledgerEntry('rejected', { code: '1827' }) }) }),
+        });
+        const line = formatCountsLine(model);
+        expect(line).toBe('El 2026-11-03 se subieron 1 OC y 1 pago; quedaron sin subir 1 OC y 1 pago (1 en su último día de reintento automático).');
+        expect(line).not.toMatch(/hoy/i);
+    });
+
+    test('ocUploaded suma las empresas que respondieron', () => {
+        const model = buildModel({
+            tenants: ['COPDAT', 'EMPRESA2'],
+            ocUploadedByTenant: { COPDAT: 12, EMPRESA2: 3 },
+            ledger: okLedger({ COPDAT: tenantLedger({}), EMPRESA2: tenantLedger({}) }),
+            controlByTenant: { COPDAT: [], EMPRESA2: [] },
+        });
+        expect(model.counts.ocUploaded).toBe(15);
+    });
+
+    test('RD-09: un día sin fallos no tiene notas y su total es 0', () => {
+        const model = buildModel({
+            ocUploadedByTenant: { COPDAT: 5 },
+            ledger: okLedger({ COPDAT: tenantLedger({ PY0001: ledgerEntry('uploaded') }) }),
+        });
+        expect(model.notes).toEqual([]);
+        expect(model.incomplete).toBe(false);
+        expect(model.pendingTotal).toBe(0);
+        expect(model.counts).toEqual({ ocUploaded: 5, paymentsUploaded: 1, ocPending: 0, paymentsPending: 0, lastDay: 0 });
+    });
+
+    test('registro ausente → «Sin datos de pagos de ese día: no hay registro de la subida de pagos.», con las cifras de pagos en null', () => {
+        const model = buildModel({ ledger: { status: 'missing', data: null } });
+        expect(model.notes).toEqual(['Sin datos de pagos de ese día: no hay registro de la subida de pagos.']);
+        expect(model.incomplete).toBe(true);
+        expect(model.counts.paymentsUploaded).toBeNull();
+        expect(model.counts.paymentsPending).toBeNull();
+        expect(model.sections.rejected.groups).toEqual([]);
+        expect(model.sections.sage.groups).toEqual([]);
+    });
+
+    test('registro dañado → «Sin datos de pagos de ese día: el registro de pagos no se pudo leer.»', () => {
+        const model = buildModel({ ledger: { status: 'corrupt', data: null, error: 'JSON inválido' } });
+        expect(model.notes).toEqual(['Sin datos de pagos de ese día: el registro de pagos no se pudo leer.']);
+        expect(model.counts.paymentsUploaded).toBeNull();
+        expect(model.counts.paymentsPending).toBeNull();
+    });
+
+    test('un ok sin la forma del registro, o una envoltura que no se reconoce, cuenta como registro ilegible', () => {
+        const unreadable = 'Sin datos de pagos de ese día: el registro de pagos no se pudo leer.';
+        for (const ledger of [
+            { status: 'otro' },
+            undefined,
+            null,
+            { status: 'ok', data: null },
+            okLedger({ COPDAT: tenantLedger({}) }, {}, D_MINUS_1),
+            { status: 'ok', data: { version: 1, date: D, tenants: [] } },
+            { status: 'ok', data: { version: 2, date: D, tenants: {} } },
+        ]) {
+            const model = buildModel({ ledger });
+            expect(model.notes).toEqual([unreadable]);
+            expect(model.counts.paymentsPending).toBeNull();
+        }
+    });
+
+    test('recoveredAt en la RAÍZ → «Datos de pagos incompletos: el registro se reinició a las 14:07.» y los pagos se listan', () => {
+        const model = buildModel({
+            ledger: okLedger(
+                { COPDAT: tenantLedger({ PY0001: ledgerEntry('rejected', { code: '1827' }) }) },
+                { recoveredAt: '2026-11-03T14:07:00' },
+            ),
+        });
+        expect(model.notes).toEqual(['Datos de pagos incompletos: el registro se reinició a las 14:07.']);
+        expect(model.incomplete).toBe(true);
+        expect(allRows(model.sections.rejected).map((row) => row.docnbr)).toEqual(['PY0001']);
+        expect(model.counts.paymentsPending).toBe(1);
+    });
+
+    test('un recoveredAt dentro de una empresa no es el contrato y no produce nota', () => {
+        const model = buildModel({ ledger: okLedger({ COPDAT: tenantLedger({}, { recoveredAt: '2026-11-03T14:07:00' }) }) });
+        expect(model.notes).toEqual([]);
+    });
+
+    test('empresa configurada ausente del registro → «Sin datos de pagos de COPDAT ese día.»', () => {
+        const model = buildModel({
+            tenants: ['COPDAT', 'EMPRESA2'],
+            ledger: okLedger({ EMPRESA2: tenantLedger({}) }),
+            controlByTenant: { COPDAT: [], EMPRESA2: [] },
+        });
+        expect(model.notes).toEqual(['Sin datos de pagos de COPDAT ese día.']);
+        expect(model.counts.paymentsPending).toBe(0);
+        expect(model.incomplete).toBe(true);
+    });
+
+    test('queryFailures 2 de 5 corridas → una nota que lo dice, con el último error', () => {
+        const model = buildModel({
+            ledger: okLedger({ COPDAT: tenantLedger({}, { runs: 5, queryFailures: 2, lastQueryError: 'Timeout: Request failed to complete in 180000ms' }) }),
+        });
+        expect(model.notes).toEqual(['La consulta de pagos de COPDAT falló en 2 de 5 corridas del día (último error: Timeout: Request failed to complete in 180000ms).']);
+        expect(model.notes[0]).toContain('2 de 5');
+    });
+
+    test('oc-errors fallida → nota con la empresa y el error; si fue la única empresa, ocPending es null', () => {
+        const model = buildModel({ sourceFailures: [{ tenant: 'COPDAT', source: 'oc-errors', error: "Invalid object name 'Autoriza_OC'" }] });
+        expect(model.notes).toEqual(["No se pudieron leer las OCs con error de COPDAT: Invalid object name 'Autoriza_OC'."]);
+        expect(model.counts.ocPending).toBeNull();
+        expect(model.incomplete).toBe(true);
+    });
+
+    test('oc-errors de una de dos empresas → ocPending cuenta las OCs de la otra', () => {
+        const model = buildModel({
+            tenants: ['COPDAT', 'EMPRESA2'],
+            ocRows: [ocRow({ tenant: 'EMPRESA2', idOrPo: 'PO0009' })],
+            ledger: okLedger({ COPDAT: tenantLedger({}), EMPRESA2: tenantLedger({}) }),
+            controlByTenant: { COPDAT: [], EMPRESA2: [] },
+            sourceFailures: [{ tenant: 'COPDAT', source: 'oc-errors', error: 'Login failed for user' }],
+        });
+        expect(model.counts.ocPending).toBe(1);
+        expect(model.notes).toEqual(['No se pudieron leer las OCs con error de COPDAT: Login failed for user.']);
+    });
+
+    test('oc-uploaded fallida → nota; si ninguna empresa respondió, ocUploaded es null', () => {
+        const model = buildModel({
+            ocUploadedByTenant: {},
+            sourceFailures: [{ tenant: 'COPDAT', source: 'oc-uploaded', error: 'Login failed for user' }],
+        });
+        expect(model.counts.ocUploaded).toBeNull();
+        expect(model.notes).toEqual(['No se pudieron contar las OCs subidas de COPDAT: Login failed for user.']);
+    });
+
+    test('payments-control fallida → nota de que algunos pagos pudieron subirse después, y esos pagos sí se listan', () => {
+        const model = buildModel({
+            ledger: okLedger({ COPDAT: tenantLedger({ PY0001: ledgerEntry('rejected', { code: '1827' }) }) }),
+            controlByTenant: {},
+            sourceFailures: [{ tenant: 'COPDAT', source: 'payments-control', error: 'Connection lost' }],
+        });
+        expect(model.notes).toEqual(['No se pudo leer la tabla de control de pagos de COPDAT: Connection lost. Algunos pagos de la lista pudieron subirse después.']);
+        expect(allRows(model.sections.rejected).map((row) => row.docnbr)).toEqual(['PY0001']);
+        expect(model.counts.paymentsPending).toBe(1);
+    });
+
+    test('cifras null: registro ilegible y todas las cuentas de OCs fallidas → «pagos sin datos» y «OCs sin datos»', () => {
+        const model = buildModel({
+            ledger: { status: 'corrupt', data: null, error: 'JSON inválido' },
+            ocUploadedByTenant: {},
+            sourceFailures: [{ tenant: 'COPDAT', source: 'oc-uploaded', error: 'Login failed for user' }],
+        });
+        expect(model.counts).toEqual({ ocUploaded: null, paymentsUploaded: null, ocPending: 0, paymentsPending: null, lastDay: 0 });
+        const line = formatCountsLine(model);
+        expect(line).toContain('OCs sin datos');
+        expect(line).toContain('pagos sin datos');
+        expect(line).toBe('El 2026-11-03 se subieron OCs sin datos y pagos sin datos; quedaron sin subir 0 OCs y pagos sin datos.');
+
+        const nothing = buildModel({
+            ledger: { status: 'missing', data: null },
+            ocUploadedByTenant: {},
+            sourceFailures: [
+                { tenant: 'COPDAT', source: 'oc-errors', error: 'Login failed for user' },
+                { tenant: 'COPDAT', source: 'oc-uploaded', error: 'Login failed for user' },
+            ],
+        });
+        expect(nothing.counts).toEqual({ ocUploaded: null, paymentsUploaded: null, ocPending: null, paymentsPending: null, lastDay: null });
+        expect(nothing.pendingTotal).toBe(0);
+        expect(formatCountsLine(nothing)).toBe('El 2026-11-03 se subieron OCs sin datos y pagos sin datos; quedaron sin subir OCs sin datos y pagos sin datos.');
+    });
+
+    test('las entradas del registro que no se reconocen quedan en una nota en vez de perderse en silencio', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('otro'),
+                    PY0002: null,
+                    PY0003: ledgerEntry('rejected', { code: '1827' }),
+                }),
+                RARO: 'no es un objeto',
+            }),
+        });
+        expect(model.notes).toEqual(['Datos de pagos incompletos: 3 entradas del registro no se reconocieron.']);
+        expect(allRows(model.sections.rejected).map((row) => row.docnbr)).toEqual(['PY0003']);
+    });
+
+    test('una empresa del registro sin tabla de control leída y sin falla anotada → nota de que algunos pagos pudieron subirse después', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({}),
+                EMPRESA9: tenantLedger({ PY0001: ledgerEntry('rejected', { code: '1827' }) }),
+            }),
+            controlByTenant: { COPDAT: [] },
+        });
+        expect(model.notes).toEqual(['No se cruzaron los pagos de EMPRESA9 con la tabla de control: algunos pagos de la lista pudieron subirse después.']);
+        expect(allRows(model.sections.rejected).map((row) => [row.tenant, row.docnbr])).toEqual([['EMPRESA9', 'PY0001']]);
+    });
+});
+
+describe('buildDailySummaryModel: orden de D-24', () => {
+    test('en OCs: último día, luego la fecha más vieja, luego documento y empresa', () => {
+        const model = buildModel({
+            ocRows: [
+                ocRow({ idOrPo: 'PO0', fechaAuth: '2026-10-20' }),
+                ocRow({ idOrPo: 'PO2', fechaAuth: '2026-10-10' }),
+                ocRow({ idOrPo: 'PO1', fechaAuth: '2026-10-10', tenant: 'EMPRESA2' }),
+                ocRow({ idOrPo: 'PO1', fechaAuth: '2026-10-10' }),
+                ocRow({ idOrPo: 'PO3', fechaAuth: '2026-10-04' }),
+            ],
+        });
+        expect(allRows(model.sections.oc).map((row) => [row.idOrPo, row.tenant, row.lastDay])).toEqual([
+            ['PO3', 'COPDAT', true],
+            ['PO1', 'COPDAT', false],
+            ['PO1', 'EMPRESA2', false],
+            ['PO2', 'COPDAT', false],
+            ['PO0', 'COPDAT', false],
+        ]);
+    });
+
+    test('en pagos: el de último día (2026-10-20) va antes que dos sin marca del 2026-10-10, y esos dos por documento', () => {
+        // En OCs el renglón de último día siempre es el más viejo, porque la ventana las filtra.
+        // El registro de pagos no se filtra: un pago intentado ese día con otra ventana (por
+        // ejemplo, tras cambiar RETRY_LOOKBACK_DAYS y reiniciar) puede quedar antes del borde.
+        // Con D = 2026-11-19 y 30 días, el borde es el 2026-10-20.
+        const day = '2026-11-19';
+        const model = buildModel({
+            dateISO: day,
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY2: ledgerEntry('rejected', { code: '1827', fechaRegistro: '2026-10-10' }),
+                    PY3: ledgerEntry('rejected', { code: '1827', fechaRegistro: '2026-10-20' }),
+                    PY1: ledgerEntry('rejected', { code: '1827', fechaRegistro: '2026-10-10' }),
+                }),
+            }, {}, day),
+        });
+        expect(allRows(model.sections.rejected).map((row) => [row.docnbr, row.lastDay])).toEqual([
+            ['PY3', true],
+            ['PY1', false],
+            ['PY2', false],
+        ]);
+    });
+
+    test('los grupos van del más grande al más chico y, empatados, por título', () => {
+        const model = buildModel({
+            ocRows: [
+                ocRow({ idOrPo: 'PO1', isValidation: 1 }),
+                ocRow({ idOrPo: 'PO2', isValidation: 1 }),
+                ocRow({ idOrPo: 'PO3', lastError: 'timeout of 30000ms exceeded' }),
+                ocRow({ idOrPo: 'PO4' }),
+            ],
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY1: ledgerEntry('no-response', { description: 'socket hang up' }),
+                    PY2: ledgerEntry('rejected', { code: '1800' }),
+                    PY3: ledgerEntry('rejected', { code: '1827' }),
+                    PY4: ledgerEntry('rejected', { code: '1827' }),
+                }),
+            }),
+        });
+        expect(groupSummary(model.sections.oc)).toEqual([['Validación de datos', 2], ['Portal 1300', 1], ['Sin respuesta del portal', 1]]);
+        expect(groupSummary(model.sections.rejected)).toEqual([['Portal 1827', 2], ['Portal 1800', 1], ['Sin respuesta del portal', 1]]);
+    });
+
+    test('un pago sin fecha de registro va al final de su grupo', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY1: ledgerEntry('rejected', { code: '1827', fechaRegistro: null }),
+                    PY2: ledgerEntry('rejected', { code: '1827', fechaRegistro: '2026-10-25' }),
+                }),
+            }),
+        });
+        expect(allRows(model.sections.rejected).map((row) => row.docnbr)).toEqual(['PY2', 'PY1']);
+    });
+
+    test('en proveedores sin ID: los pagos de cada uno con el mismo criterio, y el renglón con su fecha más vieja', () => {
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PYA1: ledgerEntry('no-provider-id', { vendor: 'PROVA', fechaRegistro: '2026-10-20' }),
+                    PYB2: ledgerEntry('no-provider-id', { vendor: 'PROVB', fechaRegistro: '2026-10-25' }),
+                    PYB1: ledgerEntry('no-provider-id', { vendor: 'PROVB', fechaRegistro: '2026-10-15' }),
+                }),
+            }),
+        });
+        expect(allRows(model.sections.sage).map((row) => [row.vendor, row.payments.map((payment) => payment.docnbr)])).toEqual([
+            ['PROVB', ['PYB1', 'PYB2']],
+            ['PROVA', ['PYA1']],
+        ]);
+    });
+});
+
+describe('buildDailySummaryModel: contrato', () => {
+    test('devuelve dateISO, counts, sections, notes, incomplete, pendingTotal y clock, con las tres secciones', () => {
+        const model = buildModel();
+        expect(Object.keys(model).sort()).toEqual(['clock', 'counts', 'dateISO', 'incomplete', 'notes', 'pendingTotal', 'sections']);
+        expect(Object.keys(model.counts).sort()).toEqual(['lastDay', 'ocPending', 'ocUploaded', 'paymentsPending', 'paymentsUploaded']);
+        expect(Object.keys(model.sections)).toEqual(['oc', 'rejected', 'sage']);
+        expect(model.dateISO).toBe(D);
+    });
+
+    test('clock se copia tal cual', () => {
+        const clock = { sqlDate: '2026-11-03', sqlNow: '2026-11-03 23:45:01', sqlOffsetMin: -360 };
+        expect(buildModel({ clock }).clock).toBe(clock);
+        expect(buildModel({ clock: null }).clock).toBeNull();
+    });
+
+    test('una dateISO que no es una fecha válida lanza: es un error de programación', () => {
+        expect(() => buildModel({ dateISO: '2026-02-30' })).toThrow(/dateISO/);
+        expect(() => buildModel({ dateISO: "2026-11-03'; DROP TABLE x --" })).toThrow(/dateISO/);
+        expect(() => buildDailySummaryModel({})).toThrow(/dateISO/);
+        expect(() => buildDailySummaryModel()).toThrow(/dateISO/);
+    });
+
+    test('no muta su entrada', () => {
+        const input = {
+            dateISO: D,
+            retry: { scope: 'last_n_days', lookbackDays: 30 },
+            tenants: ['COPDAT'],
+            ocRows: [ocRow({ idOrPo: 'PO2' }), ocRow({ idOrPo: 'PO1', fechaAuth: '2026-10-04' })],
+            ocUploadedByTenant: { COPDAT: 2 },
+            ledger: okLedger({ COPDAT: tenantLedger({ ...PROVIDER_BLOCKS_3, PY0001: ledgerEntry('rejected', { code: '1827' }) }) }),
+            controlByTenant: { COPDAT: ['PY9999'] },
+            sourceFailures: [{ tenant: 'COPDAT', source: 'oc-uploaded', error: 'Login failed for user' }],
+            clock: null,
+        };
+        const before = JSON.stringify(input);
+        buildDailySummaryModel(input);
+        expect(JSON.stringify(input)).toBe(before);
     });
 });
