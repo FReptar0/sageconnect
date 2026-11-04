@@ -111,7 +111,9 @@ Each section shows at most 100 rows; the email names the preview command for the
 
 The email covers the calendar day (in `TIMEZONE`) on which it is sent, not the previous one: the one sent at 23:45 on 3 November summarizes 3 November. Only a summary that did not go out and is made up the next day carries the previous day's date (§ Retries). That is why a summary "at midnight" is configured as `23:45`, the default, and not as `00:00`: the time is compared against the start of the cycle, and with a cycle every 15 minutes 23:45 is the last cycle of the day, so the email covers the whole day. At `00:00` it would summarize the day that is just starting, with a single cycle, and whatever fails later that day would not appear in any summary. Any early-morning time has the same problem.
 
-The OC side of the email only reflects the attempts recorded that day in the OC control table (its `ERROR` and `POSTED` rows). If the OC step tried nothing, no row is written and the email says 0 OCs uploaded and 0 not uploaded, with no note: that happens when its selection query fails in every cycle, or when the cycle stops before reaching that step. An attempt whose `ERROR` row could not be written does not appear either (for example, an OC whose portal error contains an apostrophe). So "sin pendientes" does not guarantee that the OC step ran. If the day's OC counts look too low, open that day's `PortalOC_Creator.log` (§ Reading logs): each cycle that reaches the OC step leaves `Iniciando createPurchaseOrders` there when its selection query works and `Error al ejecutar la consulta SQL` when it fails; a day with neither means the step never ran.
+The OC side of the email only reflects the attempts recorded that day in the OC control table (its `ERROR` and `POSTED` rows). If the OC step tried nothing, no row is written and the email says 0 OCs uploaded and 0 not uploaded, with no note: that happens when its selection query fails in every cycle, or when the cycle stops before reaching that step. So "sin pendientes" does not guarantee that the OC step ran. If the day's OC counts look too low, open that day's `PortalOC_Creator.log` (§ Reading logs): each cycle that reaches the OC step leaves `Iniciando createPurchaseOrders` there when its selection query works and `Error al ejecutar la consulta SQL` when it fails; a day with neither means the step never ran.
+
+An OC whose `ERROR` row cannot be written (for example, because its portal error or its validation message contains an apostrophe) does more than disappear from the email: the failed write stops that tenant's OC step at that OC, in every cycle while the same error comes back. The OCs after it are not attempted and do not appear either, and that tenant's later steps in the cycle (order changes and closing) do not run. `Iniciando createPurchaseOrders` is still logged in that case, so it does not prove the step finished: look in that day's `ForResponse.log` for `[ERROR] Error procesando el índice <n>` with an SQL syntax message (`Unclosed quotation mark…` or `Incorrect syntax near…`), and in `PortalOC_Creator.log` for an `Error enviando PO <OC>` line that is not followed by `marcada ERROR en FESA`. This comes from code older than the daily summary, so it can happen with the summary off; its fix is pending as its own task.
 
 ### Switches
 
@@ -189,12 +191,12 @@ All of them go to that day's `EomNotification.log`:
 | Tag | What it records |
 |-----|-----------------|
 | `[NOTIFICATIONS]` | Startup line with the four switches and the summary time. |
-| `[DAILY-SUMMARY]` | One line per attempt: date, attempt n/4, whether it was delivered, and the counts. |
+| `[DAILY-SUMMARY]` | One line per attempt: date, attempt n/4, whether it was delivered, and the counts. With `status=state-unreadable`, the day's state file could not be read (permissions, or another process holding it open): nothing is done for that day until a later cycle can read it, so no email goes out for it meanwhile. This line repeats every cycle while it lasts; check the file's permissions and what has it open. |
 | `[DAILY-SUMMARY-ABANDON]` | A day given up, with the reason. |
 | `[DAILY-SUMMARY-CLOCK]` | When summarizing today, the SQL Server date differs from the `TIMEZONE` date. |
 | `[DAILY-SUMMARY-LEDGER]` | Warnings about the payment ledger. |
 
-Nothing is logged per cycle while the summary is off or has nothing to do. `EomNotification` does not appear in `/logs.html` yet: read the file directly (§ Reading logs).
+Nothing is logged per cycle while the summary is off or has nothing to do, except `status=state-unreadable` while the day's state file cannot be read. `EomNotification` does not appear in `/logs.html` yet: read the file directly (§ Reading logs).
 
 ### Manual payment retries
 
