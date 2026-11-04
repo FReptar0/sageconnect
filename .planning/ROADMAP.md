@@ -298,8 +298,8 @@ Plans:
 - [x] 20.7-01-PLAN.md (wave 1) — Los cuatro interruptores de correo estrictos y en `false` por omisión con un solo helper, `DAILY_SUMMARY_TIME` (23:45) y sus guardas, `.env.example`, los ajustes permitidos de `tests/config.notifications.test.js` y la suite de subproceso; el default del cierre de mes y la reescritura de su comentario van en un commit propio (D-31). Abre con el punto de control de `src/config.js` y fija la lista de referencia de la línea base [RD-12, RD-01]
 - [x] 20.7-02-PLAN.md (wave 1) — `src/utils/DailySummary.js` parte A: fechas en TIMEZONE, validación del estado del día, `decideDailySummaryAction` (crear, abandonar, intentar; 4 intentos a +60/+240/+720 min) y los formateadores de `[NOTIFICATIONS]` y `[DAILY-SUMMARY*]` [RD-01, RD-02, RD-03, RD-12]
 - [x] 20.7-03-PLAN.md (wave 1) — `src/utils/PaymentDayLedger.js`: registro diario de pagos por archivo del día, lectura tolerante, mezcla con intentos sumados y escritura atómica que nunca lanza [RD-10]
-- [ ] 20.7-04-PLAN.md (wave 2, dep 02) — `src/utils/DailySummary.js` parte B: motivos de OCs y códigos del portal, ventana y marca de último día contra el día resumido, modelo con el cruce de pagos, HTML con tope de 100 por sección, asunto y fixture [RD-04, RD-05, RD-06, RD-07, RD-08, RD-09, RD-11, RD-01]
-- [ ] 20.7-05-PLAN.md (wave 2, dep 02+03) — `uploadPayments` anota cada resultado (subido, rechazado, sin respuesta, proveedor sin ID, facturas sin UUID, sin facturas) y vuelca el registro una vez por corrida en un `finally`; proyecta `fechaRegistro` sin tocar el WHERE [RD-10, RD-06, RD-07]
+- [x] 20.7-04-PLAN.md (wave 2, dep 02) — `src/utils/DailySummary.js` parte B: motivos de OCs y códigos del portal, ventana y marca de último día contra el día resumido, modelo con el cruce de pagos, HTML con tope de 100 por sección, asunto y fixture [RD-04, RD-05, RD-06, RD-07, RD-08, RD-09, RD-11, RD-01]
+- [x] 20.7-05-PLAN.md (wave 2, dep 02+03) — `uploadPayments` anota cada resultado (subido, rechazado, sin respuesta, proveedor sin ID, facturas sin UUID, sin facturas) y vuelca el registro una vez por corrida en un `finally`; proyecta `fechaRegistro` sin tocar el WHERE [RD-10, RD-06, RD-07]
 - [ ] 20.7-06-PLAN.md (wave 3, dep 03+04) — `src/services/DailySummaryService.js`: recolección del día con tres consultas de solo lectura por empresa (OCs con error del día, OCs subidas con el reloj de SQL Server, tabla de control de pagos) y lectura del registro [RD-04, RD-05, RD-06, RD-07, RD-09]
 - [ ] 20.7-07-PLAN.md (wave 4, dep 06) — Despacho: estado por día en disco, intento escrito antes de recolectar y enviar, a lo más 4 intentos, reposición solo el día siguiente, envío por `sendOperatorReport` cargado de forma diferida [RD-01, RD-02, RD-03, RD-09]
 - [ ] 20.7-08-PLAN.md (wave 4, dep 06+04) — `src/scripts/daily-summary-preview.js` (solo SELECT, sin envío, sin tope, con el bloque `clock` y el formato de la hora de medianoche) y la sección de operación en `docs/OPERATIONS.md` [RD-13, RD-11]
@@ -349,7 +349,7 @@ Plans:
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
 | 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
-| 20.7 Resumen diario           | v2.4      | 3/10 | In Progress|  |
+| 20.7 Resumen diario           | v2.4      | 5/10 | In Progress|  |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
