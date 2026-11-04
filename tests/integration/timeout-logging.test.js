@@ -236,12 +236,13 @@ describe('Timeout logging integration (Phase 19, ROOT-04)', () => {
             const fs = require('fs');
             const src = fs.readFileSync('src/background.js', 'utf8');
             // 7 tenant-loop step wraps + 1 EOM-gate wrap (Phase 20, 20-07 / CONTEXT D-11)
-            // + 1 biweekly payment-report wrap (Phase 20.5, Q3-03 / Q3-04). Los tres honran
+            // + 1 biweekly payment-report wrap (Phase 20.5, Q3-03 / Q3-04)
+            // + 1 resumen diario (Phase 20.7, D-03). Los cuatro honran
             // el tier de paso de la defensa en profundidad (CLAUDE.md §9). startChildProcess
             // NO está entre ellos — tiene su propio temporizador de 10 min.
             const wrapMatches = src.match(/await withStepTimeout\(/g);
             expect(wrapMatches).not.toBeNull();
-            expect(wrapMatches.length).toBe(9);
+            expect(wrapMatches.length).toBe(10);
             // The EOM dispatch step is wrapped per D-11.
             expect(/withStepTimeout\(\s*dispatchEomIfDue\(/.test(src)).toBe(true);
             expect(/__step = 'eomDispatch'/.test(src)).toBe(true);
@@ -250,6 +251,9 @@ describe('Timeout logging integration (Phase 19, ROOT-04)', () => {
             // flujo que de verdad se atoró en vez de confundirlo con el cierre de mes.
             expect(/withStepTimeout\(\s*dispatchPaymentReportIfDue\(/.test(src)).toBe(true);
             expect(/__step = 'paymentReport'/.test(src)).toBe(true);
+            // El resumen diario también va envuelto, en su propio paso y su propio dominio de fallo.
+            expect(/withStepTimeout\(\s*dispatchDailySummaryIfDue\(/.test(src)).toBe(true);
+            expect(/__step = 'dailySummary'/.test(src)).toBe(true);
         });
 
         test('step timeout NO triggers sendAdminAlert (D-15 negation — step wording does NOT match child detection)', () => {
