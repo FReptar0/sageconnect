@@ -19,7 +19,7 @@
 - [ ] **Phase 20.4: Bound the portal existence probe per tick** (INSERTED) — Tope doble (presupuesto de tiempo + tope de conteo, lo que ocurra primero) sobre la sonda de la fase 20.3, para que no pueda consumir los 5 min del paso `createPurchaseOrders`. Lo que rebase el tope se difiere fail-closed al siguiente tick y aparece como `deferred=` en `[PORTAL-CHECK-SUMMARY]`. Cierra WR-05.
 - [ ] **Phase 20.5: Q3 differentiated alerts** (INSERTED) — Cierra la desviacion Q3 del acta del 2026-05-20: **POs con alerta inmediata** al detectar el fallo de carga (agrupada por tick, una sola alerta por OC derivada de `errorCount` — sin estado nuevo) y **pagos con reporte quincenal** de pendientes acumulados (periodos naturales 1-15 / 16-fin). El correo de cierre de mes de la fase 20 se conserva: responde una pregunta distinta (Q1).
 - [x] **Phase 20.6: Correo quincenal con variante propia y entrega de correo senalizada** (completed 2026-09-10) — Cierra los dos BLOCKER de la revision de codigo de la 20.5: el reporte quincenal sale con el texto del cierre de mes (CR-02), y «enviado» se registra aunque SMTP falle, lo que apaga para siempre la alerta de esa OC (CR-03).
-- [ ] **Phase 20.7: Resumen diario de reintentos sin exito** (INSERTED) — Un solo correo al final del día con lo que se reintentó sin éxito (OCs y pagos, agrupado por motivo) en lugar del aviso inmediato por OC. Apagado por omisión.
+- [x] **Phase 20.7: Resumen diario de reintentos sin exito** (INSERTED) (completed 2026-11-04) — Un solo correo al final del día con lo que se reintentó sin éxito (OCs y pagos, agrupado por motivo) en lugar del aviso inmediato por OC. Apagado por omisión.
 - [ ] **Phase 21: Partial payment completion policy** — Define and implement `PARTIAL_PAYMENT_POLICY` env (atomic | resume | idempotent) gated on Focaltec sandbox dedupe confirmation
 
 <details>
@@ -349,7 +349,7 @@ Plans:
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
 | 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
-| 20.7 Resumen diario           | v2.4      | 10/10 | Complete   | 2026-11-04 |
+| 20.7 Resumen diario           | v2.4      | 10/10 | Complete    | 2026-11-04 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
