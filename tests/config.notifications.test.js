@@ -136,8 +136,8 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         // El codigo de salida por si solo no se acepta como prueba de los defaults: hay que ver
         // los valores que el modulo realmente expuso.
         const parsed = JSON.parse(stdout);
-        expect(parsed.poAlert).toEqual({ enabled: true });
-        expect(parsed.paymentReport).toEqual({ enabled: true, hour: 18, lookbackDays: 365 });
+        expect(parsed.poAlert).toEqual({ enabled: false });
+        expect(parsed.paymentReport).toEqual({ enabled: false, hour: 18, lookbackDays: 365 });
         expect(parsed.mailTimeoutMs).toBe(30000);
     });
 
@@ -294,7 +294,7 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         expect(status).toBe(0);
         const parsed = JSON.parse(stdout);
         expect(parsed.poAlert.enabled).toBe(false);
-        expect(parsed.paymentReport.enabled).toBe(true);
+        expect(parsed.paymentReport.enabled).toBe(false);
         expect(parsed.eom.notificationEnabled).toBe(false);
     });
 
@@ -303,7 +303,7 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
 
         expect(status).toBe(0);
         const parsed = JSON.parse(stdout);
-        expect(parsed.poAlert.enabled).toBe(true);
+        expect(parsed.poAlert.enabled).toBe(false);
         expect(parsed.paymentReport.enabled).toBe(false);
         expect(parsed.eom.notificationEnabled).toBe(false);
     });
@@ -316,8 +316,8 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         // 04 y 05 de esta misma fase.
         expect(status).toBe(0);
         const parsed = JSON.parse(stdout);
-        expect(parsed.poAlert.enabled).toBe(true);
-        expect(parsed.paymentReport.enabled).toBe(true);
+        expect(parsed.poAlert.enabled).toBe(false);
+        expect(parsed.paymentReport.enabled).toBe(false);
         expect(parsed.eom.notificationEnabled).toBe(false);
     });
 
@@ -332,13 +332,14 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         expect(JSON.parse(stdout).poAlert.enabled).toBe(false);
     });
 
-    test('idiom booleano: PO_ALERT_ENABLED=no arranca y queda en false, no lanza', () => {
-        const { status, stdout } = runConfig({ PO_ALERT_ENABLED: 'no' });
+    test('D-30 (fase 20.7): PO_ALERT_ENABLED=no sale con exit 1 y nombra la variable', () => {
+        const { status, stderr } = runConfig({ PO_ALERT_ENABLED: 'no' });
 
-        // El idiom establecido es "cualquier cosa que no sea la cadena true, sin distinguir
-        // mayusculas, es false". Se fija aqui para que nadie suponga luego que 'no' revienta.
-        expect(status).toBe(0);
-        expect(JSON.parse(stdout).poAlert.enabled).toBe(false);
+        // Hasta la 20.7 este caso fijaba lo contrario: 'no' arrancaba y quedaba en false. D-30 lo
+        // revierte con la aprobacion de Yahir: un valor que no es true ni false detiene el arranque.
+        expect(status).toBe(1);
+        expect(stderr).toContain('[CONFIG ERROR]');
+        expect(stderr).toContain('PO_ALERT_ENABLED');
     });
 
     // -----------------------------------------------------------------------
