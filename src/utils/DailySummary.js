@@ -1,12 +1,20 @@
 // Fase 20.7 (D-01): agenda del resumen diario de reintentos sin éxito, validación del estado de
 // cada día resumido y formateadores de la línea de arranque y de la bitácora (D-32, D-34, D-35).
+// Parte B (plan 20.7-04): el motivo de cada documento, la ventana y la marca de último día
+// calculadas contra el día resumido, el modelo del correo con sus cifras y sus notas, y el HTML
+// y el asunto (D-13 a D-15, D-17, D-19, D-23 a D-28).
 //
-// Módulo puro: no lee ni escribe disco, no abre red y no carga los módulos de archivos ni de
-// rutas de Node. Tampoco guarda estado de módulo: lo único a nivel de módulo son constantes
-// inmutables (CLAUDE.md §3). El reloj entra como argumento: `now` es el Date que arma
-// getCurrentDate() de TimezoneHelper, cuyos campos LOCALES son la hora de pared de TIMEZONE.
-// Por eso cada fecha y cada sello se arman con los accesores locales, nunca convirtiendo el
-// instante a UTC, y ninguna función lee un segundo reloj (20.6 D-08).
+// Módulo sin I/O: no lee ni escribe disco, no abre red y no guarda estado de módulo; lo único a
+// nivel de módulo son constantes inmutables (CLAUDE.md §3). Su único require es EomNotification,
+// de donde importa el escapado en vez de copiarlo (D-02). Ese módulo carga la config al cargarse,
+// así que las pruebas lo cargan con un doble de config. El reloj entra como argumento: `now` es
+// el Date que arma getCurrentDate() de TimezoneHelper, cuyos campos LOCALES son la hora de pared
+// de TIMEZONE. Por eso cada fecha y cada sello se arman con los accesores locales, nunca
+// convirtiendo el instante a UTC, y ninguna función lee un segundo reloj (20.6 D-08). Las fechas
+// sin hora (el día resumido, la autorización de una OC, el AUDTDATE de un pago) se comparan como
+// texto YYYY-MM-DD, con aritmética UTC.
+
+const { escapeHtml } = require('./EomNotification');
 
 // D-29 y D-07: tope de intentos por día resumido. Un SMTP que acepta el mensaje y falla después
 // convierte cada reintento en un duplicado en el buzón del operador (20.6 D-10); con 4, el peor
@@ -439,6 +447,602 @@ function formatClockWarnLine(tzDate, sqlDate) {
     return `[DAILY-SUMMARY-CLOCK] tz-date=${logDate(tzDate)} sql-date=${logDate(sqlDate)}`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Parte B: motivos, ventana, marca de último día y modelo del correo.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Motivo de una OC sin éxito, sacado de su última fila ERROR del día (D-13):
+ *   - `isValidation` 1, la fila del sitio de validación con idFocaltec vacío → «Validación de datos»;
+ *   - un texto que empieza con `<dígitos>: ` → «Portal <código>»;
+ *   - un texto que empieza con `undefined: `, el portal respondió sin código → «Respuesta del
+ *     portal sin código»;
+ *   - cualquier otro texto, de red o de tiempo agotado → «Sin respuesta del portal».
+ *
+ * @param {{isValidation: (number|boolean), lastError: (string|null)}} row
+ * @returns {{key: string, title: string}}
+ */
+function classifyOcReason(row) {
+    const { isValidation, lastError } = (row && typeof row === 'object') ? row : {};
+    if (isValidation === 1 || isValidation === true) {
+        return { key: 'validation', title: 'Validación de datos' };
+    }
+    const text = typeof lastError === 'string' ? lastError : '';
+    const portal = /^(\d+): /.exec(text);
+    if (portal !== null) {
+        return { key: `portal-${portal[1]}`, title: `Portal ${portal[1]}` };
+    }
+    if (text.startsWith('undefined: ')) {
+        return { key: 'portal-no-code', title: 'Respuesta del portal sin código' };
+    }
+    return { key: 'no-response', title: 'Sin respuesta del portal' };
+}
+
+/**
+ * Grupo de un pago que el portal no aceptó (RD-06): `rejected` va por su código («Portal 1827»,
+ * o «Portal sin código» si no lo trae) y `no-response` va a «Sin respuesta del portal». Ningún
+ * código se trata como «sin acción»: el 1827 dice que alguna factura ya está pagada, no todas.
+ *
+ * @param {object} entry - Una entrada del registro de pagos (D-16).
+ * @returns {{key: string, title: string}|null} `null` si el resultado no es un rechazo ni un
+ *   intento sin respuesta.
+ */
+function classifyPaymentRejection(entry) {
+    const outcome = (entry && typeof entry === 'object') ? entry.outcome : undefined;
+    if (outcome === 'no-response') {
+        return { key: 'no-response', title: 'Sin respuesta del portal' };
+    }
+    if (outcome !== 'rejected') {
+        return null;
+    }
+    const code = entry.code == null ? '' : String(entry.code).trim();
+    if (code.length === 0) {
+        return { key: 'portal-no-code', title: 'Portal sin código' };
+    }
+    return { key: `portal-${code}`, title: `Portal ${code}` };
+}
+
+// D-15: borde inferior de la ventana `last_n_days`, contado contra el día resumido y nunca contra
+// el día en que corre el envío. Así una reposición al día siguiente conserva los renglones de
+// último día (PATTERNS, Advertencia C). `null` si el alcance es otro o los días no son un entero
+// no negativo.
+function lookbackBorder(dayISO, retry) {
+    if (!retry || typeof retry !== 'object' || retry.scope !== 'last_n_days') {
+        return null;
+    }
+    if (!Number.isInteger(retry.lookbackDays) || retry.lookbackDays < 0) {
+        return null;
+    }
+    return addDaysISO(dayISO, -retry.lookbackDays);
+}
+
+/**
+ * ¿La fecha del documento cae dentro de la ventana de reintentos del día resumido? Es la misma
+ * semántica que el filtro de ventana del ciclo (RetryPolicy), pero medida contra `dayISO` (D-15):
+ * con `last_n_days`, fecha >= D − N; con `current_month`, el mismo mes que D. Compara texto
+ * `YYYY-MM-DD`.
+ *
+ * @param {string|null} docDateISO - La autorización de la OC o el AUDTDATE del pago.
+ * @param {string} dayISO - El día resumido.
+ * @param {{scope: string, lookbackDays?: number}} retry - `config.retry`.
+ * @returns {boolean} `false` ante una fecha inválida o un alcance desconocido.
+ */
+function isWithinRetryWindow(docDateISO, dayISO, retry) {
+    if (!isIsoDate(docDateISO) || !isIsoDate(dayISO) || !retry || typeof retry !== 'object') {
+        return false;
+    }
+    if (retry.scope === 'current_month') {
+        return docDateISO.slice(0, 7) === dayISO.slice(0, 7);
+    }
+    const border = lookbackBorder(dayISO, retry);
+    return border !== null && docDateISO >= border;
+}
+
+/**
+ * ¿Es el último día de reintento automático del documento (RD-08)? Un solo cálculo para OCs y
+ * pagos (D-15): con `last_n_days`, la fecha es exactamente D − N, porque mañana el borde avanza y
+ * la deja fuera; con `current_month`, D es el último día de su mes (un día después cambia de mes)
+ * y todo el mes sale de la ventana mañana.
+ *
+ * @param {string|null} docDateISO
+ * @param {string} dayISO
+ * @param {{scope: string, lookbackDays?: number}} retry
+ * @returns {boolean} `false` fuera de la ventana, ante entrada inválida o con alcance desconocido.
+ */
+function isLastRetryDay(docDateISO, dayISO, retry) {
+    if (!isWithinRetryWindow(docDateISO, dayISO, retry)) {
+        return false;
+    }
+    if (retry.scope === 'current_month') {
+        return addDaysISO(dayISO, 1).slice(0, 7) !== dayISO.slice(0, 7);
+    }
+    return docDateISO === lookbackBorder(dayISO, retry);
+}
+
+// Una config de reintentos con la que se puede calcular la ventana. Sin ella el modelo no lista
+// OCs y lo dice en una nota, en lugar de presentar el día como sin pendientes (D-27).
+function isUsableRetry(retry) {
+    if (!retry || typeof retry !== 'object') {
+        return false;
+    }
+    if (retry.scope === 'current_month') {
+        return true;
+    }
+    return retry.scope === 'last_n_days' && Number.isInteger(retry.lookbackDays) && retry.lookbackDays >= 0;
+}
+
+function hasOwn(object, key) {
+    return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+// Compara por código de carácter, sin depender del idioma del sistema: el orden del correo es el
+// mismo en cualquier servidor y el fixture puede fijarlo byte a byte.
+function compareText(a, b) {
+    if (a === b) {
+        return 0;
+    }
+    return a < b ? -1 : 1;
+}
+
+// D-24: llave de orden de un renglón. Primero los de último día, luego la fecha más vieja (los
+// que no traen fecha al final), luego el documento y la empresa.
+function sortKey(lastDay, date, doc, tenant) {
+    return {
+        lastDay: lastDay === true,
+        date: isIsoDate(date) ? date : null,
+        doc: doc == null ? '' : String(doc),
+        tenant: tenant == null ? '' : String(tenant),
+    };
+}
+
+function compareSortKeys(a, b) {
+    if (a.lastDay !== b.lastDay) {
+        return a.lastDay ? -1 : 1;
+    }
+    if (a.date !== b.date) {
+        if (a.date === null) {
+            return 1;
+        }
+        if (b.date === null) {
+            return -1;
+        }
+        return compareText(a.date, b.date);
+    }
+    return compareText(a.doc, b.doc) || compareText(a.tenant, b.tenant);
+}
+
+// Copia ordenada de `items` con la llave que `keyOf` saca de cada uno.
+function sortedBy(items, keyOf) {
+    return items
+        .map((item) => ({ item, key: keyOf(item) }))
+        .sort((a, b) => compareSortKeys(a.key, b.key))
+        .map((entry) => entry.item);
+}
+
+function oldestDate(payments) {
+    let oldest = null;
+    for (const payment of payments) {
+        if (isIsoDate(payment.fechaRegistro) && (oldest === null || payment.fechaRegistro < oldest)) {
+            oldest = payment.fechaRegistro;
+        }
+    }
+    return oldest;
+}
+
+// Llave de orden de cualquier renglón del modelo. El de un proveedor sin ID se ordena con la
+// fecha más vieja de sus pagos y con el proveedor como documento (D-24).
+function rowSortKey(row) {
+    if (Array.isArray(row.payments)) {
+        return sortKey(row.lastDay, oldestDate(row.payments), row.vendor, row.tenant);
+    }
+    if (hasOwn(row, 'idOrPo')) {
+        return sortKey(row.lastDay, row.fechaAuth, row.idOrPo, row.tenant);
+    }
+    return sortKey(row.lastDay, row.fechaRegistro, row.docnbr, row.tenant);
+}
+
+// Agrega un renglón al grupo de su motivo, y crea el grupo la primera vez.
+function addToGroup(groups, reason, row) {
+    if (!hasOwn(groups, reason.key)) {
+        groups[reason.key] = { key: reason.key, title: reason.title, rows: [] };
+    }
+    groups[reason.key].rows.push(row);
+}
+
+// D-24: los grupos van del más grande al más chico y, empatados, por título; sus renglones, con
+// rowSortKey.
+function sortedGroups(groups) {
+    return Object.keys(groups)
+        .map((key) => ({ key, title: groups[key].title, rows: sortedBy(groups[key].rows, rowSortKey) }))
+        .sort((a, b) => (b.rows.length - a.rows.length) || compareText(a.title, b.title) || compareText(a.key, b.key));
+}
+
+// El texto de un error dentro de una nota: en un renglón, acotado y sin punto final, porque la
+// nota pone el suyo.
+function noteDetail(error) {
+    const text = sanitizeLogText(error, 200).replace(/\.+$/, '');
+    return text.length === 0 ? 'sin detalle' : text;
+}
+
+// D-27: una nota por cada fuente que falló, con la empresa y el error. Se escapa al renderizar.
+function sourceFailureNote(failure) {
+    const tenant = failure.tenant == null ? 'una empresa' : String(failure.tenant);
+    const detail = noteDetail(failure.error);
+    if (failure.source === 'oc-errors') {
+        return `No se pudieron leer las OCs con error de ${tenant}: ${detail}.`;
+    }
+    if (failure.source === 'oc-uploaded') {
+        return `No se pudieron contar las OCs subidas de ${tenant}: ${detail}.`;
+    }
+    if (failure.source === 'payments-control') {
+        return `No se pudo leer la tabla de control de pagos de ${tenant}: ${detail}. Algunos pagos de la lista pudieron subirse después.`;
+    }
+    return `No se pudo leer una fuente de datos de ${tenant} (${sanitizeLogText(failure.source, 50)}): ${detail}.`;
+}
+
+// El registro tal como lo entregó readPaymentDayLedger, revalidado aquí: una envoltura que no se
+// reconoce, o un `ok` de otra fecha, de otra versión o sin empresas, cuenta como ilegible, igual
+// que en la agenda (T-20.7-06). Devuelve `data` o `null`.
+function readableLedgerData(ledger, dateISO) {
+    if (!ledger || typeof ledger !== 'object' || ledger.status !== 'ok') {
+        return null;
+    }
+    const data = ledger.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return null;
+    }
+    if (data.version !== 1 || data.date !== dateISO) {
+        return null;
+    }
+    if (!data.tenants || typeof data.tenants !== 'object' || Array.isArray(data.tenants)) {
+        return null;
+    }
+    return data;
+}
+
+// D-19: la hora del reinicio sale del recoveredAt que vive en la RAÍZ del registro, con la forma
+// de localStamp; su `HH:MM` es el tramo 11-16.
+function recoveredNote(recoveredAt) {
+    if (parseStamp(recoveredAt) === null) {
+        return 'Datos de pagos incompletos: el registro se reinició.';
+    }
+    return `Datos de pagos incompletos: el registro se reinició a las ${recoveredAt.slice(11, 16)}.`;
+}
+
+function queryFailuresNote(tenant, entry) {
+    const runs = Number.isInteger(entry.runs) ? String(entry.runs) : '?';
+    const base = `La consulta de pagos de ${tenant} falló en ${entry.queryFailures} de ${runs} corridas del día`;
+    if (entry.lastQueryError == null) {
+        return `${base}.`;
+    }
+    return `${base} (último error: ${noteDetail(entry.lastQueryError)}).`;
+}
+
+// D-14: los NoPagoSage de la empresa como diccionario de textos recortados, o `null` si su tabla
+// de control no se leyó y el cruce no es posible. Acepta un arreglo o un Set.
+function controlSetOf(controlByTenant, tenant) {
+    if (!controlByTenant || typeof controlByTenant !== 'object' || !hasOwn(controlByTenant, tenant)) {
+        return null;
+    }
+    const value = controlByTenant[tenant];
+    if (!Array.isArray(value) && Object.prototype.toString.call(value) !== '[object Set]') {
+        return null;
+    }
+    const known = Object.create(null);
+    for (const item of value) {
+        if (item != null) {
+            known[String(item).trim()] = true;
+        }
+    }
+    return known;
+}
+
+function isLedgerOutcome(outcome) {
+    return ['uploaded', 'rejected', 'no-response', 'no-provider-id', 'missing-uuid', 'no-invoices'].includes(outcome);
+}
+
+// D-12: OCs subidas de las empresas cuya cuenta se pudo leer; `null` si ninguna respondió.
+function sumUploaded(byTenant) {
+    if (!byTenant || typeof byTenant !== 'object') {
+        return null;
+    }
+    let total = null;
+    for (const value of Object.values(byTenant)) {
+        if (Number.isFinite(value)) {
+            total = (total === null ? 0 : total) + value;
+        }
+    }
+    return total;
+}
+
+// OCs del día dentro de la ventana del día resumido, agrupadas por motivo (RD-05, D-13, D-15).
+// `pending` es null cuando no se puede saber: la ventana no se puede calcular, o todas las
+// empresas configuradas fallaron su consulta de OCs.
+function collectOcs(ocRows, dateISO, retry, tenants, failures) {
+    const out = { groups: Object.create(null), pending: null, lastDay: 0 };
+    const failed = Object.create(null);
+    for (const failure of failures) {
+        if (failure.source === 'oc-errors') {
+            failed[String(failure.tenant)] = true;
+        }
+    }
+    if (!isUsableRetry(retry) || (tenants.length > 0 && tenants.every((tenant) => failed[tenant] === true))) {
+        return out;
+    }
+    out.pending = 0;
+    for (const row of Array.isArray(ocRows) ? ocRows : []) {
+        if (!row || typeof row !== 'object' || !isWithinRetryWindow(row.fechaAuth, dateISO, retry)) {
+            continue;
+        }
+        const lastDay = isLastRetryDay(row.fechaAuth, dateISO, retry);
+        addToGroup(out.groups, classifyOcReason(row), {
+            tenant: row.tenant ?? null,
+            idOrPo: row.idOrPo ?? null,
+            fechaAuth: row.fechaAuth,
+            attemptsToday: row.attemptsToday ?? null,
+            lastError: row.lastError ?? null,
+            lastDay,
+        });
+        out.pending += 1;
+        if (lastDay) {
+            out.lastDay += 1;
+        }
+    }
+    return out;
+}
+
+// Lleva un pago pendiente a su sección: los rechazos y los intentos sin respuesta van a «Pagos
+// rechazados por el portal»; lo detenido por datos de Sage va a su propia sección, con el
+// proveedor sin ID agregado en un renglón por empresa y proveedor (RD-07, D-17).
+function addPendingPayment(out, tenant, docnbr, entry, lastDay) {
+    const vendor = entry.vendor ?? null;
+    const fechaRegistro = entry.fechaRegistro ?? null;
+    const rejection = classifyPaymentRejection(entry);
+    if (rejection !== null) {
+        addToGroup(out.rejected, rejection, {
+            tenant,
+            docnbr,
+            vendor,
+            fechaRegistro,
+            attempts: entry.attempts ?? null,
+            description: entry.description ?? null,
+            lastDay,
+        });
+        return;
+    }
+    if (entry.outcome === 'no-provider-id') {
+        const vendorKey = `${tenant}\u0000${vendor === null ? '' : String(vendor)}`;
+        if (!hasOwn(out.vendorRows, vendorKey)) {
+            out.vendorRows[vendorKey] = { tenant, vendor, payments: [], lastDay: false };
+            addToGroup(out.sage, { key: 'no-provider-id', title: 'Proveedores sin ID del portal' }, out.vendorRows[vendorKey]);
+        }
+        const row = out.vendorRows[vendorKey];
+        row.payments.push({ docnbr, fechaRegistro, lastDay });
+        row.lastDay = row.lastDay || lastDay;
+        return;
+    }
+    if (entry.outcome === 'missing-uuid') {
+        addToGroup(out.sage, { key: 'missing-uuid', title: 'Pagos con facturas sin UUID' }, {
+            tenant,
+            docnbr,
+            vendor,
+            invoices: Array.isArray(entry.invoices) ? entry.invoices.slice() : [],
+            fechaRegistro,
+            lastDay,
+        });
+        return;
+    }
+    addToGroup(out.sage, { key: 'no-invoices', title: 'Pagos sin facturas en Sage' }, {
+        tenant,
+        docnbr,
+        vendor,
+        detail: entry.description ?? null,
+        fechaRegistro,
+        lastDay,
+    });
+}
+
+// Pagos del registro del día (D-14, D-17, D-19), solo con un registro legible. Lo subido se
+// cuenta; un fallo cuyo DOCNBR ya tiene fila en la tabla de control de su empresa, de cualquier
+// estado, no está pendiente; los demás fallos sí. Lo que falta se dice en `notes`.
+function collectPayments(ledger, dateISO, retry, tenants, controlByTenant, failures, notes) {
+    const out = {
+        rejected: Object.create(null),
+        sage: Object.create(null),
+        vendorRows: Object.create(null),
+        uploaded: null,
+        pending: null,
+        lastDay: 0,
+    };
+    const data = readableLedgerData(ledger, dateISO);
+    if (data === null) {
+        notes.push(ledger && ledger.status === 'missing'
+            ? 'Sin datos de pagos de ese día: no hay registro de la subida de pagos.'
+            : 'Sin datos de pagos de ese día: el registro de pagos no se pudo leer.');
+        return out;
+    }
+    if (data.recoveredAt !== undefined && data.recoveredAt !== null) {
+        notes.push(recoveredNote(data.recoveredAt));
+    }
+    for (const tenant of tenants) {
+        if (!hasOwn(data.tenants, tenant)) {
+            notes.push(`Sin datos de pagos de ${tenant} ese día.`);
+        }
+    }
+    const controlFailed = Object.create(null);
+    for (const failure of failures) {
+        if (failure.source === 'payments-control') {
+            controlFailed[String(failure.tenant)] = true;
+        }
+    }
+
+    const pendingKeys = Object.create(null);
+    const uncrossed = [];
+    let uploaded = 0;
+    let unrecognized = 0;
+    for (const tenant of Object.keys(data.tenants)) {
+        const tenantEntry = data.tenants[tenant];
+        if (!tenantEntry || typeof tenantEntry !== 'object' || !tenantEntry.payments || typeof tenantEntry.payments !== 'object') {
+            unrecognized += 1;
+            continue;
+        }
+        if (Number.isInteger(tenantEntry.queryFailures) && tenantEntry.queryFailures > 0) {
+            notes.push(queryFailuresNote(tenant, tenantEntry));
+        }
+        const control = controlSetOf(controlByTenant, tenant);
+        let tenantPending = 0;
+        for (const docnbr of Object.keys(tenantEntry.payments)) {
+            const entry = tenantEntry.payments[docnbr];
+            if (!entry || typeof entry !== 'object' || !isLedgerOutcome(entry.outcome)) {
+                unrecognized += 1;
+                continue;
+            }
+            if (entry.outcome === 'uploaded') {
+                uploaded += 1;
+                continue;
+            }
+            if (control !== null && control[docnbr.trim()] === true) {
+                continue;
+            }
+            const lastDay = isLastRetryDay(entry.fechaRegistro, dateISO, retry);
+            pendingKeys[`${tenant}\u0000${docnbr}`] = true;
+            tenantPending += 1;
+            if (lastDay) {
+                out.lastDay += 1;
+            }
+            addPendingPayment(out, tenant, docnbr, entry, lastDay);
+        }
+        // Sin tabla de control leída y sin una falla que ya lo diga, el cruce no se hizo.
+        if (tenantPending > 0 && control === null && controlFailed[tenant] !== true) {
+            uncrossed.push(tenant);
+        }
+    }
+    if (unrecognized > 0) {
+        notes.push(unrecognized === 1
+            ? 'Datos de pagos incompletos: 1 entrada del registro no se reconoció.'
+            : `Datos de pagos incompletos: ${unrecognized} entradas del registro no se reconocieron.`);
+    }
+    for (const tenant of uncrossed) {
+        notes.push(`No se cruzaron los pagos de ${tenant} con la tabla de control: algunos pagos de la lista pudieron subirse después.`);
+    }
+    for (const row of Object.values(out.vendorRows)) {
+        row.payments = sortedBy(row.payments, (payment) => sortKey(payment.lastDay, payment.fechaRegistro, payment.docnbr, ''));
+    }
+    out.uploaded = uploaded;
+    out.pending = Object.keys(pendingKeys).length;
+    return out;
+}
+
+/**
+ * Arma el modelo del correo del día resumido (D-23 a D-27). Pura y sin reloj: recibe lo que la
+ * recolección del plan 20.7-06 ya leyó de SQL y del registro de pagos.
+ *
+ * @param {object} input
+ * @param {string} input.dateISO - El día resumido. Si no pasa isIsoDate, lanza: es un error de
+ *   programación, porque la recolección ya la validó.
+ * @param {{scope: string, lookbackDays?: number}} input.retry - `config.retry`. Si con ella no se
+ *   puede calcular la ventana, no se listan OCs, `ocPending` es null y queda una nota.
+ * @param {string[]} input.tenants - Las bases configuradas, en orden.
+ * @param {object[]} input.ocRows - `{ tenant, idOrPo, attemptsToday, lastError, isValidation,
+ *   fechaAuth }`, con `fechaAuth` como texto `YYYY-MM-DD` o null.
+ * @param {Object<string, number>} input.ocUploadedByTenant - Solo las empresas cuya cuenta se leyó.
+ * @param {{status: string, data: (object|null)}} input.ledger - El valor de readPaymentDayLedger,
+ *   con `recoveredAt` en la raíz de `data` si el registro se reinició.
+ * @param {Object<string, (string[]|Set<string>)>} input.controlByTenant - NoPagoSage por empresa,
+ *   solo de las empresas cuya tabla de control se leyó.
+ * @param {object[]} input.sourceFailures - `{ tenant, source, error }`, con `source` en
+ *   `oc-errors`, `oc-uploaded` o `payments-control`.
+ * @param {object|null} input.clock - `{ sqlDate, sqlNow, sqlOffsetMin }`; se copia tal cual.
+ * @returns {{dateISO: string, counts: object, sections: object, notes: string[],
+ *            incomplete: boolean, pendingTotal: number, clock: (object|null)}}
+ *   - `counts = { ocUploaded, paymentsUploaded, ocPending, paymentsPending, lastDay }`, cada una
+ *     número o null cuando su fuente no existe. `paymentsPending` cuenta pagos DISTINTOS por
+ *     empresa y DOCNBR en todas las agrupaciones de pagos, nunca renglones: un proveedor sin ID
+ *     suma los pagos que bloquea. `lastDay` cuenta documentos marcados, OCs y pagos.
+ *   - `sections = { oc, rejected, sage }`, cada una `{ title, groups: [{ key, title, rows }] }`,
+ *     con grupos y renglones ya ordenados (D-24). El tope de renglones se aplica al renderizar.
+ *   - `notes`: textos en español SIN escapar; `incomplete` es `notes.length > 0`.
+ *   - `pendingTotal` = OCs pendientes + pagos pendientes, con null como 0: el N del asunto (D-25).
+ */
+function buildDailySummaryModel(input) {
+    const src = (input && typeof input === 'object') ? input : {};
+    const { dateISO, retry } = src;
+    if (!isIsoDate(dateISO)) {
+        throw new TypeError('buildDailySummaryModel: dateISO debe ser una fecha YYYY-MM-DD válida');
+    }
+    const tenants = Array.isArray(src.tenants)
+        ? src.tenants.filter((tenant) => typeof tenant === 'string' && tenant.length > 0)
+        : [];
+    const failures = Array.isArray(src.sourceFailures)
+        ? src.sourceFailures.filter((failure) => failure && typeof failure === 'object')
+        : [];
+
+    const notes = [];
+    if (!isUsableRetry(retry)) {
+        notes.push('No se aplicó la ventana de reintentos porque su configuración no es válida: no se listan OCs ni se marca el último día de reintento.');
+    }
+    for (const failure of failures) {
+        notes.push(sourceFailureNote(failure));
+    }
+
+    const oc = collectOcs(src.ocRows, dateISO, retry, tenants, failures);
+    const payments = collectPayments(src.ledger, dateISO, retry, tenants, src.controlByTenant, failures, notes);
+    const lastDay = (oc.pending === null && payments.pending === null) ? null : oc.lastDay + payments.lastDay;
+
+    return {
+        dateISO,
+        counts: {
+            ocUploaded: sumUploaded(src.ocUploadedByTenant),
+            paymentsUploaded: payments.uploaded,
+            ocPending: oc.pending,
+            paymentsPending: payments.pending,
+            lastDay,
+        },
+        sections: {
+            oc: { title: 'OCs sin subir', groups: sortedGroups(oc.groups) },
+            rejected: { title: 'Pagos rechazados por el portal', groups: sortedGroups(payments.rejected) },
+            sage: { title: 'Pagos detenidos por datos de Sage', groups: sortedGroups(payments.sage) },
+        },
+        notes,
+        incomplete: notes.length > 0,
+        pendingTotal: (oc.pending ?? 0) + (payments.pending ?? 0),
+        clock: src.clock === undefined ? null : src.clock,
+    };
+}
+
+/**
+ * Línea de cifras del correo (D-25): «El 2026-11-03 se subieron 12 OCs y 30 pagos; quedaron sin
+ * subir 3 OCs y 2 pagos (1 en su último día de reintento automático).» Dice la fecha y no «hoy»,
+ * porque la reposición llega al día siguiente. Una cifra null sale «OCs sin datos» o «pagos sin
+ * datos», y el paréntesis del último día solo va si hay alguno. Texto plano: se escapa al
+ * renderizar.
+ *
+ * @param {object} model - El valor de buildDailySummaryModel.
+ * @returns {string}
+ */
+function formatCountsLine(model) {
+    const m = (model && typeof model === 'object') ? model : {};
+    const c = (m.counts && typeof m.counts === 'object') ? m.counts : {};
+    const ocs = (n) => {
+        if (!Number.isFinite(n)) {
+            return 'OCs sin datos';
+        }
+        return n === 1 ? '1 OC' : `${n} OCs`;
+    };
+    const pagos = (n) => {
+        if (!Number.isFinite(n)) {
+            return 'pagos sin datos';
+        }
+        return n === 1 ? '1 pago' : `${n} pagos`;
+    };
+    const date = isIsoDate(m.dateISO) ? m.dateISO : 'n/a';
+    const tail = Number.isFinite(c.lastDay) && c.lastDay > 0
+        ? ` (${c.lastDay} en su último día de reintento automático)`
+        : '';
+    return `El ${date} se subieron ${ocs(c.ocUploaded)} y ${pagos(c.paymentsUploaded)}; `
+        + `quedaron sin subir ${ocs(c.ocPending)} y ${pagos(c.paymentsPending)}${tail}.`;
+}
+
 module.exports = {
     MAX_ATTEMPTS,
     RETRY_OFFSETS_MIN,
@@ -455,4 +1059,10 @@ module.exports = {
     formatAttemptLogLine,
     formatAbandonLogLine,
     formatClockWarnLine,
+    classifyOcReason,
+    classifyPaymentRejection,
+    isWithinRetryWindow,
+    isLastRetryDay,
+    buildDailySummaryModel,
+    formatCountsLine,
 };
