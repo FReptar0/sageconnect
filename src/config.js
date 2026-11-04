@@ -323,8 +323,8 @@ const config = {
     eom: {
         // EOM-01 (D-customer-confirmation): hour-of-day when EOM dispatch becomes eligible (last day only). Default 18 (6pm). Range [0, 23].
         notificationHour: parseEnvNumber(process.env.EOM_NOTIFICATION_HOUR, (v) => parseInt(v, 10), 18),
-        // EOM-05 (D-customer-confirmation): kill-switch. Default 'true'. Set to 'false' to disable EOM dispatch entirely.
-        notificationEnabled: (process.env.EOM_NOTIFICATION_ENABLED || 'true').toLowerCase() === 'true',
+        // EOM-05: interruptor del correo de cierre de mes. Desde la fase 20.7 vale 'false' si falta (D-30, D-31) y solo se enciende con 'true' explícito.
+        notificationEnabled: (process.env.EOM_NOTIFICATION_ENABLED || 'false').toLowerCase() === 'true',
     },
 };
 

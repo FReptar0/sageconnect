@@ -147,7 +147,7 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         expect(status).toBe(0);
         // Se anadio al lado, no se renombro. Si alguien pliega eom dentro de notifications, este
         // caso se pone rojo antes de que Q3-05 se entere por otra via.
-        expect(JSON.parse(stdout).eom).toEqual({ notificationHour: 18, notificationEnabled: true });
+        expect(JSON.parse(stdout).eom).toEqual({ notificationHour: 18, notificationEnabled: false });
     });
 
     // -----------------------------------------------------------------------
@@ -295,7 +295,7 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         const parsed = JSON.parse(stdout);
         expect(parsed.poAlert.enabled).toBe(false);
         expect(parsed.paymentReport.enabled).toBe(true);
-        expect(parsed.eom.notificationEnabled).toBe(true);
+        expect(parsed.eom.notificationEnabled).toBe(false);
     });
 
     test('Q3-04: PAYMENT_REPORT_ENABLED=false apaga solo el reporte quincenal', () => {
@@ -305,7 +305,7 @@ describe('Q3-04 / Q3-06 — guardas de configuracion de las alertas diferenciada
         const parsed = JSON.parse(stdout);
         expect(parsed.poAlert.enabled).toBe(true);
         expect(parsed.paymentReport.enabled).toBe(false);
-        expect(parsed.eom.notificationEnabled).toBe(true);
+        expect(parsed.eom.notificationEnabled).toBe(false);
     });
 
     test('Q3-04: EOM_NOTIFICATION_ENABLED=false sigue apagando solo el cierre de mes', () => {
