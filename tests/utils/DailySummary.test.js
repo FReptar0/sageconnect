@@ -65,9 +65,9 @@ function decide(now, today, yesterday) {
 }
 
 describe('constantes de D-29', () => {
-    test('MAX_ATTEMPTS = 4, RETRY_OFFSETS_MIN = [60, 240, 720] congelado y ROW_CAP = 100', () => {
+    test('MAX_ATTEMPTS = 4, RETRY_OFFSETS_MIN = [60, 180, 480] (desde el intento anterior, WR-03) congelado y ROW_CAP = 100', () => {
         expect(MAX_ATTEMPTS).toBe(4);
-        expect(RETRY_OFFSETS_MIN).toEqual([60, 240, 720]);
+        expect(RETRY_OFFSETS_MIN).toEqual([60, 180, 480]);
         expect(Object.isFrozen(RETRY_OFFSETS_MIN)).toBe(true);
         expect(ROW_CAP).toBe(100);
     });
@@ -352,7 +352,8 @@ describe('decideDailySummaryAction: RD-03, a lo más 4 intentos por día resumid
     // Simula al despachador del plan 20.7-07 sobre un almacén en memoria: cada ejecución lee los
     // dos estados (validados como lo hará readDayState), pide la decisión y aplica las
     // operaciones en orden. Cada intento se sella con localStamp(now), el reloj de la ejecución.
-    function simulateEvery15Min({ runs, deliver }) {
+    // `skip(now)` en true quita esa ejecución, como un servicio apagado o un candado retenido.
+    function simulateEvery15Min({ runs, deliver, skip = () => false }) {
         const store = { [D]: pendingState(D) };
         const read = (iso) => {
             if (!Object.prototype.hasOwnProperty.call(store, iso)) {
@@ -366,6 +367,9 @@ describe('decideDailySummaryAction: RD-03, a lo más 4 intentos por día resumid
         let lastStamp = null;
         for (let k = 0; k < runs; k += 1) {
             const now = at(3, 23, 45 + 15 * k);
+            if (skip(now)) {
+                continue;
+            }
             const todayISO = localDateISO(now);
             const result = decide(now, read(todayISO), read(addDaysISO(todayISO, -1)));
             const stamp = localStamp(now);
@@ -431,16 +435,54 @@ describe('decideDailySummaryAction: RD-03, a lo más 4 intentos por día resumid
         expect(store[D].status).toBe('delivered');
     });
 
-    test('las esperas se miden desde el PRIMER intento y se cumplen al minuto exacto', () => {
+    test('las esperas se miden desde el intento ANTERIOR y se cumplen al minuto exacto (WR-03)', () => {
         const today = ok(pendingState(D_PLUS_1));
         const one = ok(pendingState(D, [failedAttempt('2026-11-03T23:45:00')]));
         expect(decide(at(4, 0, 44, 59), today, one).ops).toEqual([]);
         expect(decide(at(4, 0, 45), today, one).ops).toEqual([{ type: 'attempt', date: D, attemptNumber: 2 }]);
 
-        // El segundo intento salió tarde (01:30); el tercero sigue contando desde las 23:45.
+        // El segundo intento salió tarde (01:30): el tercero cuenta sus 180 minutos desde ahí, no
+        // desde las 23:45. A las 03:45 todavía no toca.
         const two = ok(pendingState(D, [failedAttempt('2026-11-03T23:45:00'), failedAttempt('2026-11-04T01:30:00')]));
-        expect(decide(at(4, 3, 44), today, two).ops).toEqual([]);
-        expect(decide(at(4, 3, 45), today, two).ops).toEqual([{ type: 'attempt', date: D, attemptNumber: 3 }]);
+        expect(decide(at(4, 3, 45), today, two).ops).toEqual([]);
+        expect(decide(at(4, 4, 29, 59), today, two).ops).toEqual([]);
+        expect(decide(at(4, 4, 30), today, two).ops).toEqual([{ type: 'attempt', date: D, attemptNumber: 3 }]);
+
+        // El cuarto, 480 minutos después del tercero.
+        const three = ok(pendingState(D, [
+            failedAttempt('2026-11-03T23:45:00'),
+            failedAttempt('2026-11-04T00:45:00'),
+            failedAttempt('2026-11-04T03:45:00'),
+        ]));
+        expect(decide(at(4, 11, 44, 59), today, three).ops).toEqual([]);
+        expect(decide(at(4, 11, 45), today, three).ops).toEqual([{ type: 'attempt', date: D, attemptNumber: 4 }]);
+    });
+
+    test('con un hueco de ejecuciones (servicio apagado de 00:00 a 12:30 de D+1) los intentos siguen espaciados, no en ráfaga (WR-03)', () => {
+        const down = (now) => now.getDate() === 4 && (now.getHours() < 12 || (now.getHours() === 12 && now.getMinutes() < 30));
+        const { store, timeline, foreignDates, maxAttemptOpsPerRun } = simulateEvery15Min({ runs: 96, deliver: () => false, skip: down });
+
+        const attemptsOfD = timeline.filter((entry) => entry.type === 'attempt' && entry.date === D);
+        // Antes salían a las 12:30, 12:45 y 13:00: los tres vencían a la vez contra el primer intento.
+        expect(attemptsOfD.map((entry) => entry.stamp)).toEqual([
+            '2026-11-03T23:45:00',
+            '2026-11-04T12:30:00',
+            '2026-11-04T15:30:00',
+            '2026-11-04T23:30:00',
+        ]);
+        expect(attemptsOfD.map((entry) => entry.attemptNumber)).toEqual([1, 2, 3, 4]);
+        const gapsMin = attemptsOfD.slice(1).map((entry, i) => (parseStamp(entry.stamp) - parseStamp(attemptsOfD[i].stamp)) / 60000);
+        expect(gapsMin.every((gap) => gap >= 60)).toBe(true);
+        expect(timeline).toEqual([
+            { stamp: '2026-11-03T23:45:00', type: 'attempt', date: D, attemptNumber: 1 },
+            { stamp: '2026-11-04T12:30:00', type: 'create', date: D_PLUS_1 },
+            { stamp: '2026-11-04T12:30:00', type: 'attempt', date: D, attemptNumber: 2 },
+            { stamp: '2026-11-04T15:30:00', type: 'attempt', date: D, attemptNumber: 3 },
+            { stamp: '2026-11-04T23:30:00', type: 'attempt', date: D, attemptNumber: 4 },
+        ]);
+        expect(store[D].attempts).toHaveLength(MAX_ATTEMPTS);
+        expect(foreignDates).toEqual([]);
+        expect(maxAttemptOpsPerRun).toBe(1);
     });
 
     test('4 intentos con el estado aún pending (caída entre las dos escrituras) → abandona con max-attempts', () => {

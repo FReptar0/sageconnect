@@ -53,6 +53,7 @@ const config = require('../../src/config');
 const service = require('../../src/services/DailySummaryService');
 const { buildOcDayQuery, buildOcUploadedQuery, buildPaymentsControlQuery, collectDailySummary } = service;
 const { recordPaymentRun } = require('../../src/utils/PaymentDayLedger');
+const { localStamp } = require('../../src/utils/DailySummary');
 
 const DAY = '2026-11-03';
 // El reloj de SQL Server que devuelve la cuenta de OCs subidas (D-35), uno por empresa.
@@ -857,7 +858,7 @@ describe('dispatchDailySummaryIfDue', () => {
         expect(stateOf(D).status).toBe('delivered');
     });
 
-    test('RD-03: con el correo siempre caído, el día recibe exactamente 4 intentos (23:45, 00:45, 03:45 y 11:45) y queda abandonado con max-attempts en la ejecución del cuarto', async () => {
+    test('RD-03: con el correo siempre caído, el día recibe exactamente 4 intentos (23:45, 00:45, 03:45 y 11:45: 60, 180 y 480 minutos después del anterior, WR-03) y queda abandonado con max-attempts en la ejecución del cuarto', async () => {
         mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ECONNREFUSED });
         const sentAt = [];
         let rightAfter1145 = null;
@@ -896,6 +897,41 @@ describe('dispatchDailySummaryIfDue', () => {
             expect(message).toMatch(new RegExp(`^\\[DAILY-SUMMARY\\] date=2026-11-03 attempt=${index + 1}/4 sent=false .* err=connect ECONNREFUSED 127\\.0\\.0\\.1:25$`));
         });
         // El día siguiente se creó a las 00:00 y queda pendiente para su propio resumen.
+        expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
+    });
+
+    test('WR-03: con el servicio apagado de 00:00 a 12:30 del día siguiente, los intentos 2 a 4 salen a las 12:30, 15:30 y 23:30, nunca en ráfaga', async () => {
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ECONNREFUSED });
+        const sentAt = [];
+
+        // Una ejecución cada 15 minutos de las 23:45 del día D a las 23:30 del siguiente, salvo las
+        // que caen con el servicio apagado.
+        for (let k = 0; k < 96; k++) {
+            const now = new Date(2026, 10, 3, 23, 45 + 15 * k);
+            const down = now.getDate() === 4 && (now.getHours() < 12 || (now.getHours() === 12 && now.getMinutes() < 30));
+            if (down) {
+                continue;
+            }
+            const before = mockSendOperatorReport.mock.calls.length;
+            await expect(dispatchDailySummaryIfDue(now, ON)).resolves.toBeUndefined();
+            if (mockSendOperatorReport.mock.calls.length > before) {
+                sentAt.push(localStamp(now));
+            }
+        }
+
+        // Antes salían a las 12:30, 12:45 y 13:00: las tres esperas vencían a la vez contra el primero.
+        expect(sentAt).toEqual(['2026-11-03T23:45:00', '2026-11-04T12:30:00', '2026-11-04T15:30:00', '2026-11-04T23:30:00']);
+        for (const subject of subjects()) {
+            expect(subject).toContain('Resumen del día 2026-11-03');
+        }
+        expect(stateOf(D)).toEqual({
+            date: D,
+            status: 'abandoned',
+            attempts: sentAt.map((stamp) => ({ at: stamp, delivered: false, error: ECONNREFUSED })),
+            reason: 'max-attempts',
+        });
+        expect(logged('[DAILY-SUMMARY-ABANDON]')).toEqual([['warn', '[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=max-attempts attempts=4']]);
+        // El día siguiente se creó en la primera ejecución después del hueco.
         expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
     });
 

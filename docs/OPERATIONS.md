@@ -176,7 +176,7 @@ While running, the service also logs `[DAILY-SUMMARY-CLOCK]`, which only compare
 
 ### Retries
 
-If the email fails, that day gets at most 4 attempts: when it is due, then 1 h, 4 h and 12 h after the first. After the fourth failure the day becomes `abandoned`. A summary that was not delivered is made up only on the next day, before the summary time; when the next summary is due, the previous day is abandoned if it is still `pending`. Older days are never made up.
+If the email fails, that day gets at most 4 attempts: when it is due, then each one 1 h, 3 h and 8 h after the previous one. With a cycle every 15 minutes and the default time that is 23:45, 00:45, 03:45 and 11:45. If cycles were missed (the service was stopped, or a long cycle held the lock), the next attempt goes out in the first cycle after its wait and the ones after it keep their spacing: they are never sent back to back. After the fourth failure the day becomes `abandoned`. A summary that was not delivered is made up only on the next day, before the summary time; when the next summary is due, the previous day is abandoned if it is still `pending`. Older days are never made up.
 
 ### Log tags
 

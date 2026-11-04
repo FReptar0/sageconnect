@@ -21,10 +21,14 @@ const { escapeHtml } = require('./EomNotification');
 // caso son 4 copias.
 const MAX_ATTEMPTS = 4;
 
-// D-29 y D-07: espera, en minutos contados desde el PRIMER intento, para el 2.º, el 3.º y el 4.º.
-// Cubren una caída del correo de toda la noche (23:45, 00:45, 03:45 y 11:45) y terminan antes
-// de la hora del resumen siguiente. Es constante del código y no del .env, para no sumar perillas.
-const RETRY_OFFSETS_MIN = Object.freeze([60, 240, 720]);
+// D-29 y D-07: espera, en minutos contados desde el intento ANTERIOR, para el 2.º, el 3.º y el 4.º
+// (WR-03 de la revisión; antes se contaban desde el primero, con 60, 240 y 720). Con ejecuciones
+// regulares dan el mismo calendario: cubren una caída del correo de toda la noche (23:45, 00:45,
+// 03:45 y 11:45) y terminan antes de la hora del resumen siguiente. Tras un hueco de ejecuciones
+// (servicio apagado, candado retenido) conservan el espaciado: contadas desde el primero, vencían a
+// la vez y salían en ráfaga cada 15 minutos contra el buzón del operador (20.6 D-10). Es constante
+// del código y no del .env, para no sumar perillas.
+const RETRY_OFFSETS_MIN = Object.freeze([60, 180, 480]);
 
 // D-29 y D-24: renglones por sección del correo; el resto se anuncia con el comando de la vista
 // previa (RD-11).
@@ -200,9 +204,9 @@ function classifyDayState(read, dateISO) {
     return 'corrupt';
 }
 
-// D-07: la operación que toca sobre el día objetivo, que siempre llega pendiente. Las esperas se
-// cuentan desde el primer intento, con el `now` de esta ejecución contra el sello que dejó la
-// primera: los dos salen del mismo reloj.
+// D-07: la operación que toca sobre el día objetivo, que siempre llega pendiente. Cada espera se
+// cuenta desde el intento ANTERIOR (WR-03), con el `now` de esta ejecución contra el sello que dejó
+// ese intento: los dos salen del mismo reloj.
 function nextAttemptOp(dateISO, state, now) {
     const n = state.attempts.length;
     if (n >= MAX_ATTEMPTS) {
@@ -211,11 +215,11 @@ function nextAttemptOp(dateISO, state, now) {
     if (n === 0) {
         return { type: 'attempt', date: dateISO, attemptNumber: 1 };
     }
-    const first = parseStamp(state.attempts[0].at);
-    if (first === null) {
+    const previous = parseStamp(state.attempts[n - 1].at);
+    if (previous === null) {
         return { type: 'abandon', date: dateISO, reason: 'state-corrupt', attempts: n };
     }
-    const elapsedMin = (now.getTime() - first.getTime()) / 60000;
+    const elapsedMin = (now.getTime() - previous.getTime()) / 60000;
     if (elapsedMin >= RETRY_OFFSETS_MIN[n - 1]) {
         return { type: 'attempt', date: dateISO, attemptNumber: n + 1 };
     }
@@ -241,7 +245,7 @@ function nextAttemptOp(dateISO, state, now) {
  *      se mira.
  *   4. Con un objetivo de `n` intentos: `n >= MAX_ATTEMPTS` → `abandon` con `max-attempts`;
  *      `n === 0` → `attempt` 1; si no, `attempt` n+1 solo cuando ya pasaron
- *      `RETRY_OFFSETS_MIN[n - 1]` minutos desde el primer intento.
+ *      `RETRY_OFFSETS_MIN[n - 1]` minutos desde el intento anterior (WR-03).
  *
  * Un estado `ok` se vuelve a validar con `isValidDayState`: uno de otra fecha o incoherente se
  * trata como dañado y nunca provoca un envío (T-20.7-06). Un día cuya lectura falló por E/S
