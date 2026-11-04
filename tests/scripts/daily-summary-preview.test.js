@@ -358,7 +358,11 @@ describe('runDailySummaryPreview', () => {
 
         expect(envelope.success).toBe(false);
         expect(envelope.data).toBeNull();
-        expect(envelope.errors).toHaveLength(1);
+        // La rechaza la validación del propio script, no la excepción de la recolección: el texto
+        // es el de la validación y no queda una línea [FATAL] (mutación M5 de este plan).
+        expect(envelope.errors).toEqual(['La fecha debe ser una fecha real YYYY-MM-DD']);
+        expect(envelope.summary).toBe('No se armó la vista previa: fecha inválida');
+        expect(mockLogGenerator).not.toHaveBeenCalled();
         expect(mockRunQuery).not.toHaveBeenCalled();
         expect(fs.existsSync(path.join(tmpRoot, 'salida'))).toBe(false);
         expect(fs.existsSync(path.join(tmpRoot, 'sageconnect'))).toBe(false);
@@ -385,6 +389,8 @@ describe('parsePreviewArgs', () => {
         [['--date', '2026-02-30']],
         [['--date', "2026-11-03' OR 1=1"]],
         [['--out']],
+        // Un argumento que empieza con -- no es el valor del anterior (mutación M9 de este plan).
+        [['--out', '--date']],
         [['--out', '--date', '2026-11-03']],
         [['--date', '2026-11-03', '--date', '2026-11-04']],
         [['2026-11-03']],
