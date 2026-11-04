@@ -104,6 +104,15 @@ La integración Sage-Portal debe ser confiable, mantenible, y operable: servicio
 
 **Estado a 2026-07-28:** la Phase 20 se abrió en tres — 20 (build inicial), **20.1** (corrección de la política: backoff geométrico → intervalo fijo, verificada 7/7) y **20.2** (código contra el schema REAL, verificada 12/12). Todas completas y **sin desplegar** en `feat/reintentos`. La 20.2 cerró el bloqueador de deploy: el cron de pagos seleccionaba una columna que `fesa.dbo.fesaPagosFocaltec` no tiene, la consulta abortaba, el `.catch()` la convertía en recordset vacío y cada tick procesaba cero pagos detrás de un resumen `[RETRY]` de aspecto normal. También puso los cinco call sites de reintento en un reloj único (`GETDATE() AS dbNow`), eliminando un desfase medido de −360 min que hacía que toda fila candidata pareciera elegible siempre.
 
+**Estado a 2026-11-04: fase 20.7, resumen diario de reintentos sin éxito.** Completa, con la verificación en `human_needed` (14/14 requisitos RD).
+- **Qué cambia.** Sustituye el aviso inmediato por OC por UN correo al final del día, con lo que se reintentó sin éxito: OCs y pagos, agrupado por motivo. Lo pidió Santiago en la revisión del 2026-10-29.
+- **Interruptores.** Los cuatro interruptores de correo valen `false` si falta su línea. Un valor inválido detiene el arranque.
+- **Decisión de Yahir.** Se instala APAGADO junto con el CONT-26-18 y se enciende con `DAILY_SUMMARY_ENABLED=true` cuando se limpie el rezago.
+- **Pendientes antes de encenderlo:**
+  - la prueba del SQL nuevo y de los relojes en el servidor (A1 y A2, en `20.7-HUMAN-UAT.md`);
+  - la tarea del apóstrofo en el INSERT de la fila ERROR de `PortalOC_Creator.js` (WR-07), que corta el paso de OCs de una empresa y afecta producción hoy;
+  - la señal de que el paso de OCs corrió (WR-06).
+
 **Deuda conocida y registrada** (`.planning/phases/20.2-*/deferred-items.md`): D-ITEM-03 (el cron de OCs nunca proyecta `ef.*`, así que el diferimiento de POs es inerte hasta CR-04) y D-ITEM-04/05 (el reporte EOM de pagos y el barrido de operador comparan `P.AUDTDATE` entero contra `DATEFROMPARTS`; el cron de pagos ya lo hace bien desde la Phase 20). Ninguna afecta al sync de pagos.
 
 **Constraint clave:** sin cambios al schema de `fesa.dbo.fesaOCFocaltec` ni `fesa.dbo.fesaPagosFocaltec`. El patrón "una fila por intento" (visible en `PortalOC_Creator.js:248-329`) ya provee todo el estado necesario para derivar el backoff.
@@ -197,4 +206,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-28 — Phase 20.2 (retry-code-vs-real-schema) completa y verificada 12/12. Phases 20, 20.1 y 20.2 listas y sin desplegar en `feat/reintentos`; siguiente: Phase 21 (partial-payment-completion-policy). v2.3 shipped 2026-04-29.*
+*Last updated: 2026-11-04. La Phase 20.7 (resumen diario de reintentos sin éxito) quedó completa, con verificación human_needed (A1 y A2 pendientes en servidor), en `feat/resumen-diario`. Se instala apagada junto con el CONT-26-18. Antes, 2026-07-28: Phase 20.2 completa y verificada 12/12. v2.3 shipped 2026-04-29.*

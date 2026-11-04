@@ -132,6 +132,62 @@ function parseStrictInt(raw) {
     return text === String(parsed) ? parsed : NaN;
 }
 
+/**
+ * Fase 20.7 (D-30): el ÚNICO lector de los cuatro interruptores de correo — PO_ALERT_ENABLED,
+ * PAYMENT_REPORT_ENABLED, EOM_NOTIFICATION_ENABLED y DAILY_SUMMARY_ENABLED —, para que no
+ * vuelvan a leerse de formas distintas.
+ *
+ * Contrato:
+ *   - ausente, o texto que tras el trim queda vacío → false. Ausente sigue siendo válido: las
+ *     cuatro son opcionales y ninguna entra a REQUIRED (decisión 20.1-01). Desde la fase 20.7 un
+ *     .env sin esas líneas no manda ningún aviso (RD-12);
+ *   - 'true' o 'false', sin distinguir mayúsculas → el booleano. El trim es parte del contrato,
+ *     igual que en parseStrictInt: ' true ' vale true;
+ *   - cualquier otro valor ('no', '1', 'yes', 'on', un error de dedo) → null.
+ *
+ * El null es lo que vuelve alcanzables las guardas typeof !== 'boolean' de más abajo, que la fase
+ * 20.5 escribió y que la forma del código no dejaba disparar (WR-04 de su revisión): con la lectura
+ * anterior todo lo que no fuera la cadena true salía false, así que un 'ture' apagaba el aviso en
+ * silencio. Ahora la guarda lo convierte en salida con error y nombra la variable.
+ *
+ * Aprobado por Yahir el 2026-11-03 porque toca el arranque en producción: un valor inválido ya no
+ * arranca. Una línea con 'false' en un .env desplegado sigue siendo válida, también con un
+ * comentario en línea (dotenv lo quita antes de que llegue aquí).
+ */
+function parseEnvSwitch(raw) {
+    if (raw === undefined || raw === null) return false;
+    const text = String(raw).trim().toLowerCase();
+    if (text === '') return false;
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    return null;
+}
+
+/**
+ * Fase 20.7 (D-09): DAILY_SUMMARY_TIME, la hora del resumen diario, en HH:MM de 24 horas con dos
+ * dígitos en cada parte (00:00..23:59). Ausente, o vacía tras el trim → 23:45.
+ *
+ * Esa hora se compara contra la hora en que EMPIEZA la ejecución, no contra la hora en que
+ * termina: con ciclos cada 15 minutos, el de las 23:45 es el último del día. Una hora posterior
+ * al último ciclo hace que el resumen salga siempre al día siguiente, por la reposición.
+ *
+ * Cualquier otro formato — '7:05', '24:00', '23:60', '2345', '23:45:00' — devuelve NaN en las dos
+ * partes, y la guarda de más abajo lo convierte en salida con error nombrando la variable. NO cae
+ * a la hora por omisión: una hora mal escrita que se ignora en silencio manda el resumen a una
+ * hora que el operador nunca escribió, el mismo desenlace fail-open que parseStrictInt existe para
+ * cerrar. Devuelve exactamente { hour, minute }, que la llave del resumen esparce tal cual.
+ */
+function parseDailySummaryTime(raw) {
+    if (raw === undefined || raw === null || String(raw).trim() === '') return { hour: 23, minute: 45 };
+    const match = /^(\d{2}):(\d{2})$/.exec(String(raw).trim());
+    if (match) {
+        const hour = Number(match[1]);
+        const minute = Number(match[2]);
+        if (hour <= 23 && minute <= 59) return { hour, minute };
+    }
+    return { hour: NaN, minute: NaN };
+}
+
 /** Build mailing config -- fully optional. Only populated if MAIL_TRANSPORT is set. */
 function buildMailing() {
     const transport = (process.env.MAIL_TRANSPORT || '').trim();
@@ -257,11 +313,11 @@ const config = {
 
     // Va ANTES de config.eom, no después, por una razón mecánica y no de estilo: el hook
     // .claude/hooks/pre-commit-redaction.sh grepea el diff COMPLETO —contexto incluido— y una
-    // línea preexistente del bloque eom lleva un término que ese hook prohíbe. Insertando aquí,
-    // esa línea queda fuera de la ventana de contexto de 3 líneas y el commit pasa sin bypass;
-    // debajo de eom: no pasaba de ninguna forma, ni tocando la línea (aparece como -) ni
-    // dejándola intacta (aparece como contexto). Es una clave HERMANA: el orden dentro del
-    // object literal no significa nada, y config.eom queda byte-idéntico a HEAD.
+    // línea del bloque eom llevaba un término que ese hook prohíbe; insertando aquí, esa línea
+    // quedaba fuera de la ventana de contexto de 3 líneas. Desde la fase 20.7 ese término ya no
+    // está (D-31: su comentario se reescribió en un commit propio), y el orden se conserva porque
+    // moverlo no gana nada. Es una clave HERMANA: el orden dentro del object literal no significa
+    // nada.
     // === Fase 20.5 (Q3-04 / Q3-06) — alertas diferenciadas ===
     // Los tres interruptores de apagado independientes de Q3-04 más el tier SMTP de Q3-06.
     //
@@ -283,17 +339,17 @@ const config = {
     notifications: {
         poAlert: {
             // Q3-01/Q3-02: interruptor de apagado de la alerta inmediata de OC fallida.
-            // Default 'true'.
+            // Default 'false' desde la fase 20.7 (D-30): si falta, la alerta no sale.
             // Deliberadamente independiente de EOM_NOTIFICATION_ENABLED y de
-            // PAYMENT_REPORT_ENABLED: silenciar un flujo no debe silenciar otro (Q3-04). Quien
-            // quiera todo en silencio apaga los tres interruptores, uno por uno y a sabiendas.
-            enabled: (process.env.PO_ALERT_ENABLED || 'true').toLowerCase() === 'true',
+            // PAYMENT_REPORT_ENABLED: silenciar un flujo no debe silenciar otro (Q3-04). Cada
+            // interruptor se prende por separado con 'true', y prender uno no prende los otros.
+            enabled: parseEnvSwitch(process.env.PO_ALERT_ENABLED),
         },
         paymentReport: {
             // Q3-03: interruptor de apagado del reporte quincenal de pagos pendientes.
-            // Default 'true'.
+            // Default 'false' desde la fase 20.7 (D-30): si falta, el reporte no sale.
             // Misma independencia que poAlert.enabled (Q3-04).
-            enabled: (process.env.PAYMENT_REPORT_ENABLED || 'true').toLowerCase() === 'true',
+            enabled: parseEnvSwitch(process.env.PAYMENT_REPORT_ENABLED),
             // Q3-03: hora del día a partir de la cual el reporte es elegible. Default 18. Rango
             // [0, 23]. Misma hora que el correo de cierre de mes a propósito: el operador aprende
             // un solo hábito.
@@ -303,6 +359,17 @@ const config = {
             // que el cron todavía intenta subir; ésta es lo que el operador todavía necesita ver.
             // Acoplarlas encogería el reporte el día que alguien afine la ventana de reintento.
             lookbackDays: parseEnvNumber(process.env.PAYMENT_REPORT_LOOKBACK_DAYS, parseStrictInt, 365),
+        },
+        dailySummary: {
+            // RD-01 / D-09 / D-29 (fase 20.7): el resumen diario de reintentos sin éxito, un solo
+            // correo al día para todas las empresas, con el primer ciclo que EMPIEZA a partir de
+            // hour:minute (23:45 por omisión, en TIMEZONE). enabled usa el mismo helper que los
+            // otros tres interruptores y vale false si falta (D-30); un DAILY_SUMMARY_TIME con
+            // formato inválido llega aquí como NaN y la guarda de más abajo lo rechaza.
+            // MAX_ATTEMPTS, RETRY_OFFSETS_MIN y ROW_CAP son constantes del código, no del .env
+            // (D-29): no se suman perillas que nadie pidió.
+            enabled: parseEnvSwitch(process.env.DAILY_SUMMARY_ENABLED),
+            ...parseDailySummaryTime(process.env.DAILY_SUMMARY_TIME),
         },
         // Q3-06 (D-11): el tier SMTP. Alimenta connectionTimeout / greetingTimeout / socketTimeout
         // de nodemailer en los DOS call sites de EmailSender. Default 30000, piso 1000, y una sola
@@ -323,8 +390,8 @@ const config = {
     eom: {
         // EOM-01 (D-customer-confirmation): hour-of-day when EOM dispatch becomes eligible (last day only). Default 18 (6pm). Range [0, 23].
         notificationHour: parseEnvNumber(process.env.EOM_NOTIFICATION_HOUR, (v) => parseInt(v, 10), 18),
-        // EOM-05 (D-customer-confirmation): kill-switch. Default 'true'. Set to 'false' to disable EOM dispatch entirely.
-        notificationEnabled: (process.env.EOM_NOTIFICATION_ENABLED || 'true').toLowerCase() === 'true',
+        // EOM-05: interruptor del correo de cierre de mes. Desde la fase 20.7 vale 'false' si falta (D-30, D-31) y solo se enciende con 'true' explícito.
+        notificationEnabled: parseEnvSwitch(process.env.EOM_NOTIFICATION_ENABLED),
     },
 };
 
@@ -498,7 +565,8 @@ if (!Number.isInteger(config.eom.notificationHour) || config.eom.notificationHou
     process.exit(1);
 }
 
-// EOM-05: enabled is boolean (parsed via toLowerCase === 'true' above).
+// EOM-05: parseEnvSwitch devuelve null ante un valor que no es 'true' ni 'false', y esta guarda
+// lo convierte en salida con error (fase 20.7, D-30). Ausente sigue siendo válido y vale false.
 if (typeof config.eom.notificationEnabled !== 'boolean') {
     console.error('[CONFIG ERROR] EOM_NOTIFICATION_ENABLED must be "true" or "false". Got: ' + process.env.EOM_NOTIFICATION_ENABLED);
     process.exit(1);
@@ -512,8 +580,9 @@ if (typeof config.eom.notificationEnabled !== 'boolean') {
 // silencio, y el servicio arranca con un valor que el operador nunca escribió — que es justo el
 // desenlace fail-open que estas guardas existen para cerrar (WR-09 de la fase 20.4).
 
-// Q3-04 (G1): el idiom de arriba produce un booleano por construcción; la guarda atrapa el caso en
-// que alguien cambie ese idiom y deje de producirlo.
+// Q3-04 (G1): parseEnvSwitch devuelve null ante un valor que no es 'true' ni 'false', y esta
+// guarda lo convierte en salida con error (fase 20.7, D-30). Hasta entonces era inalcanzable: la
+// lectura anterior producía un booleano por construcción (WR-04 de la revisión de la 20.5).
 if (typeof config.notifications.poAlert.enabled !== 'boolean') {
     console.error('[CONFIG ERROR] PO_ALERT_ENABLED must be "true" or "false". Got: ' + process.env.PO_ALERT_ENABLED);
     process.exit(1);
@@ -561,6 +630,25 @@ if (!Number.isInteger(config.notifications.mailTimeoutMs) || config.notification
 // única relación que se afirma aquí es contra el step.
 if (config.notifications.mailTimeoutMs >= config.schedule.stepTimeoutMs) {
     console.error('[CONFIG ERROR] MAIL_TIMEOUT_MS (' + config.notifications.mailTimeoutMs + ') must be < STEP_TIMEOUT_MS (' + config.schedule.stepTimeoutMs + '). Lower MAIL_TIMEOUT_MS or raise STEP_TIMEOUT_MS.');
+    process.exit(1);
+}
+
+// === Fase 20.7 (D-09, D-29, D-30) — las dos guardas de config.notifications.dailySummary ===
+// Van después de las seis de la 20.5 y antes del aviso de la llave de API, que sigue siendo el
+// último. Ninguna de las dos variables entra al mapa REQUIRED de validate() (D-29): ausentes, el
+// resumen queda apagado y con su hora por omisión.
+
+// G7: el interruptor del resumen diario, con el mismo contrato que G1 y G2.
+if (typeof config.notifications.dailySummary.enabled !== 'boolean') {
+    console.error('[CONFIG ERROR] DAILY_SUMMARY_ENABLED must be "true" or "false". Got: ' + process.env.DAILY_SUMMARY_ENABLED);
+    process.exit(1);
+}
+
+// G8: la hora del resumen. Ante un formato que no sea HH:MM de 24 horas, parseDailySummaryTime
+// devuelve NaN en las dos partes, y el término Number.isInteger es lo único que lo rechaza: toda
+// comparación contra NaN es false, y el resumen saldría a una hora que el operador nunca escribió.
+if (!Number.isInteger(config.notifications.dailySummary.hour) || !Number.isInteger(config.notifications.dailySummary.minute)) {
+    console.error('[CONFIG ERROR] DAILY_SUMMARY_TIME must be HH:MM in 24-hour time (00:00..23:59). Got: ' + process.env.DAILY_SUMMARY_TIME);
     process.exit(1);
 }
 
