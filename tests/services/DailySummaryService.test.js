@@ -1029,6 +1029,25 @@ describe('dispatchDailySummaryIfDue', () => {
         expect(mockSendOperatorReport).not.toHaveBeenCalled();
     });
 
+    test('nunca lanza, aunque la bitácora también lance: ni la excepción de la recolección ni la de su propia línea de error salen del despacho', async () => {
+        // La rama de respaldo de LogGenerator crea carpetas fuera de un try, así que sí puede lanzar.
+        mockLogGenerator.mockImplementation(() => {
+            throw new Error('EACCES: permission denied, mkdir');
+        });
+
+        await expect(runAt(2026, 10, 3, 23, 45)).resolves.toBeUndefined();
+
+        // La primera línea de la recolección lanzó; el despacho la atrapó y su línea de error también
+        // lanzó. No hubo envío y el intento se quedó anotado en null.
+        expect(mockLogGenerator.mock.calls.map(([, level, message]) => [level, message.split(' ')[0]])).toEqual([
+            ['warn', '[DAILY-SUMMARY-LEDGER]'],
+            ['error', '[DAILY-SUMMARY]'],
+        ]);
+        expect(mockLogGenerator.mock.calls[1][2]).toBe('[DAILY-SUMMARY] status=dispatch-failed err=EACCES: permission denied, mkdir');
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: null, error: null }] });
+    });
+
     test('D-01: el envío se carga solo al intentar; ni una ejecución apagada ni la de las 23:30 lo cargan, la de las 23:45 sí', async () => {
         // Registros limpios. Los casos de arriba ya cargaron el doble en el registro de afuera, y
         // dentro del bloque aislado Jest devolvería esa instancia sin volver a correr la fábrica
