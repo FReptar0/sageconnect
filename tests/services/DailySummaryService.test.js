@@ -774,6 +774,38 @@ describe('dispatchDailySummaryIfDue', () => {
         expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
     });
 
+    test('D-08: si el cuarto intento no se puede completar, el abandono no se anuncia hasta que la ejecución siguiente lo escribe; queda una sola línea de abandono', async () => {
+        const failed = (stamp) => ({ at: stamp, delivered: false, error: ECONNREFUSED });
+        writeRawState(D, JSON.stringify({
+            date: D,
+            status: 'pending',
+            attempts: [failed('2026-11-03T23:45:00'), failed('2026-11-04T00:45:00'), failed('2026-11-04T03:45:00')],
+        }));
+        writeRawState(D1, JSON.stringify({ date: D1, status: 'pending', attempts: [] }));
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ECONNREFUSED });
+        // A las 11:45 la 1.ª escritura del estado de D anota el cuarto intento y la 2.ª lo completa.
+        const renameSpy = failStateRename('ENOSPC: no space left on device, rename', (n) => n === 2);
+        try {
+            await runAt(2026, 10, 4, 11, 45);
+        } finally {
+            renameSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D).status).toBe('pending');
+        expect(stateOf(D).attempts).toHaveLength(4);
+        expect(stateOf(D).attempts[3]).toEqual({ at: '2026-11-04T11:45:00', delivered: null, error: null });
+        expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+            '[DAILY-SUMMARY] date=2026-11-03 attempt=4/4 sent=false status=state-write-failed-after-send err=ENOSPC: no space left on device, rename');
+        expect(logged('[DAILY-SUMMARY-ABANDON]')).toEqual([]);
+
+        // La ejecución siguiente encuentra los 4 intentos, abandona el día sin enviar y lo anuncia.
+        await runAt(2026, 10, 4, 12, 0);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D)).toMatchObject({ status: 'abandoned', reason: 'max-attempts' });
+        expect(logged('[DAILY-SUMMARY-ABANDON]')).toEqual([['warn', '[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=max-attempts attempts=4']]);
+    });
+
     test('RD-03: después de un envío entregado, las dos ejecuciones siguientes no vuelven a enviar', async () => {
         await runAt(2026, 10, 3, 23, 45);
         // 23:50, el mismo día; 00:45, cuando tocaría el segundo intento si no se hubiera entregado.
