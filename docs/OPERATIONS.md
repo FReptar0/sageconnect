@@ -109,6 +109,8 @@ One email a day for all tenants, to `MAILING_NOTICES` with a copy to `MAILING_CC
 
 Each section shows at most 100 rows; the email names the preview command for the rest (§ Preview).
 
+The email covers the calendar day (in `TIMEZONE`) on which it is sent, not the previous one: the one sent at 23:45 on 3 November summarizes 3 November. Only a summary that did not go out and is made up the next day carries the previous day's date (§ Retries). That is why a summary "at midnight" is configured as `23:45`, the default, and not as `00:00`: the time is compared against the start of the cycle, and with a cycle every 15 minutes 23:45 is the last cycle of the day, so the email covers the whole day. At `00:00` it would summarize the day that is just starting, with a single cycle, and whatever fails later that day would not appear in any summary. Any early-morning time has the same problem.
+
 ### Switches
 
 Since phase 20.7 the four email switches — `DAILY_SUMMARY_ENABLED`, `EOM_NOTIFICATION_ENABLED`, `PO_ALERT_ENABLED` and `PAYMENT_REPORT_ENABLED` — are `false` when their line is missing. Each one is turned on with `true`, and turning one on does not turn on the others. Any other value (`no`, `1`, `yes`, …) stops startup with `[CONFIG ERROR]` naming the variable. `DAILY_SUMMARY_TIME` is `HH:MM` in 24-hour time with two digits (`00:00`–`23:59`), in `TIMEZONE`; any other format also stops startup with `[CONFIG ERROR]`.
@@ -176,7 +178,7 @@ While running, the service also logs `[DAILY-SUMMARY-CLOCK]`, which only compare
 
 ### Retries
 
-If the email fails, that day gets at most 4 attempts: when it is due, then each one 1 h, 3 h and 8 h after the previous one. With a cycle every 15 minutes and the default time that is 23:45, 00:45, 03:45 and 11:45. If cycles were missed (the service was stopped, or a long cycle held the lock), the next attempt goes out in the first cycle after its wait and the ones after it keep their spacing: they are never sent back to back. After the fourth failure the day becomes `abandoned`. A summary that was not delivered is made up only on the next day, before the summary time; when the next summary is due, the previous day is abandoned if it is still `pending`. Older days are never made up.
+If the email fails, that day gets at most 4 attempts: when it is due, then each one 1 h, 3 h and 8 h after the previous one. With a cycle every 15 minutes and the default time that is 23:45, 00:45, 03:45 and 11:45. If cycles were missed (the service was stopped, or a long cycle held the lock), the next attempt goes out in the first cycle after its wait and the ones after it keep their spacing: they are never sent back to back. After the fourth failure the day becomes `abandoned`. A day that is still `pending` keeps getting its attempts until the next summary is due: on the same day after the summary time, and on the next day before it. With the default `23:45` its retries all fall on the next day; with an earlier time, such as `12:00`, the first ones fall on the same day. A day whose summary time passed without any cycle (for example, the service was stopped at 23:45) is made up the same way, in the first cycle of the next day. When the next summary is due, the previous day is abandoned if it is still `pending`. Older days are never made up.
 
 ### Log tags
 
