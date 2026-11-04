@@ -1043,6 +1043,240 @@ function formatCountsLine(model) {
         + `quedaron sin subir ${ocs(c.ocPending)} y ${pagos(c.paymentsPending)}${tail}.`;
 }
 
+// ---------------------------------------------------------------------------------------------
+// Parte B: HTML y asunto del correo.
+// ---------------------------------------------------------------------------------------------
+
+// D-24: caracteres de un texto libre por celda; es el mismo recorte del correo de cierre de mes.
+const CELL_TEXT_MAX = 100;
+
+// D-26: el comando que muestra el detalle completo de un día, en lugar de enlaces al panel.
+function previewCommand(dateISO) {
+    return `node src/scripts/daily-summary-preview.js --date ${dateISO}`;
+}
+
+// El N del asunto y la decisión de pintar las secciones: solo un entero positivo cuenta.
+function pendingCount(model) {
+    return Number.isInteger(model.pendingTotal) && model.pendingTotal > 0 ? model.pendingTotal : 0;
+}
+
+// Alguna fuente falló o faltó (D-27): lo dice la bandera del modelo o cualquier nota.
+function isIncomplete(model) {
+    return model.incomplete === true || (Array.isArray(model.notes) && model.notes.length > 0);
+}
+
+// Una celda con su valor escapado; un valor ausente sale vacío.
+function cellText(value) {
+    return value == null ? '' : escapeHtml(value);
+}
+
+// D-23: la marca de último día va pegada a la fecha o, en las secciones de Sage, al pago.
+function markedCell(value, lastDay) {
+    return `${cellText(value)}${lastDay === true ? ' · último día' : ''}`;
+}
+
+// Texto libre de una celda (D-24). Con el tope se recorta a CELL_TEXT_MAX caracteres más «…»
+// ANTES de escapar, para no partir una entidad; la vista previa lo deja completo. Quien llama
+// escapa el resultado.
+function clipText(value, capped) {
+    const text = value == null ? '' : String(value);
+    return capped && text.length > CELL_TEXT_MAX ? text.slice(0, CELL_TEXT_MAX) + '…' : text;
+}
+
+// Los pagos que bloquea un proveedor sin ID, con la marca junto a cada uno.
+function blockedPaymentsText(payments) {
+    return (Array.isArray(payments) ? payments : [])
+        .map((payment) => `${payment.docnbr == null ? '' : String(payment.docnbr)}${payment.lastDay === true ? ' · último día' : ''}`)
+        .join(', ');
+}
+
+// D-23: encabezado y celdas de cada tabla. Las de OCs y de rechazos llevan número de renglón;
+// las tres de datos de Sage, no.
+function tableSpec(sectionKey, groupKey) {
+    if (sectionKey === 'oc') {
+        return {
+            header: '<th>#</th><th>Tenant</th><th>OC</th><th>Fecha autorización</th><th>Intentos del día</th><th>Último error</th>',
+            cells: (row, index, capped) => `<td>${escapeHtml(index + 1)}</td>`
+                + `<td>${cellText(row.tenant)}</td>`
+                + `<td>${cellText(row.idOrPo)}</td>`
+                + `<td>${markedCell(row.fechaAuth, row.lastDay)}</td>`
+                + `<td>${cellText(row.attemptsToday)}</td>`
+                + `<td>${escapeHtml(clipText(row.lastError, capped))}</td>`,
+        };
+    }
+    if (sectionKey === 'rejected') {
+        return {
+            header: '<th>#</th><th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Fecha de registro en Sage</th><th>Intentos del día</th><th>Respuesta del portal</th>',
+            cells: (row, index, capped) => `<td>${escapeHtml(index + 1)}</td>`
+                + `<td>${cellText(row.tenant)}</td>`
+                + `<td>${cellText(row.docnbr)}</td>`
+                + `<td>${cellText(row.vendor)}</td>`
+                + `<td>${markedCell(row.fechaRegistro, row.lastDay)}</td>`
+                + `<td>${cellText(row.attempts)}</td>`
+                + `<td>${escapeHtml(clipText(row.description, capped))}</td>`,
+        };
+    }
+    if (groupKey === 'no-provider-id') {
+        return {
+            header: '<th>Tenant</th><th>Proveedor</th><th>Pagos que bloquea</th>',
+            cells: (row, _index, capped) => `<td>${cellText(row.tenant)}</td>`
+                + `<td>${cellText(row.vendor)}</td>`
+                + `<td>${escapeHtml(clipText(blockedPaymentsText(row.payments), capped))}</td>`,
+        };
+    }
+    if (groupKey === 'missing-uuid') {
+        return {
+            header: '<th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Facturas sin UUID</th>',
+            cells: (row, _index, capped) => `<td>${cellText(row.tenant)}</td>`
+                + `<td>${markedCell(row.docnbr, row.lastDay)}</td>`
+                + `<td>${cellText(row.vendor)}</td>`
+                + `<td>${escapeHtml(clipText(Array.isArray(row.invoices) ? row.invoices.join(', ') : '', capped))}</td>`,
+        };
+    }
+    return {
+        header: '<th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Detalle</th>',
+        cells: (row, _index, capped) => `<td>${cellText(row.tenant)}</td>`
+            + `<td>${markedCell(row.docnbr, row.lastDay)}</td>`
+            + `<td>${cellText(row.vendor)}</td>`
+            + `<td>${escapeHtml(clipText(row.detail, capped))}</td>`,
+    };
+}
+
+// La tabla con el estilo del correo de cierre de mes: thead y tbody en renglones propios.
+function pushTable(lines, spec, rows, capped) {
+    lines.push('<table border="1" cellspacing="0" cellpadding="4">');
+    lines.push('  <thead>');
+    lines.push('    <tr>');
+    lines.push(`      ${spec.header}`);
+    lines.push('    </tr>');
+    lines.push('  </thead>');
+    lines.push('  <tbody>');
+    rows.forEach((row, index) => {
+        lines.push(`    <tr>${spec.cells(row, index, capped)}</tr>`);
+    });
+    lines.push('  </tbody>');
+    lines.push('</table>');
+}
+
+// Una sección del correo (D-23, D-24, RD-11). Con el tope caben a lo más ROW_CAP renglones,
+// repartidos en el orden de los grupos; los grupos que se quedan sin renglones se nombran, y lo
+// que no cupo se anuncia con el comando de la vista previa. `unknown` dice que la fuente de la
+// sección no existe: entonces la sección dice «Sin datos.» y nunca «Ninguno.» (D-27).
+function pushSection(lines, sectionKey, section, fallbackTitle, unknown, capped, command) {
+    const title = (section && typeof section.title === 'string') ? section.title : fallbackTitle;
+    const groups = (section && Array.isArray(section.groups)) ? section.groups : [];
+    lines.push(`<h2>${escapeHtml(title)}</h2>`);
+    if (groups.length === 0) {
+        lines.push(unknown ? '<p>Sin datos.</p>' : '<p>Ninguno.</p>');
+        return;
+    }
+    let room = capped ? ROW_CAP : Infinity;
+    let hidden = 0;
+    const withoutRows = [];
+    for (const group of groups) {
+        const rows = Array.isArray(group.rows) ? group.rows : [];
+        const shown = Math.min(room, rows.length);
+        room -= shown;
+        hidden += rows.length - shown;
+        if (shown === 0) {
+            withoutRows.push(`${group.title} (${rows.length})`);
+            continue;
+        }
+        lines.push(`<h3>${escapeHtml(group.title)} (${escapeHtml(rows.length)})</h3>`);
+        pushTable(lines, tableSpec(sectionKey, group.key), rows.slice(0, shown), capped);
+    }
+    if (withoutRows.length > 0) {
+        lines.push(`<p>Grupos sin renglones en este correo: ${withoutRows.map((label) => escapeHtml(label)).join(', ')}.</p>`);
+    }
+    if (hidden > 0) {
+        const more = hidden === 1 ? '1 renglón más' : `${hidden} renglones más`;
+        lines.push(`<p>Y ${escapeHtml(more)} en esta sección. Detalle completo: <code>${escapeHtml(command)}</code></p>`);
+    }
+}
+
+/**
+ * HTML del correo del día resumido (D-23 a D-28). Copia el estilo de buildEomEmailHtml (un
+ * arreglo de renglones, la tabla border=1 cellspacing=0 cellpadding=4, thead y tbody en
+ * renglones propios y un salto de línea al final) sin extenderla (D-02), y no lleva enlaces
+ * (D-26): el pie trae el comando de la vista previa.
+ *
+ * Toda interpolación dinámica pasa por escapeHtml (D-28, T-20-14): la fecha, las cifras, las
+ * notas, los títulos con código, la empresa, los documentos, el proveedor, las fechas, los
+ * intentos y los textos del portal.
+ *
+ * Con el tope, que es el correo: a lo más ROW_CAP renglones por sección y los textos libres
+ * recortados a 100 caracteres. Con `cap: false`, que es la vista previa (D-36): todo, sin
+ * recortes ni leyendas, y un pie que dice que no se envió correo. Solo un `false` explícito quita
+ * el tope; cualquier otro valor deja el correo acotado (T-20.7-18).
+ *
+ * Sin pendientes, en lugar de las secciones va «Sin pendientes» (RD-09), o, si alguna fuente
+ * falló o faltó, un párrafo que dice que los datos están incompletos (D-27).
+ *
+ * @param {object} model - El valor de buildDailySummaryModel.
+ * @param {{cap?: boolean}} [options] - `{ cap = true }`.
+ * @returns {string}
+ */
+function buildDailySummaryHtml(model, options = {}) {
+    const capped = !(options && typeof options === 'object' && options.cap === false);
+    const m = (model && typeof model === 'object') ? model : {};
+    const dateISO = isIsoDate(m.dateISO) ? m.dateISO : 'n/a';
+    const notes = Array.isArray(m.notes) ? m.notes : [];
+    const sections = (m.sections && typeof m.sections === 'object') ? m.sections : {};
+    const counts = (m.counts && typeof m.counts === 'object') ? m.counts : {};
+    const command = previewCommand(dateISO);
+
+    const lines = [];
+    lines.push(`<h1>SageConnect: Resumen del día ${escapeHtml(dateISO)}</h1>`);
+    lines.push(`<p>${escapeHtml(formatCountsLine(m))}</p>`);
+    for (const note of notes) {
+        lines.push(`<p><em>${escapeHtml(note)}</em></p>`);
+    }
+
+    const hasRows = ['oc', 'rejected', 'sage'].some((key) => sections[key]
+        && Array.isArray(sections[key].groups)
+        && sections[key].groups.some((group) => Array.isArray(group.rows) && group.rows.length > 0));
+    if (pendingCount(m) > 0 || hasRows) {
+        pushSection(lines, 'oc', sections.oc, 'OCs sin subir', counts.ocPending === null, capped, command);
+        pushSection(lines, 'rejected', sections.rejected, 'Pagos rechazados por el portal', counts.paymentsPending === null, capped, command);
+        pushSection(lines, 'sage', sections.sage, 'Pagos detenidos por datos de Sage', counts.paymentsPending === null, capped, command);
+    } else if (isIncomplete(m)) {
+        lines.push('<p>No se encontraron pendientes, pero los datos están incompletos: revise las notas de arriba.</p>');
+    } else {
+        lines.push('<p>Sin pendientes</p>');
+    }
+
+    if (capped) {
+        lines.push(`<p>Detalle completo, sin tope de renglones: <code>${escapeHtml(command)}</code></p>`);
+    } else {
+        lines.push('<p>Vista previa sin tope de renglones ni recorte de textos. No se envió ningún correo.</p>');
+    }
+    return lines.join('\n') + '\n';
+}
+
+/**
+ * Asunto del correo (D-25): `[SageConnect] Resumen del día YYYY-MM-DD — N sin subir`. Con N en 0
+ * dice `— datos incompletos` si alguna fuente falló o faltó (D-27), y `— sin pendientes` si no.
+ * El guion es el largo (U+2014), como en los asuntos del cierre de mes y de la quincena. Es texto
+ * plano de una cabecera de correo y no se escapa (S-7).
+ *
+ * @param {object} model - El valor de buildDailySummaryModel.
+ * @returns {string}
+ */
+function buildDailySummarySubject(model) {
+    const m = (model && typeof model === 'object') ? model : {};
+    const date = isIsoDate(m.dateISO) ? m.dateISO : 'n/a';
+    const pending = pendingCount(m);
+    let tail;
+    if (pending > 0) {
+        tail = `${pending} sin subir`;
+    } else if (isIncomplete(m)) {
+        tail = 'datos incompletos';
+    } else {
+        tail = 'sin pendientes';
+    }
+    return `[SageConnect] Resumen del día ${date} — ${tail}`;
+}
+
 module.exports = {
     MAX_ATTEMPTS,
     RETRY_OFFSETS_MIN,
@@ -1065,4 +1299,6 @@ module.exports = {
     isLastRetryDay,
     buildDailySummaryModel,
     formatCountsLine,
+    buildDailySummaryHtml,
+    buildDailySummarySubject,
 };

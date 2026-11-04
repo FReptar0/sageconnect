@@ -1,0 +1,108 @@
+<h1>SageConnect: Resumen del día 2026-11-03</h1>
+<p>El 2026-11-03 se subieron 15 OCs y 3 pagos; quedaron sin subir 4 OCs y 9 pagos (4 en su último día de reintento automático).</p>
+<p><em>Datos de pagos incompletos: el registro se reinició a las 14:07.</em></p>
+<h2>OCs sin subir</h2>
+<h3>Portal 1300 (2)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>OC</th><th>Fecha autorización</th><th>Intentos del día</th><th>Último error</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA1</td><td>PO0000101</td><td>2026-10-04 · último día</td><td>4</td><td>1300: OC duplicada en el portal</td></tr>
+    <tr><td>2</td><td>EMPRESA2</td><td>PO0000102</td><td>2026-10-21</td><td>2</td><td>1300: OC duplicada en el portal</td></tr>
+  </tbody>
+</table>
+<h3>Sin respuesta del portal (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>OC</th><th>Fecha autorización</th><th>Intentos del día</th><th>Último error</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA2</td><td>PO0000104</td><td>2026-10-15</td><td>3</td><td>timeout of 30000ms exceeded &lt;script&gt;alert(1)&lt;/script&gt;</td></tr>
+  </tbody>
+</table>
+<h3>Validación de datos (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>OC</th><th>Fecha autorización</th><th>Intentos del día</th><th>Último error</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA1</td><td>PO0000103</td><td>2026-10-28</td><td>1</td><td>&quot;provider_external_id&quot; is required</td></tr>
+  </tbody>
+</table>
+<h2>Pagos rechazados por el portal</h2>
+<h3>Portal 1827 (2)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Fecha de registro en Sage</th><th>Intentos del día</th><th>Respuesta del portal</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA1</td><td>PY0000201</td><td>PROV001</td><td>2026-10-04 · último día</td><td>3</td><td>Alguna factura del pago ya está pagada</td></tr>
+    <tr><td>2</td><td>EMPRESA1</td><td>PY0000202</td><td>PROV002</td><td>2026-10-20</td><td>2</td><td>Alguna factura del pago ya está pagada</td></tr>
+  </tbody>
+</table>
+<h3>Portal 1800 (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Fecha de registro en Sage</th><th>Intentos del día</th><th>Respuesta del portal</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA1</td><td>PY0000203</td><td>PROV003</td><td>2026-10-25</td><td>1</td><td>Cuenta bancaria del proveedor no encontrada</td></tr>
+  </tbody>
+</table>
+<h3>Sin respuesta del portal (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>#</th><th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Fecha de registro en Sage</th><th>Intentos del día</th><th>Respuesta del portal</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>1</td><td>EMPRESA1</td><td>PY0000204</td><td>PROV004</td><td>2026-10-30</td><td>2</td><td>timeout of 30000ms exceeded</td></tr>
+  </tbody>
+</table>
+<h2>Pagos detenidos por datos de Sage</h2>
+<h3>Pagos con facturas sin UUID (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Facturas sin UUID</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>EMPRESA1</td><td>PY0000208</td><td>PROV006</td><td>FAC-0001, FAC-0002</td></tr>
+  </tbody>
+</table>
+<h3>Pagos sin facturas en Sage (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Detalle</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>EMPRESA1</td><td>PY0000209 · último día</td><td>PROV007</td><td>Sage no devolvió facturas para el pago</td></tr>
+  </tbody>
+</table>
+<h3>Proveedores sin ID del portal (1)</h3>
+<table border="1" cellspacing="0" cellpadding="4">
+  <thead>
+    <tr>
+      <th>Tenant</th><th>Proveedor</th><th>Pagos que bloquea</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>EMPRESA1</td><td>PROV005</td><td>PY0000205 · último día, PY0000206, PY0000207</td></tr>
+  </tbody>
+</table>
+<p>Detalle completo, sin tope de renglones: <code>node src/scripts/daily-summary-preview.js --date 2026-11-03</code></p>
