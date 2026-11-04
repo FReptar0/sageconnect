@@ -504,8 +504,13 @@ describe('collectDailySummary', () => {
 
     test('requerir el servicio y recolectar no carga el envío de correo (D-01)', async () => {
         mockRunQuery.mockImplementation(routeQueries({}));
-        // Registro de módulos limpio: sin él la afirmación sería vacía, porque la fábrica del doble
-        // solo corre en el primer require y el reinicio de los dobles borraría esa llamada.
+        // Registros de módulos y de dobles limpios; sin ellos la afirmación sería vacía. La fábrica
+        // del doble solo corre la primera vez que se instancia y el reinicio de los dobles borraría
+        // esa llamada. Además, isolateModulesAsync por sí solo no basta: si el doble ya se instanció
+        // en el registro de afuera (por ejemplo, porque la cabecera del servicio lo cargó en el
+        // require de arriba de este archivo), dentro del bloque aislado Jest devuelve esa instancia
+        // sin volver a correr la fábrica. resetModules vacía también el registro de dobles de afuera.
+        jest.resetModules();
         mockEmailSenderLoaded.mockClear();
 
         await jest.isolateModulesAsync(async () => {
@@ -517,7 +522,8 @@ describe('collectDailySummary', () => {
         expect(mockEmailSenderLoaded).not.toHaveBeenCalled();
     });
 
-    test('control del caso anterior: en un registro limpio, cargar EmailSender sí corre la fábrica de su doble', async () => {
+    test('control del caso anterior: con los registros limpios, cargar EmailSender sí corre la fábrica de su doble', async () => {
+        jest.resetModules();
         mockEmailSenderLoaded.mockClear();
 
         await jest.isolateModulesAsync(async () => {
