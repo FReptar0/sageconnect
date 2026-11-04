@@ -19,6 +19,7 @@ const licenseValidator = require('./LicenseValidator');
 const { forResponse, startChildProcess } = require('../background');
 const { logGenerator } = require('../utils/LogGenerator');
 const { formatDurationMin } = require('../utils/duration');
+const { formatNotificationStatusLine } = require('../utils/DailySummary');
 const {
     sendAdminAlert: _sendAdminAlertImpl,
     findLastOpenStep,
@@ -261,6 +262,15 @@ function initScheduler() {
     });
 
     logGenerator(LOG_FILE, 'info', `[INIT] Scheduler initialized with expression "${expression}" (timezone: ${timezone})`);
+
+    // Fase 20.7 (D-32): el estado de los cuatro avisos por correo al arrancar, en la bitácora
+    // donde ya se buscan las líneas de los avisos. D-40: la línea se arma con una lectura
+    // tolerante de la configuración y va en su propio try, así que nunca detiene el arranque.
+    try {
+        logGenerator('EomNotification', 'info', formatNotificationStatusLine(config));
+    } catch (_statusLineErr) {
+        // Si la bitácora falla aquí no hay dónde dejar la falla; el arranque sigue igual.
+    }
 }
 
 /**
