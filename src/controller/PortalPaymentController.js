@@ -6,6 +6,8 @@ const portalClient = require('../utils/PortalClient');
 const notifier = require('node-notifier');
 const config = require('../config');
 const { buildScopeWhere, buildErrorStatsApply, getRetryIntervalMinutes, computeRetryEligibility } = require('../utils/RetryPolicy');
+const { recordPaymentRun } = require('../utils/PaymentDayLedger');
+const { localDateISO, localStamp, sanitizeLogText } = require('../utils/DailySummary');
 
 // preparamos arrays de tenants/keys/etc.
 const tenantIds = config.portal.tenants.map(t => t.id);
@@ -13,8 +15,122 @@ const apiKeys = config.portal.tenants.map(t => t.key);
 const apiSecrets = config.portal.tenants.map(t => t.secret);
 const database = config.portal.tenants.map(t => t.database);
 
+// Fase 20.7 (D-16 a D-22): registro diario de pagos. Cada corrida de uploadPayments anota qué pagos
+// intentó y con qué resultado, y lo vuelca una sola vez al final, en el archivo del día
+// (PaymentDayLedger). Anotar no cambia qué se intenta, qué se envía al portal ni qué se escribe en
+// la base. Las funciones de abajo no guardan estado de módulo y ninguna lanza.
+
+// Abre el registro de UNA corrida. Lee el reloj una sola vez con getCurrentDate, y no con
+// getCurrentDateString, porque de esa misma lectura salen la fecha del archivo y la hora de la
+// corrida (D-16; el aviso de reinicio de D-19 necesita el HH:MM). Devuelve null, y la corrida sigue
+// sin registro, si no hay raíz de bitácoras, si TimezoneHelper no trae getCurrentDate o si la
+// lectura no da una fecha válida: el registro se omite en silencio, sin lanzar y sin bitácora,
+// igual que pide D-22 para los dobles de config de las pruebas. TimezoneHelper se carga aquí
+// dentro, no en la cabecera, por esa misma razón. El acumulador vive en el objeto devuelto, uno
+// por corrida, y muere con ella (CLAUDE.md §3).
+function openLedgerRun() {
+    try {
+        const logsRoot = config.paths && config.paths.logs;
+        if (typeof logsRoot !== 'string' || logsRoot.trim() === '') {
+            return null;
+        }
+        const { getCurrentDate } = require('../utils/TimezoneHelper');
+        if (typeof getCurrentDate !== 'function') {
+            return null;
+        }
+        const now = getCurrentDate();
+        const dateISO = localDateISO(now);
+        const runAt = localStamp(now);
+        if (dateISO === null || runAt === null) {
+            return null;
+        }
+        return { logsRoot, dateISO, runAt, results: new Map(), queryError: null };
+    } catch (_err) {
+        return null;
+    }
+}
+
+// Anota el resultado de un pago en la corrida (D-17); gana el último resultado del mismo pago.
+// Sin registro abierto, o con un número de pago vacío, no hace nada.
+function noteLedgerResult(run, docnbr, outcome, extra) {
+    try {
+        if (!run || docnbr === undefined || docnbr === null) {
+            return;
+        }
+        const key = String(docnbr).trim();
+        if (key === '') {
+            return;
+        }
+        run.results.set(key, { outcome, ...extra });
+    } catch (_err) {
+        // Anotar nunca interrumpe la subida de pagos.
+    }
+}
+
+// Texto de un error para el registro: su mensaje si lo trae y, si no, el valor como texto. Un
+// rechazo que no es Error no trae mensaje, y el registro lee un queryError undefined o null como
+// corrida sin falla (contrato de PaymentDayLedger). Siempre devuelve texto no vacío.
+function ledgerErrorText(err) {
+    try {
+        const text = err && err.message ? String(err.message) : String(err);
+        return text.trim() === '' ? 'error sin descripción' : text;
+    } catch (_err) {
+        return 'error sin descripción';
+    }
+}
+
+// Código y descripción de un rechazo del portal (D-17), con la misma lectura que PortalOC_Creator:
+// si la respuesta trae code, code y description; si no, HTTP <status> y el cuerpo como texto. El
+// registro recorta la descripción a 500 caracteres.
+function describePortalRejection(resp) {
+    try {
+        const data = resp ? resp.data : undefined;
+        if (data !== null && typeof data === 'object' && data.code !== undefined && data.code !== null) {
+            return { code: String(data.code), description: String(data.description ?? '') };
+        }
+        return {
+            code: `HTTP ${resp ? resp.status : 'n/a'}`,
+            description: typeof data === 'string' ? data : JSON.stringify(data),
+        };
+    } catch (_err) {
+        return { code: 'HTTP n/a', description: 'respuesta del portal ilegible' };
+    }
+}
+
+// Vuelca la corrida en el registro del día: una sola escritura por corrida (D-18), aunque no haya
+// resultados, porque anota la corrida misma. Un archivo dañado se reinicia y un fallo de escritura
+// no detiene nada; los dos solo dejan un warn en la bitácora EomNotification (D-19, D-34).
+function flushLedgerRun(run, tenantDb) {
+    try {
+        if (!run) {
+            return;
+        }
+        const written = recordPaymentRun({
+            logsRoot: run.logsRoot,
+            dateISO: run.dateISO,
+            tenantDb,
+            runAt: run.runAt,
+            results: run.results,
+            queryError: run.queryError,
+        });
+        if (!written.ok) {
+            logGenerator('EomNotification', 'warn',
+                `[DAILY-SUMMARY-LEDGER] tenant=${tenantDb} date=${run.dateISO} status=write-failed err=${sanitizeLogText(written.error)}`);
+        }
+        if (written.recovered) {
+            logGenerator('EomNotification', 'warn',
+                `[DAILY-SUMMARY-LEDGER] tenant=${tenantDb} date=${run.dateISO} status=recovered previous=corrupt`);
+        }
+    } catch (_err) {
+        // El registro nunca reprueba la subida de pagos (D-18).
+    }
+}
+
 async function uploadPayments(index) {
     const logFileName = 'PortalPaymentController';
+    // Registro del día para esta corrida (null si no hay raíz de bitácoras o reloj). Se abre antes
+    // del try para que el finally lo vea.
+    const ledgerRun = openLedgerRun();
     try {
         console.log(`[INICIO] Ejecutando proceso de carga de pagos - Tenant: ${tenantIds[index]} - Base: ${database[index]}`);
 
@@ -35,6 +151,7 @@ SELECT A.* FROM (
         P.AMTRMIT    AS total_amount,
         'TRANSFER'   AS operation_type,
         P.RATEEXCHHC AS TipoCambioPago,
+        CONVERT(VARCHAR(10), CONVERT(Date, CONVERT(VARCHAR(8), P.AUDTDATE)), 23) AS fechaRegistro,
     ISNULL(
         (SELECT [VALUE]
         FROM APVENO
@@ -107,6 +224,9 @@ SELECT A.* FROM (
         console.log('Ejecutando queryEncabezadosPago con filtro de 60 minutos...');
         const payments = await runQuery(queryEncabezadosPago, database[index])
             .catch(err => {
+                // D-27: la falla queda en el registro, para que el resumen no la lea como un día sin
+                // pendientes. Va primero, así se anota aunque el resto de este catch falle.
+                if (ledgerRun) ledgerRun.queryError = ledgerErrorText(err);
                 logGenerator(logFileName, 'error', `Error queryEncabezadosPago: ${err.message}`);
                 console.error('❌ Falló queryEncabezadosPago:', err.message);
                 return { recordset: [] };
@@ -194,6 +314,11 @@ SELECT A.* FROM (
         payments.recordset = payments.recordset.filter(r => {
             if (!r.PROVIDERID || r.PROVIDERID.trim() === '') {
                 console.warn(`[WARN] Omite pago ${r.external_id} por PROVIDERID vacío (se procesará en el siguiente ciclo si fue resuelto)`);
+                noteLedgerResult(ledgerRun, r.external_id, 'no-provider-id', {
+                    vendor: r.provider_external_id,
+                    fechaRegistro: r.fechaRegistro,
+                    description: 'Proveedor sin ID del portal',
+                });
                 return false;
             }
             return true;
@@ -276,11 +401,18 @@ SELECT A.* FROM (
                 .catch(err => {
                     logGenerator(logFileName, 'error', `Error queryFacturasPagadas: ${err.message}`);
                     console.error('  [ERROR] Falló queryFacturasPagadas:', err.message);
-                    return { recordset: [] };
+                    return { recordset: [], readFailed: true, readError: ledgerErrorText(err) };
                 });
 
             if (!invoices.recordset.length) {
                 console.log(`  [INFO] No hay facturas pagadas para Lote ${hdr.LotePago} / Asiento ${hdr.AsientoPago}.`);
+                noteLedgerResult(ledgerRun, hdr.external_id, 'no-invoices', {
+                    vendor: hdr.provider_external_id,
+                    fechaRegistro: hdr.fechaRegistro,
+                    description: invoices.readFailed
+                        ? `No se pudieron leer las facturas en Sage: ${invoices.readError}`
+                        : 'Sage no devolvió facturas para el pago',
+                });
                 continue;
             }
 
@@ -295,6 +427,12 @@ SELECT A.* FROM (
                 // Omitir este pago en este ciclo; el siguiente ciclo lo tomará con los UUIDs ya escritos
                 console.warn(`  [WARN] Omite pago ${hdr.external_id} por UUID(s) faltante(s) (se procesará en el siguiente ciclo si fueron resueltos)`);
                 logGenerator(logFileName, 'warn', `Pago ${hdr.external_id} omitido: ${missingUuid.length} factura(s) sin UUID. Se intentó resolver vía portal.`);
+                noteLedgerResult(ledgerRun, hdr.external_id, 'missing-uuid', {
+                    vendor: hdr.provider_external_id,
+                    fechaRegistro: hdr.fechaRegistro,
+                    description: `${missingUuid.length} factura(s) sin UUID`,
+                    invoices: missingUuid.map(inv => inv.invoice_external_id),
+                });
                 continue;
             }
 
@@ -363,10 +501,14 @@ SELECT A.* FROM (
                 } else {
                     logGenerator(logFileName, 'error', `Error POST payment: ${err.message}`);
                 }
-                return err.response || { status: 500, data: err.message };
+                return err.response || { status: 500, data: err.message, noResponse: true };
             });
 
             if (resp.status === 200) {
+                noteLedgerResult(ledgerRun, hdr.external_id, 'uploaded', {
+                    vendor: hdr.provider_external_id,
+                    fechaRegistro: hdr.fechaRegistro,
+                });
                 const idPortal = resp.data && resp.data.id ? resp.data.id : undefined;
                 console.log(`  [OK] Pago ${hdr.external_id} enviado con éxito (200)`);
                 if (idPortal) {
@@ -406,6 +548,21 @@ SELECT A.* FROM (
                 }
 
             } else {
+                // D-17: sin respuesta HTTP (la marca del objeto que arma el catch del POST) o rechazo
+                // del portal con su código.
+                if (resp && resp.noResponse === true) {
+                    noteLedgerResult(ledgerRun, hdr.external_id, 'no-response', {
+                        vendor: hdr.provider_external_id,
+                        fechaRegistro: hdr.fechaRegistro,
+                        description: String(resp.data),
+                    });
+                } else {
+                    noteLedgerResult(ledgerRun, hdr.external_id, 'rejected', {
+                        vendor: hdr.provider_external_id,
+                        fechaRegistro: hdr.fechaRegistro,
+                        ...describePortalRejection(resp),
+                    });
+                }
                 console.error(`  [ERROR] Falló envío pago ${hdr.external_id}: ${resp.status}`);
                 console.error('    Detalle:', resp.data);
                 logGenerator(
@@ -425,6 +582,10 @@ SELECT A.* FROM (
             sound: true,
             wait: true
         });
+    } finally {
+        // D-18: un solo volcado por corrida, también tras el return temprano y el catch externo. Es
+        // síncrono, así el de una continuación fantasma de un paso vencido no se intercala con otro.
+        flushLedgerRun(ledgerRun, database[index]);
     }
 }
 
