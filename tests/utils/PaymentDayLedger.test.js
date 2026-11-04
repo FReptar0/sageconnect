@@ -72,6 +72,18 @@ function readJson(root, dateISO = D) {
     return JSON.parse(fs.readFileSync(expectedFile(root, dateISO), 'utf8'));
 }
 
+// readFileSync que lanza un error de E/S con su código para `file` y deja pasar todo lo demás
+// (WR-02): el archivo en disco está bien y lo que falla es su lectura. Quien llama restaura.
+function failRead(file, code) {
+    const realReadFileSync = fs.readFileSync;
+    return jest.spyOn(fs, 'readFileSync').mockImplementation((target, ...rest) => {
+        if (String(target) === file) {
+            throw Object.assign(new Error(`${code}: simulado por la prueba`), { code });
+        }
+        return realReadFileSync.call(fs, target, ...rest);
+    });
+}
+
 function deepFreeze(value) {
     if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
         Object.freeze(value);
@@ -220,7 +232,7 @@ describe('readPaymentDayLedger', () => {
         expect(result.error.length).toBeGreaterThan(0);
     });
 
-    test('una carpeta en lugar del archivo → corrupt sin lanzar', () => {
+    test('una carpeta en lugar del archivo → unreadable sin lanzar: es un error de E/S, no un contenido dañado (WR-02)', () => {
         const root = newLogsRoot();
         const file = expectedFile(root);
         fs.mkdirSync(file, { recursive: true });
@@ -228,8 +240,24 @@ describe('readPaymentDayLedger', () => {
         expect(() => {
             result = readPaymentDayLedger(file, D);
         }).not.toThrow();
-        expect(result).toEqual({ status: 'corrupt', data: null, error: expect.any(String) });
+        expect(result).toEqual({ status: 'unreadable', data: null, error: expect.stringContaining('EISDIR') });
     });
+
+    test.each([['EACCES'], ['EPERM'], ['EBUSY'], ['EMFILE'], ['EIO']])(
+        'un error de E/S %s al leer un archivo válido → unreadable con el error, nunca corrupt (WR-02)', (code) => {
+            const root = newLogsRoot();
+            const file = writeRaw(root, JSON.stringify(validLedger()));
+            const spy = failRead(file, code);
+            let result;
+            try {
+                expect(() => {
+                    result = readPaymentDayLedger(file, D);
+                }).not.toThrow();
+            } finally {
+                spy.mockRestore();
+            }
+            expect(result).toEqual({ status: 'unreadable', data: null, error: `${code}: simulado por la prueba` });
+        });
 
     test.each([[undefined], [null], [{}], ['']])('una ruta que no es texto útil (%p) → corrupt sin lanzar', (filePath) => {
         let result;
@@ -705,7 +733,7 @@ describe('recordPaymentRun', () => {
         expect(fs.readFileSync(regular, 'utf8')).toBe('x');
     });
 
-    test('con una carpeta en lugar del archivo devuelve ok false sin lanzar y la carpeta sigue ahí', () => {
+    test('con una carpeta en lugar del archivo devuelve ok false sin lanzar, previous unreadable, y la carpeta sigue ahí', () => {
         const root = newLogsRoot();
         const file = expectedFile(root);
         fs.mkdirSync(file, { recursive: true });
@@ -713,8 +741,47 @@ describe('recordPaymentRun', () => {
         expect(() => {
             result = record(root, T1, fivePayments());
         }).not.toThrow();
-        expect(result).toEqual(expect.objectContaining({ ok: false, previous: 'corrupt', recovered: false, file }));
+        expect(result).toEqual({ ok: false, previous: 'unreadable', recovered: false, file, error: expect.stringContaining('EISDIR') });
         expect(fs.statSync(file).isDirectory()).toBe(true);
+        // Ni siquiera se intentó escribir: no quedó temporal.
+        expect(fs.existsSync(file + '.tmp')).toBe(false);
+    });
+
+    test('WR-02: con dos empresas en el archivo, una lectura que falla (EACCES) no lo reinicia: ok false, previous unreadable y el archivo queda byte a byte igual', () => {
+        const root = newLogsRoot();
+        expect(record(root, T1, new Map([
+            ['PY0000101', { outcome: 'rejected', code: '1827', description: 'Alguna factura del pago ya está pagada', vendor: 'PROV01', fechaRegistro: '2026-10-20' }],
+        ])).ok).toBe(true);
+        expect(recordPaymentRun({
+            logsRoot: root, dateISO: D, tenantDb: OTHER_TENANT, runAt: T2,
+            results: new Map([['PY0000201', { outcome: 'uploaded', vendor: 'PROV02', fechaRegistro: '2026-10-21' }]]),
+        }).ok).toBe(true);
+        const file = expectedFile(root);
+        const before = fs.readFileSync(file);
+
+        const spy = failRead(file, 'EACCES');
+        let result;
+        try {
+            expect(() => {
+                result = record(root, T3, new Map([['PY0000102', { outcome: 'uploaded', vendor: 'PROV01' }]]));
+            }).not.toThrow();
+        } finally {
+            spy.mockRestore();
+        }
+
+        expect(result).toEqual({ ok: false, previous: 'unreadable', recovered: false, file, error: 'EACCES: simulado por la prueba' });
+        expect(fs.readFileSync(file).equals(before)).toBe(true);
+        expect(fs.existsSync(file + '.tmp')).toBe(false);
+
+        // Con la lectura de vuelta, la corrida siguiente mezcla sobre el archivo intacto: las dos
+        // empresas y el rechazo siguen ahí y no hay marca de reinicio.
+        expect(record(root, '2026-11-03T08:45:00', new Map()).ok).toBe(true);
+        const data = readJson(root);
+        expect(data).not.toHaveProperty('recoveredAt');
+        expect(Object.keys(data.tenants).sort()).toEqual([TENANT, OTHER_TENANT].sort());
+        expect(data.tenants[TENANT].runs).toBe(2);
+        expect(data.tenants[TENANT].payments.PY0000101).toEqual(expect.objectContaining({ outcome: 'rejected', code: '1827', attempts: 1 }));
+        expect(data.tenants[OTHER_TENANT].payments.PY0000201).toEqual(expect.objectContaining({ outcome: 'uploaded', attempts: 1 }));
     });
 
     test('con un runAt inválido devuelve ok false y no toca el archivo, ni el legible ni el dañado', () => {

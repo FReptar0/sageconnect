@@ -440,6 +440,31 @@ describe('collectDailySummary', () => {
         expect(fs.readFileSync(ledgerFile(), 'utf8')).toBe('not json');
     });
 
+    test('WR-02: un registro que no se puede leer por E/S (EBUSY) se trata como ilegible: warn status=unreadable, la nota «no se pudo leer» y el archivo no se toca', async () => {
+        recordRun('COPDAT', [['PY0000601', rejected('1827', 'Alguna factura del pago ya está pagada', 'PROV01', '2026-10-20')]]);
+        const before = fs.readFileSync(ledgerFile());
+        mockRunQuery.mockImplementation(routeQueries({}));
+        const realReadFileSync = fs.readFileSync;
+        const readSpy = jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => {
+            if (String(file) === ledgerFile()) {
+                throw Object.assign(new Error('EBUSY: resource busy or locked, open'), { code: 'EBUSY' });
+            }
+            return realReadFileSync.call(fs, file, ...rest);
+        });
+        let model;
+        try {
+            model = await collectDailySummary(DAY, config);
+        } finally {
+            readSpy.mockRestore();
+        }
+
+        expect(ledgerWarns()).toEqual(['[DAILY-SUMMARY-LEDGER] date=2026-11-03 status=unreadable err=EBUSY: resource busy or locked, open']);
+        expect(model.notes).toContain('Sin datos de pagos de ese día: el registro de pagos no se pudo leer.');
+        expect(model.counts.paymentsPending).toBeNull();
+        expect(model.incomplete).toBe(true);
+        expect(fs.readFileSync(ledgerFile()).equals(before)).toBe(true);
+    });
+
     test('si la ruta del registro no se puede armar, el registro cuenta como ilegible y la recolección sigue', async () => {
         mockRunQuery.mockImplementation(routeQueries({}));
 

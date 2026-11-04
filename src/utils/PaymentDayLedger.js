@@ -200,16 +200,19 @@ function ledgerFilePath(logsRoot, dateISO) {
 }
 
 /**
- * Lee el registro del día. Nunca lanza y distingue tres casos (D-19):
+ * Lee el registro del día. Nunca lanza y distingue cuatro casos (D-19, WR-02):
  * - `{ status: 'missing', data: null }`: el archivo no existe;
  * - `{ status: 'ok', data }`: JSON con `version === 1`, `date === dateISO`, `tenants` objeto y
  *   `recoveredAt` ausente o con la forma `YYYY-MM-DDTHH:MM:SS`;
- * - `{ status: 'corrupt', data: null, error }`: cualquier otro caso, incluidos una fecha distinta
- *   a la del archivo y una carpeta en lugar del archivo.
+ * - `{ status: 'unreadable', data: null, error }`: la lectura falló por un error de E/S distinto
+ *   de ENOENT y ENOTDIR (EACCES, EPERM, EBUSY, EMFILE, EIO, una carpeta en lugar del archivo). No
+ *   dice nada del contenido;
+ * - `{ status: 'corrupt', data: null, error }`: se leyó y el contenido no es un registro de ese
+ *   día (JSON ilegible, otra versión, otra fecha, otra forma), o la ruta no es texto.
  *
  * @param {string} filePath - La ruta que da ledgerFilePath.
  * @param {string} dateISO - El día que debe traer el archivo.
- * @returns {{status: 'missing'|'ok'|'corrupt', data: object|null, error?: string}}
+ * @returns {{status: 'missing'|'ok'|'unreadable'|'corrupt', data: object|null, error?: string}}
  */
 function readPaymentDayLedger(filePath, dateISO) {
     // Solo una ruta de texto: la lectura también acepta un descriptor numérico y leería otra cosa.
@@ -223,7 +226,9 @@ function readPaymentDayLedger(filePath, dateISO) {
         if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
             return { status: 'missing', data: null };
         }
-        return { status: 'corrupt', data: null, error: errorText(err) };
+        // WR-02: una falla de E/S no es un archivo dañado. Si contara como dañado, recordPaymentRun
+        // lo reiniciaría y borraría las entradas del día de TODAS las empresas.
+        return { status: 'unreadable', data: null, error: errorText(err) };
     }
     let data;
     try {
@@ -318,13 +323,15 @@ function mergePaymentRun(data, run) {
  * se pudo parsear o no tenía la forma esperada) arranca uno vacío con `recoveredAt = runAt` en la
  * RAÍZ y devuelve `recovered: true`, para que quien llama deje su aviso (D-19). Una corrida normal
  * posterior conserva ese `recoveredAt`, y un segundo daño lo reemplaza por la hora del último
- * reinicio. Mezcla con mergePaymentRun y escribe con writeSentinelAtomically (el temporal y luego
- * el rename): si algo falla, el archivo anterior queda intacto.
+ * reinicio. Si la lectura falló por E/S (`unreadable`), no escribe nada y devuelve `ok: false` con
+ * el error: el archivo queda intacto con las demás empresas, y la corrida siguiente mezcla sobre
+ * él (WR-02). Mezcla con mergePaymentRun y escribe con writeSentinelAtomically (el temporal y
+ * luego el rename): si algo falla, el archivo anterior queda intacto.
  *
  * @param {{logsRoot: string, dateISO: string, tenantDb: string, runAt: string, results: (Map|Array), queryError: *}} args
  *   `runAt` es la hora de pared en TIMEZONE (`YYYY-MM-DDTHH:MM:SS`) de la misma lectura del reloj
  *   que dio `dateISO`; la toma quien llama, una vez por corrida.
- * @returns {{ok: boolean, previous: ('missing'|'ok'|'corrupt'|null), recovered: boolean, file: (string|null), error: (string|null)}}
+ * @returns {{ok: boolean, previous: ('missing'|'ok'|'unreadable'|'corrupt'|null), recovered: boolean, file: (string|null), error: (string|null)}}
  *   `previous` es lo que se encontró en disco (`null` si no se llegó a leer); `recovered` solo es
  *   `true` si el archivo dañado sí quedó reiniciado.
  */
@@ -336,6 +343,11 @@ function recordPaymentRun(args) {
         file = ledgerFilePath(logsRoot, dateISO);
         const current = readPaymentDayLedger(file, dateISO);
         previous = current.status;
+        if (current.status === 'unreadable') {
+            // WR-02: sin leerlo no se sabe qué guarda; reescribirlo borraría el día de las demás
+            // empresas. Esta corrida no queda anotada y quien llama deja su aviso.
+            return { ok: false, previous, recovered: false, file, error: current.error };
+        }
         let base;
         let recovered = false;
         if (current.status === 'ok') {

@@ -271,16 +271,17 @@ async function collectDailySummary(dateISO, cfg) {
 
     // D-19: el registro va al modelo tal como lo devolvió la lectura, sin copiar ni quitar campos;
     // un reinicio trae recoveredAt en la raíz y el modelo arma con él la nota. Si la ruta no se
-    // puede armar, el registro cuenta como ilegible.
+    // puede armar, el registro cuenta como ilegible. Ilegible por E/S (WR-02) o dañado, el correo
+    // dice lo mismo: que el registro de pagos no se pudo leer.
     let ledger;
     try {
         ledger = readPaymentDayLedger(ledgerFilePath(cfg.paths.logs, dateISO), dateISO);
     } catch (err) {
-        ledger = { status: 'corrupt', data: null, error: failureText(err) };
+        ledger = { status: 'unreadable', data: null, error: failureText(err) };
     }
     if (ledger.status === 'missing') {
         logGenerator(LOG_FILE, 'warn', `[DAILY-SUMMARY-LEDGER] date=${dateISO} status=missing`);
-    } else if (ledger.status === 'corrupt') {
+    } else if (ledger.status === 'corrupt' || ledger.status === 'unreadable') {
         logGenerator(LOG_FILE, 'warn',
             `[DAILY-SUMMARY-LEDGER] date=${dateISO} status=unreadable err=${sanitizeLogText(ledger.error)}`);
     }

@@ -98,8 +98,10 @@ function describePortalRejection(resp) {
 }
 
 // Vuelca la corrida en el registro del día: una sola escritura por corrida (D-18), aunque no haya
-// resultados, porque anota la corrida misma. Un archivo dañado se reinicia y un fallo de escritura
-// no detiene nada; los dos solo dejan un warn en la bitácora EomNotification (D-19, D-34).
+// resultados, porque anota la corrida misma. Un archivo dañado se reinicia; uno que no se pudo leer
+// por E/S no se toca y la corrida queda sin anotar (WR-02); un fallo de escritura no detiene nada.
+// Los tres solo dejan un warn en la bitácora EomNotification (D-19, D-34): recovered el primero y
+// write-failed, con el error, los otros dos.
 function flushLedgerRun(run, tenantDb) {
     try {
         if (!run) {
