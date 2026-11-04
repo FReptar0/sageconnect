@@ -1,5 +1,5 @@
-// Fase 20.7 (D-01): agenda del resumen diario de reintentos sin éxito y validación del estado
-// de cada día resumido.
+// Fase 20.7 (D-01): agenda del resumen diario de reintentos sin éxito, validación del estado de
+// cada día resumido y formateadores de la línea de arranque y de la bitácora (D-32, D-34, D-35).
 //
 // Módulo puro: no lee ni escribe disco, no abre red y no carga los módulos de archivos ni de
 // rutas de Node. Tampoco guarda estado de módulo: lo único a nivel de módulo son constantes
@@ -308,6 +308,137 @@ function decideDailySummaryAction(input) {
     return { todayISO, yesterdayISO, ops };
 }
 
+/**
+ * Texto apto para una línea de bitácora (S-3): espacios en blanco colapsados, sin orillas y
+ * recortado a `max` caracteres, para que un mensaje de varios renglones no arrastre contexto a
+ * la bitácora (T-20.7-08). Mismo saneado que el `err=` del aviso inmediato de OCs en
+ * PortalOC_Creator.
+ *
+ * @param {*} value - Normalmente el mensaje del transporte de correo.
+ * @param {number} [max=200] - Entero positivo; cualquier otro valor vuelve a 200.
+ * @returns {string} `sin detalle` si viene vacío, nulo o no se puede convertir a texto.
+ */
+function sanitizeLogText(value, max = 200) {
+    const limit = Number.isInteger(max) && max > 0 ? max : 200;
+    try {
+        const text = value == null ? '' : String(value).replace(/\s+/g, ' ').trim();
+        return text.length === 0 ? 'sin detalle' : text.slice(0, limit);
+    } catch (_err) {
+        return 'sin detalle';
+    }
+}
+
+// Valores de una línea clave=valor: lo que no tiene la forma esperada sale `n/a`, así ningún
+// valor puede partir la línea ni colar un renglón nuevo.
+function logDate(value) {
+    return isIsoDate(value) ? value : 'n/a';
+}
+
+function logCount(value) {
+    return Number.isFinite(value) ? String(value) : 'n/a';
+}
+
+function logInteger(value) {
+    return Number.isInteger(value) ? String(value) : 'n/a';
+}
+
+/**
+ * Línea de arranque con el estado de los cuatro avisos y la hora del resumen (D-32):
+ * `po-alert=off eom=off payment-report=off daily-summary=off daily-summary-time=23:45`
+ * detrás de la etiqueta NOTIFICATIONS.
+ *
+ * Solo `=== true` enciende; cualquier otro valor, incluido el texto 'true', sale `off`. La
+ * llama initScheduler() con la config del servicio, y hay suites que la cargan con dobles sin
+ * `notifications` ni `eom` (D-40). Por eso todo se lee con encadenamiento opcional, una llave
+ * ausente cuenta como apagada, la hora sale `n/a` si no es válida, y el cuerpo va dentro de un
+ * try/catch: la línea de arranque nunca lanza.
+ *
+ * @param {object} cfg - El objeto de config completo.
+ * @returns {string}
+ */
+function formatNotificationStatusLine(cfg) {
+    try {
+        const onOff = (value) => (value === true ? 'on' : 'off');
+        const daily = cfg?.notifications?.dailySummary;
+        const hour = daily?.hour;
+        const minute = daily?.minute;
+        const validTime = Number.isInteger(hour) && hour >= 0 && hour <= 23
+            && Number.isInteger(minute) && minute >= 0 && minute <= 59;
+        const time = validTime
+            ? `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+            : 'n/a';
+        return '[NOTIFICATIONS]'
+            + ` po-alert=${onOff(cfg?.notifications?.poAlert?.enabled)}`
+            + ` eom=${onOff(cfg?.eom?.notificationEnabled)}`
+            + ` payment-report=${onOff(cfg?.notifications?.paymentReport?.enabled)}`
+            + ` daily-summary=${onOff(daily?.enabled)}`
+            + ` daily-summary-time=${time}`;
+    } catch (_err) {
+        return '[NOTIFICATIONS] status=unreadable';
+    }
+}
+
+/**
+ * Línea de bitácora de un intento del resumen, una sola por intento (D-34):
+ * `date=2026-11-03 attempt=1/4 sent=true oc-uploaded=12 payments-uploaded=30 oc-pending=3
+ * payments-pending=2 last-day=1 incomplete=false` detrás de la etiqueta DAILY-SUMMARY.
+ *
+ * `sent` es `true` solo con `delivered === true` (S-2). Si no se entregó, agrega `err=` con el
+ * mensaje del transporte saneado y acotado a 200 caracteres. Una cifra nula o ausente sale `n/a`.
+ *
+ * @param {{dateISO: string, attemptNumber: number, delivered: (boolean|null), counts: object,
+ *          incomplete: boolean, error: *}} entry - `counts` lleva `ocUploaded`,
+ *   `paymentsUploaded`, `ocPending`, `paymentsPending` y `lastDay`.
+ * @returns {string}
+ */
+function formatAttemptLogLine(entry) {
+    const { dateISO, attemptNumber, delivered, counts, incomplete, error } = (entry && typeof entry === 'object') ? entry : {};
+    const c = (counts && typeof counts === 'object') ? counts : {};
+    const sent = delivered === true;
+    const parts = [
+        '[DAILY-SUMMARY]',
+        `date=${logDate(dateISO)}`,
+        `attempt=${logInteger(attemptNumber)}/${MAX_ATTEMPTS}`,
+        `sent=${sent}`,
+        `oc-uploaded=${logCount(c.ocUploaded)}`,
+        `payments-uploaded=${logCount(c.paymentsUploaded)}`,
+        `oc-pending=${logCount(c.ocPending)}`,
+        `payments-pending=${logCount(c.paymentsPending)}`,
+        `last-day=${logCount(c.lastDay)}`,
+        `incomplete=${typeof incomplete === 'boolean' ? incomplete : 'n/a'}`,
+    ];
+    if (!sent) {
+        parts.push(`err=${sanitizeLogText(error)}`);
+    }
+    return parts.join(' ');
+}
+
+/**
+ * Línea de bitácora del abandono de un día (D-34, RD-02 y RD-03):
+ * `date=2026-11-02 reason=next-summary-due attempts=2` detrás de la etiqueta DAILY-SUMMARY-ABANDON.
+ *
+ * @param {{dateISO: string, reason: string, attempts: number}} entry - `reason` es una clave
+ *   como `next-summary-due`, `max-attempts` o `state-corrupt`; cualquier otra forma sale `n/a`.
+ * @returns {string}
+ */
+function formatAbandonLogLine(entry) {
+    const { dateISO, reason, attempts } = (entry && typeof entry === 'object') ? entry : {};
+    const safeReason = typeof reason === 'string' && /^[a-z]+(-[a-z]+)*$/.test(reason) ? reason : 'n/a';
+    return `[DAILY-SUMMARY-ABANDON] date=${logDate(dateISO)} reason=${safeReason} attempts=${logInteger(attempts)}`;
+}
+
+/**
+ * Línea de aviso cuando la fecha de SQL Server no coincide con la de TIMEZONE (D-35):
+ * `tz-date=2026-11-03 sql-date=2026-11-04` detrás de la etiqueta DAILY-SUMMARY-CLOCK.
+ *
+ * @param {string} tzDate - El día resumido, en TIMEZONE.
+ * @param {string} sqlDate - La fecha que devolvió la consulta de OCs.
+ * @returns {string}
+ */
+function formatClockWarnLine(tzDate, sqlDate) {
+    return `[DAILY-SUMMARY-CLOCK] tz-date=${logDate(tzDate)} sql-date=${logDate(sqlDate)}`;
+}
+
 module.exports = {
     MAX_ATTEMPTS,
     RETRY_OFFSETS_MIN,
@@ -319,4 +450,9 @@ module.exports = {
     addDaysISO,
     isValidDayState,
     decideDailySummaryAction,
+    sanitizeLogText,
+    formatNotificationStatusLine,
+    formatAttemptLogLine,
+    formatAbandonLogLine,
+    formatClockWarnLine,
 };
