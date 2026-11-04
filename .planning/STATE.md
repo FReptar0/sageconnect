@@ -4,8 +4,8 @@ milestone: v2.4
 milestone_name: Retry policies
 status: executing
 stopped_at: Phase 20.7 planned (10 plans, 6 waves)
-last_updated: "2026-11-03T22:25:30.735Z"
-last_activity: "2026-11-03 -- Fase 20.7 planeada: 10 planes en 6 olas, tercera pasada del plan-checker sin bloqueos ni advertencias. Siguiente: /gsd-execute-phase 20.7 en una sesión con SAGECONNECT_HOOKS_BYPASS=1"
+last_updated: "2026-11-04T13:07:42.947Z"
+last_activity: 2026-11-04 -- Phase 20.7 execution started
 progress:
   total_phases: 9
   completed_phases: 7
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-04-29 after v2.3 milestone)
 
 ## Current Position
 
-Phase: 20.7
-Plan: 0 of 10 — planes listos en 6 olas (20.7-01 a 20.7-10)
-Status: Ready to execute — 10 planes en 6 olas; se ejecutan en una sesión aparte abierta en el worktree con SAGECONNECT_HOOKS_BYPASS=1
+Phase: 20.7 (resumen-diario-de-reintentos-sin-exito) — EXECUTING
+Plan: 1 of 10
+Status: Executing Phase 20.7
 
 **2026-11-03 — Fase 20.7 planeada.**
 
@@ -111,7 +111,7 @@ Total phases: 21 (Phases 20-21 active this milestone)
 Next: `/gsd-verify-work 20.4` — la fase 20.4 tiene sus **cuatro** planes en tierra y los cuatro SUMMARY escritos. El 20.4-04-SUMMARY trae la tabla de mapeo SPEC↔aceptación de las 14 casillas y la evidencia de los cuatro controles negativos, escrita para ese comando. **Lo que queda vivo de la fase, para quien la verifique:** (1) confirmación en vivo en el servidor de pruebas antes de la migración de octubre — HANDOFF §6, no hay staging que ejercite el portal real; (2) el criterio de escalamiento que fija el propio SPEC: si `deferred=` se mantiene distinto de cero en ticks consecutivos, la programación justa de las OCs diferidas se vuelve un hallazgo con su propia fase; (3) `D-ITEM-01` y `D-ITEM-02` en `deferred-items.md` siguen abiertos y son decisión del usuario.
 **Hallazgo de la ola 2, SALDADO por la ola 4:** el punto ciego de D-07 —revertir la condición ensanchada de emisión del resumen a la anterior— pasaba los **55** tests de los tres archivos de este controlador y no lo tocaba ninguna de las 14 casillas del SPEC. La ola 4 lo cerró con **dos** casos, no uno: el del presupuesto consumido por el SELECT (cero sondas y aun así se emite resumen) y su **control complementario** (nada sondeado y nada diferido ⇒ no se emite nada). El par se midió diferencial: revertir la condición pone roja **sólo** la primera, ensancharla hasta emitir siempre pone roja **sólo** la segunda. Ya no hay ningún comportamiento de esta fase que pueda revertirse en silencio.
 También pendiente: `/gsd-verify-work 20.3` — la fase 20.3 tiene sus cuatro planes en tierra y el 20.3-04-SUMMARY trae la tabla de mapeo SPEC↔aceptación escrita para ese comando. No lo cierra este plan.
-Last activity: 2026-11-03 -- Fase 20.7 planeada: 10 planes en 6 olas, tercera pasada del plan-checker sin bloqueos ni advertencias. Siguiente: /gsd-execute-phase 20.7 en una sesión con SAGECONNECT_HOOKS_BYPASS=1
+Last activity: 2026-11-04 -- Phase 20.7 execution started
 Test suite baseline for Phase 20.3 execution — **measured fresh 2026-07-28 by the plan-checker**: `npm test` reports **6 failed suites / 7 failed tests of 500** (492 passed). Same failing-suite set as always (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` Jest worker crashes) — the CLAUDE.md §6 baseline. **This is the pass bar for 20.3: the same set, no NEW failures.** (Prior reading after 20.2-01 was 6/7 of 485 with 477 passed; the totals grew with 20.2's added suites, the failing set did not.)
 **Reading after 20.3-01 (2026-07-29): 6 failed suites / 7 failed tests of 522** (514 passed, 1 skipped) — same failing set, verified by name; **35 passed suites vs 34**, i.e. one new green suite and +22 tests. This is the new comparison point for 20.3-02.
 **Reading after 20.3-02 (2026-07-29): identical — 6 failed suites / 35 passed / 41 total, 7 failed / 1 skipped / 514 passed / 522 total.** By design: that plan added assertions, not tests. Failing set re-verified by name (`PaymentReconciliation`, `TransformTime`, `no-process-exit`, `enforcement-wiring` + the `config` / `operation-manager` worker crashes). Still the comparison point for 20.3-03 — but note that 20.3-03 legitimately CHANGES it, since it lands the D-07b mock repair and a new structural-guard suite.
@@ -258,7 +258,7 @@ Decisions recorded during v2.4 execution (milestone-level history lives in `.pla
 
 **Deploy model (2026-07-22 — Yahir):** **todo junto** — ONE single deploy of the full retry + notification release (Q1 + Q2 + CLOSED + Q3 + 409). NOT Q1+Q2 alone. Because Q3 replaces the old Phase-20 EOM, `EOM_NOTIFICATION_ENABLED=false` is no longer needed. Full status/tracker: `.planning/phases/20.1-retry-policy-correction/20.1-RELEASE-STATUS.md`.
 
-**Status:** Ready to execute — fase 20.7 (10 planes en 6 olas)
+**Status:** Executing Phase 20.7
 
 ## Deferred Items
 
