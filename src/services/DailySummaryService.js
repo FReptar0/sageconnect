@@ -1,15 +1,19 @@
-// Fase 20.7 (D-01): recolección del resumen diario de reintentos sin éxito. Lee lo que pasó en el
-// día resumido (de SQL Server, las OCs con error y las OCs subidas; del registro diario de pagos,
-// el último resultado de cada pago) y arma con eso el modelo del correo con
-// buildDailySummaryModel. El plan 20.7-07 agrega en este mismo archivo el despacho: el estado del
-// día, el intento y el envío.
+// Fase 20.7 (D-01): recolección y despacho del resumen diario de reintentos sin éxito.
+// - La recolección lee lo que pasó en el día resumido (de SQL Server, las OCs con error y las OCs
+//   subidas; del registro diario de pagos, el último resultado de cada pago) y arma con eso el
+//   modelo del correo con buildDailySummaryModel.
+// - El despacho (plan 20.7-07) lleva el estado de cada día resumido en disco, anota cada intento
+//   antes de enviar y manda el correo por el canal del operador. Qué toca en cada ejecución lo
+//   decide decideDailySummaryAction; aquí solo se lee, se escribe y se envía.
 //
 // La cabecera no carga el envío de correo: la vista previa (D-36) usa collectDailySummary y no
 // debe cargar EmailSender ni la librería de correo con solo requerir este módulo. El despacho lo
-// cargará dentro de su propio camino de envío.
+// carga dentro de su propio camino de envío, solo cuando hay un intento que hacer.
 //
 // No guarda estado de módulo: a nivel de módulo solo hay constantes (CLAUDE.md §3), y la config
-// llega por parámetro.
+// llega por parámetro. El despacho no usa temporizadores: la espera entre dos intentos se mide
+// contra el estado en disco en una ejecución posterior. Toda marca de tiempo sale del reloj que
+// recibe el despacho, nunca de un segundo reloj (D-42).
 //
 // Solo lee. Las tres consultas son SELECT, y a su texto entran únicamente la fecha resumida, ya
 // validada como fecha real YYYY-MM-DD, y los nombres de base de la configuración, que además
@@ -23,12 +27,37 @@
 // de pagos no tiene, y tests/schema-guard.test.js prohíbe esa columna a 12 renglones o menos de
 // cualquier mención de la tabla de pagos (D-42).
 
+const fs = require('fs');
+const path = require('path');
 const { runQuery } = require('../utils/SQLServerConnection');
 const { logGenerator } = require('../utils/LogGenerator');
+const { writeSentinelAtomically } = require('../utils/EomNotification');
 const { ledgerFilePath, readPaymentDayLedger } = require('../utils/PaymentDayLedger');
-const { isIsoDate, sanitizeLogText, buildDailySummaryModel } = require('../utils/DailySummary');
+const {
+    MAX_ATTEMPTS,
+    localDateISO,
+    localStamp,
+    addDaysISO,
+    isIsoDate,
+    isValidDayState,
+    decideDailySummaryAction,
+    sanitizeLogText,
+    buildDailySummaryModel,
+    buildDailySummaryHtml,
+    buildDailySummarySubject,
+    formatAttemptLogLine,
+    formatAbandonLogLine,
+    formatClockWarnLine,
+} = require('../utils/DailySummary');
 
 const LOG_FILE = 'EomNotification';
+
+// D-04: el estado de cada día resumido vive en la carpeta de ese día, junto a sus bitácoras.
+const STATE_FILE_NAME = 'daily-summary.json';
+
+// T-20.7-36: el mensaje del transporte se guarda en el estado recortado a 500 caracteres; en la
+// bitácora va saneado y acotado a 200 por formatAttemptLogLine.
+const STATE_ERROR_MAX = 500;
 
 // Lo único que puede ser un nombre de base dentro del texto del SQL: letras, dígitos, guion bajo
 // y guion (CLAUDE.md §6 #1). Sin la bandera g, test() no guarda estado entre llamadas.
@@ -270,6 +299,261 @@ async function collectDailySummary(dateISO, cfg) {
 }
 
 /**
+ * Ruta del estado de un día resumido (D-04): `<logsRoot>/sageconnect/<dateISO>/daily-summary.json`,
+ * en la misma carpeta del día que usan las bitácoras y el registro de pagos. LogDashboardService
+ * solo lista carpetas de fecha y solo abre bitácoras .log, así que este archivo no le estorba.
+ *
+ * @param {string} logsRoot - Raíz de bitácoras (`config.paths.logs`); la lee quien llama.
+ * @param {string} dateISO - Día resumido, `YYYY-MM-DD`.
+ * @returns {string}
+ * @throws {TypeError} Si `logsRoot` no es texto no vacío o si `dateISO` no es una fecha real
+ *   `YYYY-MM-DD`: la fecha entra en una ruta y no puede traer `..` ni separadores.
+ */
+function dayStatePath(logsRoot, dateISO) {
+    if (typeof logsRoot !== 'string' || logsRoot.trim() === '') {
+        throw new TypeError('dayStatePath: logsRoot debe ser texto no vacío');
+    }
+    if (!isIsoDate(dateISO)) {
+        throw new TypeError('dayStatePath: dateISO debe ser una fecha YYYY-MM-DD válida');
+    }
+    return path.join(logsRoot, 'sageconnect', dateISO, STATE_FILE_NAME);
+}
+
+/**
+ * Lee el estado de un día resumido. Nunca lanza y distingue tres casos:
+ * - `{ status: 'missing' }`: el archivo no existe. Un día sin estado no debe su resumen (D-05);
+ * - `{ status: 'ok', data }`: JSON que pasa isValidDayState para esa fecha;
+ * - `{ status: 'corrupt' }`: cualquier otra cosa, incluidos un error de lectura, un JSON que no
+ *   se puede leer, el estado de otra fecha y una forma que no se reconoce.
+ *
+ * Un estado dañado no cuenta como ausente: si contara, el día se volvería a crear pendiente y
+ * podría reenviarse un resumen que ya salió. La agenda lo abandona con state-corrupt, sin enviar
+ * (T-20.7-33).
+ *
+ * @param {string} logsRoot - Raíz de bitácoras.
+ * @param {string} dateISO - Día resumido, `YYYY-MM-DD`.
+ * @returns {{status: string, data?: object}}
+ */
+function readDayState(logsRoot, dateISO) {
+    let raw;
+    try {
+        raw = fs.readFileSync(dayStatePath(logsRoot, dateISO), 'utf8');
+    } catch (err) {
+        return (err && err.code === 'ENOENT') ? { status: 'missing' } : { status: 'corrupt' };
+    }
+    try {
+        const data = JSON.parse(raw);
+        return isValidDayState(data, dateISO) ? { status: 'ok', data } : { status: 'corrupt' };
+    } catch (_err) {
+        return { status: 'corrupt' };
+    }
+}
+
+// El estado de un día con la forma de D-04 y sus llaves en ese orden: date, status, attempts y,
+// solo en un día abandonado, reason. Cada intento se copia con sus tres campos, así nada más de lo
+// que traía el archivo leído pasa al que se escribe.
+function dayState(dateISO, status, attempts, reason) {
+    const state = {
+        date: dateISO,
+        status,
+        attempts: attempts.map((attempt) => ({
+            at: attempt.at,
+            delivered: attempt.delivered,
+            error: attempt.error ?? null,
+        })),
+    };
+    if (reason !== undefined) {
+        state.reason = reason;
+    }
+    return state;
+}
+
+// Escribe el estado de un día con la escritura atómica de los centinelas (D-04): un temporal y
+// luego renombrar, así una caída a media escritura no deja un archivo a medias. Devuelve null si
+// quedó escrito o, si no, el texto del error listo para la bitácora; nunca lanza.
+function writeDayState(logsRoot, state) {
+    try {
+        writeSentinelAtomically(dayStatePath(logsRoot, state.date), state);
+        return null;
+    } catch (err) {
+        return failureText(err);
+    }
+}
+
+/**
+ * Despacho del resumen diario (RD-01, RD-02, RD-03 y RD-09; D-04 a D-08, D-34, D-35, D-40 y
+ * D-42). forResponse lo llama una vez por ejecución, al terminar el recorrido de empresas, con el
+ * `date` de esa ejecución; el bloque que lo llama le pone su propio límite de tiempo.
+ *
+ * 1. Apagado (sin la llave del resumen, o con `enabled` distinto de `true`): sale sin leer, sin
+ *    escribir y sin dejar bitácora (D-06 paso 1, D-34, D-40).
+ * 2. Lee el estado de hoy y el de ayer y aplica, en orden, las operaciones de
+ *    decideDailySummaryAction:
+ *    - crear: el día queda pendiente y sin intentos (D-05);
+ *    - abandonar: el día queda abandonado con su motivo, y una línea de abandono lo anuncia;
+ *    - intentar: los pasos 3 a 5.
+ *    Cada escritura va en su propio try/catch. Un día cuya creación no se pudo escribir no se
+ *    intenta en esta ejecución.
+ * 3. El intento se anota en disco con `delivered: null` ANTES de recolectar y de enviar, y si
+ *    esa escritura falla, en esta ejecución no se envía (D-08). Como queda anotado antes de
+ *    recolectar, ni la continuación de un bloque que se pasó de tiempo ni una ejecución manual
+ *    que empiece mientras esta recolecta pueden mandar otra copia: para ellas el intento ya
+ *    existe y su espera ya corre.
+ * 4. Recolecta el día, arma el correo con el tope de renglones y lo manda por el canal del
+ *    operador (MAILING_NOTICES con copia a MAILING_CC), nunca por el buzón de administración.
+ *    Solo un desenlace con `delivered === true` cuenta como entregado; uno ausente o con otra
+ *    forma es un envío que no consta (S-2).
+ * 5. Completa el intento y el estado: entregado; abandonado con max-attempts si era el último
+ *    intento (D-07); o pendiente, para que lo retome una ejecución posterior. Si esta escritura
+ *    falla, el intento se queda en `null` y cuenta como fallido (D-08). Cada intento deja una
+ *    sola línea, en warn si no se entregó (D-34).
+ *
+ * Al resumir hoy, si la fecha de SQL Server no es la de hoy, deja un warn de reloj (D-35). En una
+ * reposición no, porque ahí la fecha de SQL Server ya es la del día siguiente.
+ *
+ * Nunca lanza (RD-03): una excepción de cualquier paso queda como una línea de error
+ * dispatch-failed, y un intento ya anotado se queda en `null`.
+ *
+ * @param {Date} now - El `date` de forResponse; sus campos locales son la hora de TIMEZONE.
+ * @param {object} cfg - La config: usa `notifications.dailySummary`, `paths.logs`,
+ *   `portal.tenants` y `retry`.
+ * @returns {Promise<void>}
+ */
+async function dispatchDailySummaryIfDue(now, cfg) {
+    try {
+        const summaryCfg = cfg?.notifications?.dailySummary;
+        if (!summaryCfg || summaryCfg.enabled !== true) {
+            return;
+        }
+        // Sin carpeta de bitácoras no hay dónde anotar el intento, y sin intento anotado no hay
+        // envío (D-08).
+        const logsRoot = cfg?.paths?.logs;
+        if (typeof logsRoot !== 'string' || logsRoot.trim() === '') {
+            logGenerator(LOG_FILE, 'error', '[DAILY-SUMMARY] status=no-log-path');
+            return;
+        }
+
+        const todayISO = localDateISO(now);
+        const yesterdayISO = addDaysISO(todayISO, -1);
+        const today = readDayState(logsRoot, todayISO);
+        const yesterday = readDayState(logsRoot, yesterdayISO);
+        const { ops } = decideDailySummaryAction({ now, summaryCfg, today, yesterday });
+
+        // Lo que hay en disco de cada día mientras se aplican las operaciones: el estado leído o
+        // el que se acaba de escribir. Un día que no está aquí no tiene estado escrito y no se
+        // intenta (D-08).
+        const written = Object.create(null);
+        if (today.status === 'ok') {
+            written[todayISO] = today.data;
+        }
+        if (yesterday.status === 'ok') {
+            written[yesterdayISO] = yesterday.data;
+        }
+
+        for (const op of ops) {
+            if (op.type === 'create') {
+                const created = dayState(op.date, 'pending', []);
+                const createError = writeDayState(logsRoot, created);
+                if (createError === null) {
+                    written[op.date] = created;
+                } else {
+                    logGenerator(LOG_FILE, 'error',
+                        `[DAILY-SUMMARY] date=${op.date} status=state-write-failed err=${createError}`);
+                }
+            } else if (op.type === 'abandon') {
+                // Un día dañado no tiene intentos que conservar: se abandona con la lista vacía.
+                const prior = written[op.date];
+                const abandoned = dayState(op.date, 'abandoned', prior ? prior.attempts : [], op.reason);
+                const abandonError = writeDayState(logsRoot, abandoned);
+                if (abandonError === null) {
+                    written[op.date] = abandoned;
+                    logGenerator(LOG_FILE, 'warn',
+                        formatAbandonLogLine({ dateISO: op.date, reason: op.reason, attempts: op.attempts }));
+                } else {
+                    logGenerator(LOG_FILE, 'error',
+                        `[DAILY-SUMMARY] date=${op.date} status=state-write-failed err=${abandonError}`);
+                }
+            } else if (op.type === 'attempt' && written[op.date]) {
+                const target = op.date;
+                const attemptNumber = op.attemptNumber;
+                const at = localStamp(now);
+
+                // D-08: el intento queda anotado antes de recolectar y de enviar.
+                const attempts = written[target].attempts.concat([{ at, delivered: null, error: null }]);
+                const noteError = writeDayState(logsRoot, dayState(target, 'pending', attempts));
+                if (noteError !== null) {
+                    logGenerator(LOG_FILE, 'error',
+                        `[DAILY-SUMMARY] date=${target} attempt=${attemptNumber}/${MAX_ATTEMPTS} sent=false status=state-write-failed err=${noteError}`);
+                    continue;
+                }
+
+                const model = await collectDailySummary(target, cfg);
+
+                if (target === todayISO && model.clock && model.clock.sqlDate && model.clock.sqlDate !== todayISO) {
+                    logGenerator(LOG_FILE, 'warn', formatClockWarnLine(todayISO, model.clock.sqlDate));
+                }
+
+                const html = buildDailySummaryHtml(model, { cap: true });
+                const subject = buildDailySummarySubject(model);
+
+                // D-01: el envío se carga aquí, al intentar, y no en la cabecera del módulo.
+                const { sendOperatorReport } = require('../utils/EmailSender');
+                const delivery = await sendOperatorReport({ subject, html, callerLogFile: LOG_FILE });
+
+                // S-2: lectura en cerrado del desenlace.
+                let delivered = false;
+                let error = null;
+                if (delivery && delivery.delivered === true) {
+                    delivered = true;
+                } else {
+                    const reported = (delivery && delivery.error) ? delivery.error : 'unknown delivery failure';
+                    error = String(reported).slice(0, STATE_ERROR_MAX);
+                }
+
+                attempts[attempts.length - 1] = { at, delivered, error };
+                let status = 'pending';
+                let reason;
+                if (delivered) {
+                    status = 'delivered';
+                } else if (attempts.length >= MAX_ATTEMPTS) {
+                    status = 'abandoned';
+                    reason = 'max-attempts';
+                }
+                const completeError = writeDayState(logsRoot, dayState(target, status, attempts, reason));
+                if (completeError !== null) {
+                    logGenerator(LOG_FILE, 'error',
+                        `[DAILY-SUMMARY] date=${target} attempt=${attemptNumber}/${MAX_ATTEMPTS} sent=${delivered} status=state-write-failed-after-send err=${completeError}`);
+                }
+
+                logGenerator(LOG_FILE, delivered ? 'info' : 'warn', formatAttemptLogLine({
+                    dateISO: target,
+                    attemptNumber,
+                    delivered,
+                    counts: model.counts,
+                    incomplete: model.incomplete,
+                    error,
+                }));
+                // El abandono por tope solo se anuncia si quedó escrito. Si no, el día sigue
+                // pendiente en disco con sus cuatro intentos, y la ejecución siguiente lo abandona
+                // y lo anuncia: así queda una sola línea de abandono.
+                if (status === 'abandoned' && completeError === null) {
+                    logGenerator(LOG_FILE, 'warn',
+                        formatAbandonLogLine({ dateISO: target, reason, attempts: attempts.length }));
+                }
+            }
+        }
+    } catch (err) {
+        // RD-03: el despacho nunca lanza. La bitácora también puede lanzar; si lo hace, no queda a
+        // quién avisar, y el error tampoco debe llegar al ciclo.
+        try {
+            logGenerator(LOG_FILE, 'error', `[DAILY-SUMMARY] status=dispatch-failed err=${failureText(err)}`);
+        } catch (_logErr) {
+            // Sin bitácora no hay nada más que hacer.
+        }
+    }
+}
+
+/**
  * Consulta de la tabla de control de pagos de una empresa (D-14): el conjunto completo de sus
  * NoPagoSage, de cualquier estado. Un pago con fila ahí ya no está pendiente aunque su último
  * resultado en el registro del día haya sido un fallo. Lee la empresa entera, como ya lo hace el
@@ -292,4 +576,12 @@ function buildPaymentsControlQuery(tenantDb) {
     `;
 }
 
-module.exports = { buildOcDayQuery, buildOcUploadedQuery, buildPaymentsControlQuery, collectDailySummary };
+module.exports = {
+    buildOcDayQuery,
+    buildOcUploadedQuery,
+    buildPaymentsControlQuery,
+    collectDailySummary,
+    dayStatePath,
+    readDayState,
+    dispatchDailySummaryIfDue,
+};
