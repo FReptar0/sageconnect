@@ -12,6 +12,8 @@
 // fallaría al requerirlo en vez de pasar con un valor inventado.
 jest.mock('../../src/config', () => ({}));
 
+const fs = require('fs');
+const path = require('path');
 const DailySummary = require('../../src/utils/DailySummary');
 
 const {
@@ -36,6 +38,8 @@ const {
     isLastRetryDay,
     buildDailySummaryModel,
     formatCountsLine,
+    buildDailySummaryHtml,
+    buildDailySummarySubject,
 } = DailySummary;
 
 // Constructores en hora local, igual que getCurrentDate(): sus campos locales son la hora de
@@ -1479,5 +1483,380 @@ describe('buildDailySummaryModel: contrato', () => {
         const before = JSON.stringify(input);
         buildDailySummaryModel(input);
         expect(JSON.stringify(input)).toBe(before);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Parte B, tarea 2: HTML, asunto y fixture del correo (D-23 a D-28, RD-09, RD-11).
+// ---------------------------------------------------------------------------------------------
+
+const PREVIEW = 'node src/scripts/daily-summary-preview.js --date 2026-11-03';
+const TABLE_OPEN = '<table border="1" cellspacing="0" cellpadding="4">';
+const HOSTILE = '<script>alert(1)</script>';
+const HOSTILE_ESCAPED = '&lt;script&gt;alert(1)&lt;/script&gt;';
+
+// Renglones de cuerpo de todas las tablas: el de encabezado no empieza con <td>.
+const bodyRows = (html) => (html.match(/<tr><td>/g) || []).length;
+
+function manyOcRows(n, overrides = {}) {
+    return Array.from({ length: n }, (_, i) => ocRow({ idOrPo: `PO${String(i + 1).padStart(4, '0')}`, ...overrides }));
+}
+
+// Pendientes en las tres secciones, con renglones de último día y la nota del registro reiniciado.
+function threeSectionModel() {
+    return buildModel({
+        ocRows: [
+            ocRow({ idOrPo: 'PO0001', fechaAuth: '2026-10-04', attemptsToday: 3 }),
+            ocRow({ idOrPo: 'PO0002', isValidation: 1, lastError: '"provider_external_id" is required' }),
+        ],
+        ledger: okLedger({
+            COPDAT: tenantLedger({
+                PY0001: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura ya está pagada', fechaRegistro: '2026-10-04', attempts: 2 }),
+                PY0002: ledgerEntry('no-provider-id', { vendor: 'PROV20', fechaRegistro: '2026-10-04' }),
+                PY0003: ledgerEntry('no-provider-id', { vendor: 'PROV20', fechaRegistro: '2026-10-12' }),
+                PY0004: ledgerEntry('missing-uuid', { vendor: 'PROV21', invoices: ['FAC-0001', 'FAC-0002'], fechaRegistro: '2026-10-04' }),
+                PY0005: ledgerEntry('no-invoices', { vendor: 'PROV22', description: 'Sage no devolvió facturas para el pago' }),
+            }),
+        }, { recoveredAt: '2026-11-03T14:07:00' }),
+    });
+}
+
+// Modelo fijo del fixture, solo con datos de ejemplo: las tres secciones, OCs de validación, de
+// un código y sin respuesta (con un <script> en un error), rechazos 1827 ×2 y 1800 ×1 y uno sin
+// respuesta, un proveedor con 3 pagos, un pago con 2 facturas sin UUID y uno sin facturas,
+// renglones de último día y la nota del registro reiniciado.
+function fixtureModel() {
+    return buildDailySummaryModel({
+        dateISO: D,
+        retry: RETRY_30,
+        tenants: ['EMPRESA1', 'EMPRESA2'],
+        ocRows: [
+            ocRow({ tenant: 'EMPRESA1', idOrPo: 'PO0000101', attemptsToday: 4, lastError: '1300: OC duplicada en el portal', fechaAuth: '2026-10-04' }),
+            ocRow({ tenant: 'EMPRESA2', idOrPo: 'PO0000102', attemptsToday: 2, lastError: '1300: OC duplicada en el portal', fechaAuth: '2026-10-21' }),
+            ocRow({ tenant: 'EMPRESA1', idOrPo: 'PO0000103', attemptsToday: 1, isValidation: 1, lastError: '"provider_external_id" is required', fechaAuth: '2026-10-28' }),
+            ocRow({ tenant: 'EMPRESA2', idOrPo: 'PO0000104', attemptsToday: 3, lastError: `timeout of 30000ms exceeded ${HOSTILE}`, fechaAuth: '2026-10-15' }),
+        ],
+        ocUploadedByTenant: { EMPRESA1: 12, EMPRESA2: 3 },
+        ledger: okLedger({
+            EMPRESA1: tenantLedger({
+                PY0000201: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura del pago ya está pagada', vendor: 'PROV001', fechaRegistro: '2026-10-04', attempts: 3 }),
+                PY0000202: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura del pago ya está pagada', vendor: 'PROV002', fechaRegistro: '2026-10-20', attempts: 2 }),
+                PY0000203: ledgerEntry('rejected', { code: '1800', description: 'Cuenta bancaria del proveedor no encontrada', vendor: 'PROV003', fechaRegistro: '2026-10-25' }),
+                PY0000204: ledgerEntry('no-response', { description: 'timeout of 30000ms exceeded', vendor: 'PROV004', fechaRegistro: '2026-10-30', attempts: 2 }),
+                PY0000205: ledgerEntry('no-provider-id', { vendor: 'PROV005', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-04' }),
+                PY0000206: ledgerEntry('no-provider-id', { vendor: 'PROV005', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-12' }),
+                PY0000207: ledgerEntry('no-provider-id', { vendor: 'PROV005', description: 'Proveedor sin ID del portal', fechaRegistro: '2026-10-27' }),
+                PY0000208: ledgerEntry('missing-uuid', { vendor: 'PROV006', description: '2 factura(s) sin UUID', invoices: ['FAC-0001', 'FAC-0002'], fechaRegistro: '2026-10-22' }),
+                PY0000209: ledgerEntry('no-invoices', { vendor: 'PROV007', description: 'Sage no devolvió facturas para el pago', fechaRegistro: '2026-10-04' }),
+                PY0000210: ledgerEntry('uploaded', { vendor: 'PROV008' }),
+                PY0000211: ledgerEntry('rejected', { code: '1827', description: 'Alguna factura del pago ya está pagada', vendor: 'PROV009' }),
+            }),
+            EMPRESA2: tenantLedger({
+                PY0000301: ledgerEntry('uploaded', { vendor: 'PROV010' }),
+                PY0000302: ledgerEntry('uploaded', { vendor: 'PROV011' }),
+            }),
+        }, { recoveredAt: '2026-11-03T14:07:00' }),
+        controlByTenant: { EMPRESA1: ['PY0000211'], EMPRESA2: [] },
+        sourceFailures: [],
+        clock: null,
+    });
+}
+
+describe('buildDailySummaryHtml: estructura y columnas (D-23)', () => {
+    test('con pendientes: h1, la línea de cifras, una nota en cursiva y las tres secciones con h2; cada grupo es un h3 «título (n)» seguido de su tabla', () => {
+        const model = threeSectionModel();
+        const html = buildDailySummaryHtml(model);
+        const lines = html.split('\n');
+        expect(lines[0]).toBe('<h1>SageConnect: Resumen del día 2026-11-03</h1>');
+        expect(lines[1]).toBe('<p>El 2026-11-03 se subieron 0 OCs y 0 pagos; quedaron sin subir 2 OCs y 5 pagos (4 en su último día de reintento automático).</p>');
+        expect(lines[1]).toBe(`<p>${formatCountsLine(model)}</p>`);
+        expect(lines[2]).toBe('<p><em>Datos de pagos incompletos: el registro se reinició a las 14:07.</em></p>');
+        expect(lines[3]).toBe('<h2>OCs sin subir</h2>');
+        expect(lines.filter((line) => line.startsWith('<h2>'))).toEqual([
+            '<h2>OCs sin subir</h2>',
+            '<h2>Pagos rechazados por el portal</h2>',
+            '<h2>Pagos detenidos por datos de Sage</h2>',
+        ]);
+        expect(lines.filter((line) => line.startsWith('<h3>'))).toEqual([
+            '<h3>Portal 1300 (1)</h3>',
+            '<h3>Validación de datos (1)</h3>',
+            '<h3>Portal 1827 (1)</h3>',
+            '<h3>Pagos con facturas sin UUID (1)</h3>',
+            '<h3>Pagos sin facturas en Sage (1)</h3>',
+            '<h3>Proveedores sin ID del portal (1)</h3>',
+        ]);
+        lines.forEach((line, index) => {
+            if (line.startsWith('<h3>')) {
+                expect(lines[index + 1]).toBe(TABLE_OPEN);
+            }
+        });
+        expect(html.endsWith('</p>\n')).toBe(true);
+    });
+
+    test('columnas exactas de D-23 en las cinco tablas, con el encabezado Tenant', () => {
+        const html = buildDailySummaryHtml(threeSectionModel());
+        expect(html).toContain('      <th>#</th><th>Tenant</th><th>OC</th><th>Fecha autorización</th><th>Intentos del día</th><th>Último error</th>\n');
+        expect(html).toContain('      <th>#</th><th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Fecha de registro en Sage</th><th>Intentos del día</th><th>Respuesta del portal</th>\n');
+        expect(html).toContain('      <th>Tenant</th><th>Proveedor</th><th>Pagos que bloquea</th>\n');
+        expect(html).toContain('      <th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Facturas sin UUID</th>\n');
+        expect(html).toContain('      <th>Tenant</th><th>Pago</th><th>Proveedor</th><th>Detalle</th>\n');
+    });
+
+    test('la marca va en la celda de fecha (2026-10-04 · último día) y, en las secciones de Sage, junto al número de pago', () => {
+        const html = buildDailySummaryHtml(threeSectionModel());
+        expect(html).toContain('    <tr><td>1</td><td>COPDAT</td><td>PO0001</td><td>2026-10-04 · último día</td><td>3</td><td>1300: OC duplicada</td></tr>\n');
+        expect(html).toContain('    <tr><td>1</td><td>COPDAT</td><td>PO0002</td><td>2026-10-20</td><td>1</td><td>&quot;provider_external_id&quot; is required</td></tr>\n');
+        expect(html).toContain('    <tr><td>1</td><td>COPDAT</td><td>PY0001</td><td>PROV01</td><td>2026-10-04 · último día</td><td>2</td><td>Alguna factura ya está pagada</td></tr>\n');
+        expect(html).toContain('    <tr><td>COPDAT</td><td>PROV20</td><td>PY0002 · último día, PY0003</td></tr>\n');
+        expect(html).toContain('    <tr><td>COPDAT</td><td>PY0004 · último día</td><td>PROV21</td><td>FAC-0001, FAC-0002</td></tr>\n');
+        expect(html).toContain('    <tr><td>COPDAT</td><td>PY0005</td><td>PROV22</td><td>Sage no devolvió facturas para el pago</td></tr>\n');
+    });
+
+    test('una sección sin grupos dice «Ninguno.»', () => {
+        const html = buildDailySummaryHtml(buildModel({ ocRows: [ocRow()] }));
+        expect(html).toContain('<h2>Pagos rechazados por el portal</h2>\n<p>Ninguno.</p>\n');
+        expect(html).toContain('<h2>Pagos detenidos por datos de Sage</h2>\n<p>Ninguno.</p>\n');
+    });
+
+    test('una sección cuya fuente no existe dice «Sin datos.», nunca «Ninguno.»', () => {
+        const html = buildDailySummaryHtml(buildModel({ ocRows: [ocRow()], ledger: { status: 'missing', data: null } }));
+        expect(html).toContain('<h2>Pagos rechazados por el portal</h2>\n<p>Sin datos.</p>\n');
+        expect(html).toContain('<h2>Pagos detenidos por datos de Sage</h2>\n<p>Sin datos.</p>\n');
+        expect(html).not.toContain('Ninguno.');
+    });
+});
+
+describe('buildDailySummaryHtml: tope de renglones y recorte (RD-11, D-24)', () => {
+    test('RD-11: 250 OCs en un grupo → 100 renglones y la leyenda de los 150 restantes con el comando de la vista previa', () => {
+        const model = buildModel({ ocRows: manyOcRows(250) });
+        expect(model.counts.ocPending).toBe(250);
+        const html = buildDailySummaryHtml(model);
+        expect(bodyRows(html)).toBe(100);
+        expect(html).toContain('<h3>Portal 1300 (250)</h3>');
+        expect(html).toContain(`<p>Y 150 renglones más en esta sección. Detalle completo: <code>${PREVIEW}</code></p>`);
+        expect(html).not.toContain('Grupos sin renglones');
+    });
+
+    test('RD-11: un segundo grupo que se queda sin espacio se nombra en «Grupos sin renglones en este correo»', () => {
+        const model = buildModel({ ocRows: [...manyOcRows(250), ocRow({ idOrPo: 'PV0001', isValidation: 1 })] });
+        const html = buildDailySummaryHtml(model);
+        expect(bodyRows(html)).toBe(100);
+        expect(html).toContain('<p>Grupos sin renglones en este correo: Validación de datos (1).</p>');
+        expect(html).toContain(`<p>Y 151 renglones más en esta sección. Detalle completo: <code>${PREVIEW}</code></p>`);
+        expect(html).not.toContain('<h3>Validación de datos');
+    });
+
+    test('un solo renglón de más se anuncia en singular', () => {
+        const html = buildDailySummaryHtml(buildModel({ ocRows: manyOcRows(101) }));
+        expect(bodyRows(html)).toBe(100);
+        expect(html).toContain(`<p>Y 1 renglón más en esta sección. Detalle completo: <code>${PREVIEW}</code></p>`);
+    });
+
+    test('el tope es por sección: los 100 renglones de OCs no le quitan renglones a los pagos', () => {
+        const model = buildModel({
+            ocRows: manyOcRows(250),
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('rejected', { code: '1827' }),
+                    PY0002: ledgerEntry('rejected', { code: '1827' }),
+                    PY0003: ledgerEntry('rejected', { code: '1800' }),
+                }),
+            }),
+        });
+        expect(bodyRows(buildDailySummaryHtml(model))).toBe(103);
+    });
+
+    test('con { cap: false } salen los 251 renglones y ninguna leyenda', () => {
+        const model = buildModel({ ocRows: [...manyOcRows(250), ocRow({ idOrPo: 'PV0001', isValidation: 1 })] });
+        const html = buildDailySummaryHtml(model, { cap: false });
+        expect(bodyRows(html)).toBe(251);
+        expect(html).not.toContain('renglones más');
+        expect(html).not.toContain('Grupos sin renglones');
+    });
+
+    test('solo { cap: false } explícito quita el tope: sin opciones, con null o con otro valor el correo sigue acotado', () => {
+        const model = buildModel({ ocRows: manyOcRows(150) });
+        for (const options of [undefined, null, {}, { cap: true }, { cap: 'false' }, { cap: 0 }]) {
+            expect(bodyRows(buildDailySummaryHtml(model, options))).toBe(100);
+        }
+    });
+
+    test('recorte: un error de 150 caracteres sale en 100 más «…» con el tope, y completo con { cap: false }', () => {
+        const long = 'x'.repeat(150);
+        const model = buildModel({ ocRows: [ocRow({ lastError: long })] });
+        const capped = buildDailySummaryHtml(model);
+        expect(capped).toContain(`<td>${'x'.repeat(100)}…</td>`);
+        expect(capped).not.toContain('x'.repeat(101));
+        expect(buildDailySummaryHtml(model, { cap: false })).toContain(`<td>${long}</td>`);
+    });
+
+    test('el recorte alcanza los demás textos libres: respuesta del portal, detalle, facturas y pagos bloqueados', () => {
+        const long = 'y'.repeat(150);
+        const invoices = Array.from({ length: 30 }, (_, i) => `FAC-${String(i + 1).padStart(4, '0')}`);
+        const vendorPayments = {};
+        for (let i = 1; i <= 15; i += 1) {
+            vendorPayments[`PYV${String(i).padStart(4, '0')}`] = ledgerEntry('no-provider-id', { vendor: 'PROV40' });
+        }
+        const model = buildModel({
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    ...vendorPayments,
+                    PY0001: ledgerEntry('rejected', { code: '1827', description: long }),
+                    PY0002: ledgerEntry('no-invoices', { description: long }),
+                    PY0003: ledgerEntry('missing-uuid', { invoices }),
+                }),
+            }),
+        });
+        const blocked = Object.keys(vendorPayments).join(', ');
+        const capped = buildDailySummaryHtml(model);
+        expect(capped).not.toContain('y'.repeat(101));
+        expect(capped.split(`<td>${'y'.repeat(100)}…</td>`).length - 1).toBe(2);
+        expect(capped).toContain(`<td>${invoices.join(', ').slice(0, 100)}…</td>`);
+        expect(capped).toContain(`<td>${blocked.slice(0, 100)}…</td>`);
+        const full = buildDailySummaryHtml(model, { cap: false });
+        expect(full.split(`<td>${long}</td>`).length - 1).toBe(2);
+        expect(full).toContain(`<td>${invoices.join(', ')}</td>`);
+        expect(full).toContain(`<td>${blocked}</td>`);
+    });
+});
+
+describe('buildDailySummaryHtml: sin pendientes, escapado y pie (RD-09, D-26, D-28)', () => {
+    test('RD-09: sin pendientes y sin notas → el párrafo «Sin pendientes» y la línea de cifras, sin secciones', () => {
+        const model = buildModel({
+            ocUploadedByTenant: { COPDAT: 12 },
+            ledger: okLedger({ COPDAT: tenantLedger({ PY0001: ledgerEntry('uploaded') }) }),
+        });
+        const html = buildDailySummaryHtml(model);
+        expect(html).toContain('\n<p>Sin pendientes</p>\n');
+        expect(html).toContain('<p>El 2026-11-03 se subieron 12 OCs y 1 pago; quedaron sin subir 0 OCs y 0 pagos.</p>');
+        expect(html).not.toContain('<h2>');
+        expect(html).not.toContain('incompletos');
+    });
+
+    test('sin pendientes pero con notas → dice que no se encontraron pendientes y que los datos están incompletos', () => {
+        const html = buildDailySummaryHtml(buildModel({ ledger: { status: 'missing', data: null } }));
+        expect(html).toContain('<p>No se encontraron pendientes, pero los datos están incompletos: revise las notas de arriba.</p>');
+        expect(html).toContain('<p><em>Sin datos de pagos de ese día: no hay registro de la subida de pagos.</em></p>');
+        expect(html).not.toContain('<p>Sin pendientes</p>');
+        expect(html).not.toContain('<h2>');
+    });
+
+    test('escapado: un <script> en el error, la descripción del portal, el proveedor y la empresa sale como entidades; la comilla doble como &quot;', () => {
+        const model = buildModel({
+            tenants: ['COPDAT', HOSTILE],
+            ocRows: [ocRow({ tenant: HOSTILE, lastError: HOSTILE })],
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('rejected', { code: '1827', description: `${HOSTILE} la "factura" ya está pagada`, vendor: HOSTILE }),
+                    PY0002: ledgerEntry('rejected', { code: '<b>18</b>' }),
+                }),
+            }),
+        });
+        const html = buildDailySummaryHtml(model);
+        expect(html).not.toMatch(/<script/i);
+        expect(html).not.toContain('<b>');
+        expect(html).toContain(`<tr><td>1</td><td>${HOSTILE_ESCAPED}</td><td>PO0001</td>`);
+        expect(html).toContain(`<td>${HOSTILE_ESCAPED}</td></tr>`);
+        expect(html).toContain(`<td>PY0001</td><td>${HOSTILE_ESCAPED}</td>`);
+        expect(html).toContain(`<td>${HOSTILE_ESCAPED} la &quot;factura&quot; ya está pagada</td>`);
+        expect(html).toContain('<h3>Portal &lt;b&gt;18&lt;/b&gt; (1)</h3>');
+        expect(html).toContain(`<p><em>Sin datos de pagos de ${HOSTILE_ESCAPED} ese día.</em></p>`);
+        expect(html).not.toContain('"factura"');
+    });
+
+    test('D-26: sin enlaces a localhost, /pos.html ni /payments.html; el pie trae el comando de la vista previa', () => {
+        for (const model of [threeSectionModel(), buildModel(), buildModel({ ledger: { status: 'missing', data: null } })]) {
+            const html = buildDailySummaryHtml(model);
+            expect(html).not.toMatch(/localhost|\/pos\.html|\/payments\.html|<a /);
+            expect(html).toContain(PREVIEW);
+            expect(html.trimEnd().split('\n').pop()).toBe(`<p>Detalle completo, sin tope de renglones: <code>${PREVIEW}</code></p>`);
+        }
+    });
+
+    test('con { cap: false } el pie dice que es una vista previa sin tope y que no se envió correo', () => {
+        const html = buildDailySummaryHtml(threeSectionModel(), { cap: false });
+        expect(html.trimEnd().split('\n').pop()).toBe('<p>Vista previa sin tope de renglones ni recorte de textos. No se envió ningún correo.</p>');
+        expect(html).not.toMatch(/localhost|\/pos\.html|\/payments\.html|<a /);
+    });
+});
+
+describe('buildDailySummarySubject (D-25, D-27, S-7)', () => {
+    test('con pendientes → «[SageConnect] Resumen del día 2026-11-03 — 5 sin subir»', () => {
+        const model = buildModel({
+            ocRows: manyOcRows(3),
+            ledger: okLedger({
+                COPDAT: tenantLedger({
+                    PY0001: ledgerEntry('rejected', { code: '1800' }),
+                    PY0002: ledgerEntry('no-response', { description: 'socket hang up' }),
+                }),
+            }),
+        });
+        expect(model.pendingTotal).toBe(5);
+        expect(buildDailySummarySubject(model)).toBe('[SageConnect] Resumen del día 2026-11-03 — 5 sin subir');
+    });
+
+    test('cero pendientes y sin notas → «— sin pendientes»', () => {
+        expect(buildDailySummarySubject(buildModel())).toBe('[SageConnect] Resumen del día 2026-11-03 — sin pendientes');
+    });
+
+    test('cero pendientes con alguna nota → «— datos incompletos»', () => {
+        expect(buildDailySummarySubject(buildModel({ ledger: { status: 'missing', data: null } })))
+            .toBe('[SageConnect] Resumen del día 2026-11-03 — datos incompletos');
+    });
+
+    test('3 pendientes y una nota → sigue diciendo «— 3 sin subir»', () => {
+        const model = buildModel({ ocRows: manyOcRows(3), ledger: okLedger({ COPDAT: tenantLedger({}) }, { recoveredAt: '2026-11-03T14:07:00' }) });
+        expect(model.incomplete).toBe(true);
+        expect(buildDailySummarySubject(model)).toBe('[SageConnect] Resumen del día 2026-11-03 — 3 sin subir');
+    });
+
+    test('pagos contados por documento: el proveedor sin ID que bloquea 3 pagos más una OC → «— 4 sin subir»', () => {
+        const model = buildModel({ ocRows: [ocRow()], ledger: okLedger({ COPDAT: tenantLedger({ ...PROVIDER_BLOCKS_3 }) }) });
+        expect(buildDailySummarySubject(model)).toBe('[SageConnect] Resumen del día 2026-11-03 — 4 sin subir');
+    });
+
+    test('es texto plano, sin entidades HTML aunque los datos traigan < y comillas, y con el guion largo U+2014', () => {
+        const model = buildModel({ tenants: ['COPDAT', HOSTILE], ocRows: [ocRow({ tenant: HOSTILE, lastError: `${HOSTILE} "x"` })] });
+        const subject = buildDailySummarySubject(model);
+        expect(subject).toBe('[SageConnect] Resumen del día 2026-11-03 — 1 sin subir');
+        expect(subject).not.toMatch(/&(amp|lt|gt|quot|#39);/);
+    });
+});
+
+describe('fixture del correo (tests/fixtures/daily-summary-sample.html)', () => {
+    test('buildDailySummaryHtml de un modelo fijo con las tres secciones es igual byte a byte al fixture', () => {
+        const fixture = fs.readFileSync(path.join(__dirname, '../fixtures/daily-summary-sample.html'), 'utf8');
+        const html = buildDailySummaryHtml(fixtureModel());
+        expect(html).toBe(fixture);
+    });
+});
+
+describe('exports del módulo con la parte B', () => {
+    test('exporta exactamente 23 nombres: los 15 de la parte A y los 8 de la parte B', () => {
+        expect(Object.keys(DailySummary).sort()).toEqual([
+            'MAX_ATTEMPTS',
+            'RETRY_OFFSETS_MIN',
+            'ROW_CAP',
+            'localDateISO',
+            'localStamp',
+            'parseStamp',
+            'isIsoDate',
+            'addDaysISO',
+            'isValidDayState',
+            'decideDailySummaryAction',
+            'sanitizeLogText',
+            'formatNotificationStatusLine',
+            'formatAttemptLogLine',
+            'formatAbandonLogLine',
+            'formatClockWarnLine',
+            'classifyOcReason',
+            'classifyPaymentRejection',
+            'isWithinRetryWindow',
+            'isLastRetryDay',
+            'buildDailySummaryModel',
+            'formatCountsLine',
+            'buildDailySummaryHtml',
+            'buildDailySummarySubject',
+        ].sort());
     });
 });
