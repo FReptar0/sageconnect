@@ -304,7 +304,7 @@ Plans:
 - [x] 20.7-07-PLAN.md (wave 4, dep 06) — Despacho: estado por día en disco, intento escrito antes de recolectar y enviar, a lo más 4 intentos, reposición solo el día siguiente, envío por `sendOperatorReport` cargado de forma diferida [RD-01, RD-02, RD-03, RD-09]
 - [x] 20.7-08-PLAN.md (wave 4, dep 06+04) — `src/scripts/daily-summary-preview.js` (solo SELECT, sin envío, sin tope, con el bloque `clock` y el formato de la hora de medianoche) y la sección de operación en `docs/OPERATIONS.md` [RD-13, RD-11]
 - [x] 20.7-09-PLAN.md (wave 5, dep 07) — Bloque `dailySummary` en `forResponse` con su `withStepTimeout` y su `catch`, línea `[NOTIFICATIONS]` en `initScheduler`, conteo de `timeout-logging` de 9 a 10 y las suites de integración. Abre con el punto de control de `src/background.js` y `src/services/CronScheduler.js` [RD-01, RD-03, RD-12, RD-14]
-- [ ] 20.7-10-PLAN.md (wave 6, dep todos) — Compuerta final sobre todo el diff (RD-14, línea base por nombre, redacción), evidencia de las 28 casillas más tres comprobaciones adicionales (SQL nuevo contra SQL Server real, pendiente de UAT; relojes de SQL Server y formato de la hora de medianoche, D-35; aspecto del correo) y revisión humana del correo y de los relojes [RD-14]
+- [x] 20.7-10-PLAN.md (wave 6, dep todos) — Compuerta final sobre todo el diff (RD-14, línea base por nombre, redacción), evidencia de las 28 casillas más tres comprobaciones adicionales (SQL nuevo contra SQL Server real, pendiente de UAT; relojes de SQL Server y formato de la hora de medianoche, D-35; aspecto del correo) y revisión humana del correo y de los relojes [RD-14]
 
 
 ### Phase 21: Partial payment completion policy
@@ -349,7 +349,7 @@ Plans:
 | 20.4 Portal probe per-tick    | v2.4      | 4/4 | Complete   | 2026-09-08 |
 | 20.5 Q3 differentiated alerts | v2.4      | 5/5 | Complete   | 2026-09-09 |
 | 20.6 Correo quincenal + entrega senalizada | v2.4 | 8/8 | Complete    | 2026-09-10 |
-| 20.7 Resumen diario           | v2.4      | 9/10 | In Progress|  |
+| 20.7 Resumen diario           | v2.4      | 10/10 | Complete   | 2026-11-04 |
 | 21. Partial payment policy    | v2.4      | 0/0            | Pending  | —          |
 | 22. Botones ejecucion x tarea | v2.4      | 0/4            | Planned  | —          |
 | 23. Boton invoca importador   | v2.4      | 4/4            | Complete | 2026-09-07 |
