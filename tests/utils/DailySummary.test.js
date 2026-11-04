@@ -10,6 +10,8 @@
 // fallaría al requerirlo en vez de pasar con un valor inventado.
 jest.mock('../../src/config', () => ({}));
 
+const DailySummary = require('../../src/utils/DailySummary');
+
 const {
     MAX_ATTEMPTS,
     RETRY_OFFSETS_MIN,
@@ -21,7 +23,12 @@ const {
     addDaysISO,
     isValidDayState,
     decideDailySummaryAction,
-} = require('../../src/utils/DailySummary');
+    sanitizeLogText,
+    formatNotificationStatusLine,
+    formatAttemptLogLine,
+    formatAbandonLogLine,
+    formatClockWarnLine,
+} = DailySummary;
 
 // Constructores en hora local, igual que getCurrentDate(): sus campos locales son la hora de
 // TIMEZONE. Índice de mes 10 = noviembre; D = 2026-11-03.
@@ -477,5 +484,205 @@ describe('decideDailySummaryAction: estado dañado nunca provoca un envío (D-07
         expect(decide(at(3, 23, 45), { status: 'otro' }, MISSING).ops).toEqual(abandonToday);
         expect(decide(at(3, 23, 45), undefined, MISSING).ops).toEqual(abandonToday);
         expect(decide(at(3, 23, 45), 'missing', MISSING).ops).toEqual(abandonToday);
+    });
+});
+
+describe('sanitizeLogText (D-34, T-20.7-08)', () => {
+    test('nulo, ausente, vacío o solo espacios → sin detalle', () => {
+        expect(sanitizeLogText(null)).toBe('sin detalle');
+        expect(sanitizeLogText(undefined)).toBe('sin detalle');
+        expect(sanitizeLogText('')).toBe('sin detalle');
+        expect(sanitizeLogText('   ')).toBe('sin detalle');
+        expect(sanitizeLogText('\n\t ')).toBe('sin detalle');
+    });
+
+    test('colapsa los espacios en blanco, quita las orillas y recorta a 200 por omisión', () => {
+        expect(sanitizeLogText('  uno\n dos\t\ttres  ')).toBe('uno dos tres');
+        expect(sanitizeLogText('x'.repeat(250))).toBe('x'.repeat(200));
+    });
+
+    test('respeta un tope explícito; uno inválido vuelve a 200', () => {
+        expect(sanitizeLogText('abcdef', 3)).toBe('abc');
+        expect(sanitizeLogText('x'.repeat(250), 0)).toBe('x'.repeat(200));
+    });
+
+    test('convierte a texto y nunca lanza', () => {
+        expect(sanitizeLogText(1827)).toBe('1827');
+        const hostile = { toString() { throw new Error('boom'); } };
+        expect(sanitizeLogText(hostile)).toBe('sin detalle');
+    });
+});
+
+describe('formatNotificationStatusLine: línea de arranque (D-32, D-40)', () => {
+    const ALL_OFF_NO_TIME = '[NOTIFICATIONS] po-alert=off eom=off payment-report=off daily-summary=off daily-summary-time=n/a';
+
+    // Copia del doble de config de tests/services/cron-scheduler.test.js, que llama initScheduler()
+    // sin `notifications` ni `eom`. Solo `paths.logs` cambia, a un valor relativo, para no dejar
+    // rutas absolutas en el repo; la línea de arranque no lo lee.
+    const CRON_SCHEDULER_CFG = {
+        schedule: {
+            cronExpression: '*/15 * * * *',
+            operationDelayMs: 1000,
+        },
+        app: {
+            timezone: 'America/Mexico_City',
+        },
+        portal: {
+            tenants: [{ id: 'T1' }, { id: 'T2' }],
+        },
+        database: { user: 'test', password: 'test', server: 'localhost', database: 'TEST' },
+        paths: { logs: 'logs' },
+    };
+
+    function notificationsCfg({ poAlert, eom, paymentReport, dailySummary, hour = 23, minute = 45 }) {
+        return {
+            notifications: {
+                poAlert: { enabled: poAlert },
+                paymentReport: { enabled: paymentReport, hour: 18, lookbackDays: 365 },
+                dailySummary: { enabled: dailySummary, hour, minute },
+            },
+            eom: { notificationHour: 18, notificationEnabled: eom },
+        };
+    }
+
+    test('los cuatro apagados con 23:45 → el texto exacto de D-32', () => {
+        const cfg = notificationsCfg({ poAlert: false, eom: false, paymentReport: false, dailySummary: false });
+        expect(formatNotificationStatusLine(cfg)).toBe('[NOTIFICATIONS] po-alert=off eom=off payment-report=off daily-summary=off daily-summary-time=23:45');
+    });
+
+    test('los cuatro encendidos con 7:05 → on y la hora con dos dígitos', () => {
+        const cfg = notificationsCfg({ poAlert: true, eom: true, paymentReport: true, dailySummary: true, hour: 7, minute: 5 });
+        expect(formatNotificationStatusLine(cfg)).toBe('[NOTIFICATIONS] po-alert=on eom=on payment-report=on daily-summary=on daily-summary-time=07:05');
+    });
+
+    test('cada interruptor sale de su propia llave', () => {
+        const only = (name) => notificationsCfg({ poAlert: false, eom: false, paymentReport: false, dailySummary: false, [name]: true });
+        expect(formatNotificationStatusLine(only('poAlert'))).toBe('[NOTIFICATIONS] po-alert=on eom=off payment-report=off daily-summary=off daily-summary-time=23:45');
+        expect(formatNotificationStatusLine(only('eom'))).toBe('[NOTIFICATIONS] po-alert=off eom=on payment-report=off daily-summary=off daily-summary-time=23:45');
+        expect(formatNotificationStatusLine(only('paymentReport'))).toBe('[NOTIFICATIONS] po-alert=off eom=off payment-report=on daily-summary=off daily-summary-time=23:45');
+        expect(formatNotificationStatusLine(only('dailySummary'))).toBe('[NOTIFICATIONS] po-alert=off eom=off payment-report=off daily-summary=on daily-summary-time=23:45');
+    });
+
+    test.each([
+        ['{}', {}],
+        ['undefined', undefined],
+        ['null', null],
+        ['el doble de cron-scheduler.test.js, sin notifications ni eom', CRON_SCHEDULER_CFG],
+    ])('%s → todos off y daily-summary-time=n/a, sin lanzar', (_name, cfg) => {
+        expect(formatNotificationStatusLine(cfg)).toBe(ALL_OFF_NO_TIME);
+    });
+
+    test("un 'true' de texto cuenta como off: solo === true enciende", () => {
+        const cfg = notificationsCfg({ poAlert: 'true', eom: 'true', paymentReport: 'true', dailySummary: 'true' });
+        expect(formatNotificationStatusLine(cfg)).toBe('[NOTIFICATIONS] po-alert=off eom=off payment-report=off daily-summary=off daily-summary-time=23:45');
+    });
+
+    test('una hora o un minuto fuera de rango salen como n/a', () => {
+        const withTime = (hour, minute) => formatNotificationStatusLine(notificationsCfg({ poAlert: false, eom: false, paymentReport: false, dailySummary: false, hour, minute }));
+        expect(withTime(24, 0)).toBe(ALL_OFF_NO_TIME);
+        expect(withTime(23, 60)).toBe(ALL_OFF_NO_TIME);
+        expect(withTime('23', 45)).toBe(ALL_OFF_NO_TIME);
+        expect(withTime(23, null)).toBe(ALL_OFF_NO_TIME);
+        // Sin la llave del minuto (el ayudante pondría 45 por omisión, así que se arma a mano).
+        expect(formatNotificationStatusLine({ notifications: { dailySummary: { enabled: false, hour: 23 } } })).toBe(ALL_OFF_NO_TIME);
+    });
+
+    test('una config que lanza al leerse → status=unreadable, sin lanzar', () => {
+        const hostile = { get notifications() { throw new Error('boom'); } };
+        expect(formatNotificationStatusLine(hostile)).toBe('[NOTIFICATIONS] status=unreadable');
+    });
+});
+
+describe('formatAttemptLogLine: una línea por intento (D-34)', () => {
+    const COUNTS = { ocUploaded: 12, paymentsUploaded: 30, ocPending: 3, paymentsPending: 2, lastDay: 1 };
+
+    test('entregado → el texto exacto, sin err=', () => {
+        const line = formatAttemptLogLine({ dateISO: '2026-11-03', attemptNumber: 1, delivered: true, counts: COUNTS, incomplete: false, error: null });
+        expect(line).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=true oc-uploaded=12 payments-uploaded=30 oc-pending=3 payments-pending=2 last-day=1 incomplete=false');
+    });
+
+    test('no entregado con un error de tres renglones y 500 caracteres → sent=false y err= colapsado a 200', () => {
+        const error = 'a'.repeat(100) + '\n\n' + 'b'.repeat(100) + '\n' + 'c'.repeat(297);
+        expect(error).toHaveLength(500);
+        const expectedErr = 'a'.repeat(100) + ' ' + 'b'.repeat(99);
+        expect(expectedErr).toHaveLength(200);
+
+        const line = formatAttemptLogLine({ dateISO: '2026-11-03', attemptNumber: 2, delivered: false, counts: COUNTS, incomplete: true, error });
+        expect(line).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=2/4 sent=false oc-uploaded=12 payments-uploaded=30 oc-pending=3 payments-pending=2 last-day=1 incomplete=true err=' + expectedErr);
+        expect(line).not.toMatch(/\n/);
+    });
+
+    test('cualquier delivered distinto de true cuenta como no entregado (S-2)', () => {
+        const base = { dateISO: '2026-11-03', attemptNumber: 3, counts: COUNTS, incomplete: false, error: 'connect ECONNREFUSED 127.0.0.1:25' };
+        const tail = ' sent=false oc-uploaded=12 payments-uploaded=30 oc-pending=3 payments-pending=2 last-day=1 incomplete=false err=connect ECONNREFUSED 127.0.0.1:25';
+        expect(formatAttemptLogLine({ ...base, delivered: null })).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=3/4' + tail);
+        expect(formatAttemptLogLine({ ...base, delivered: 1 })).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=3/4' + tail);
+        expect(formatAttemptLogLine({ ...base, delivered: 'true' })).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=3/4' + tail);
+    });
+
+    test('no entregado sin mensaje → err=sin detalle', () => {
+        const line = formatAttemptLogLine({ dateISO: '2026-11-03', attemptNumber: 4, delivered: false, counts: COUNTS, incomplete: false });
+        expect(line).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=4/4 sent=false oc-uploaded=12 payments-uploaded=30 oc-pending=3 payments-pending=2 last-day=1 incomplete=false err=sin detalle');
+    });
+
+    test('cifras null o ausentes → n/a', () => {
+        const line = formatAttemptLogLine({ dateISO: '2026-11-03', attemptNumber: 1, delivered: true, counts: { ocUploaded: null, paymentsUploaded: 30, ocPending: undefined }, incomplete: true });
+        expect(line).toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=true oc-uploaded=n/a payments-uploaded=30 oc-pending=n/a payments-pending=n/a last-day=n/a incomplete=true');
+        expect(formatAttemptLogLine({ dateISO: '2026-11-03', attemptNumber: 1, delivered: true, counts: null, incomplete: false }))
+            .toBe('[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=true oc-uploaded=n/a payments-uploaded=n/a oc-pending=n/a payments-pending=n/a last-day=n/a incomplete=false');
+    });
+
+    test('sin argumento no lanza y todo sale n/a', () => {
+        expect(formatAttemptLogLine()).toBe('[DAILY-SUMMARY] date=n/a attempt=n/a/4 sent=false oc-uploaded=n/a payments-uploaded=n/a oc-pending=n/a payments-pending=n/a last-day=n/a incomplete=n/a err=sin detalle');
+    });
+});
+
+describe('formatAbandonLogLine y formatClockWarnLine (D-34, D-35)', () => {
+    test('abandono → el texto exacto, con las tres razones', () => {
+        expect(formatAbandonLogLine({ dateISO: '2026-11-02', reason: 'next-summary-due', attempts: 2 }))
+            .toBe('[DAILY-SUMMARY-ABANDON] date=2026-11-02 reason=next-summary-due attempts=2');
+        expect(formatAbandonLogLine({ dateISO: '2026-11-03', reason: 'max-attempts', attempts: 4 }))
+            .toBe('[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=max-attempts attempts=4');
+        expect(formatAbandonLogLine({ dateISO: '2026-11-03', reason: 'state-corrupt', attempts: 0 }))
+            .toBe('[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=state-corrupt attempts=0');
+    });
+
+    test('abandono con entrada incompleta o un motivo que no es una clave → n/a, sin lanzar', () => {
+        expect(formatAbandonLogLine()).toBe('[DAILY-SUMMARY-ABANDON] date=n/a reason=n/a attempts=n/a');
+        expect(formatAbandonLogLine({ dateISO: '2026-11-03', reason: 'max attempts\nfin', attempts: 4 }))
+            .toBe('[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=n/a attempts=4');
+    });
+
+    test('diferencia de relojes → el texto exacto de D-35', () => {
+        expect(formatClockWarnLine('2026-11-03', '2026-11-04')).toBe('[DAILY-SUMMARY-CLOCK] tz-date=2026-11-03 sql-date=2026-11-04');
+    });
+
+    test('relojes que no son fecha → n/a, sin lanzar', () => {
+        expect(formatClockWarnLine(null, 'x\ny')).toBe('[DAILY-SUMMARY-CLOCK] tz-date=n/a sql-date=n/a');
+    });
+});
+
+describe('exports del módulo', () => {
+    const CONTRACT_EXPORTS = [
+        'MAX_ATTEMPTS',
+        'RETRY_OFFSETS_MIN',
+        'ROW_CAP',
+        'localDateISO',
+        'localStamp',
+        'parseStamp',
+        'isIsoDate',
+        'addDaysISO',
+        'isValidDayState',
+        'decideDailySummaryAction',
+        'sanitizeLogText',
+        'formatNotificationStatusLine',
+        'formatAttemptLogLine',
+        'formatAbandonLogLine',
+        'formatClockWarnLine',
+    ];
+
+    test('exporta los 15 nombres del contrato; lo que sume el plan 20.7-04 no rompe este caso', () => {
+        expect(CONTRACT_EXPORTS).toHaveLength(15);
+        expect(Object.keys(DailySummary)).toEqual(expect.arrayContaining(CONTRACT_EXPORTS));
     });
 });
