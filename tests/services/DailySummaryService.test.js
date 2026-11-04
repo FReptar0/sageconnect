@@ -947,9 +947,15 @@ describe('dispatchDailySummaryIfDue', () => {
         expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
     });
 
-    test('D-35: en una reposición no hay línea de reloj, aunque la fecha de SQL Server ya sea la del día siguiente', async () => {
+    // Los dos relojes de SQL Server posibles a las 00:00 del día siguiente: ya en ese día, o todavía
+    // en el día resumido, unos minutos atrás. El segundo es el que distingue la regla «solo al
+    // resumir hoy»: comparado contra hoy, sí avisaría.
+    test.each([
+        ['ya en el día siguiente', OTHER_CLOCK],
+        ['todavía en el día resumido', CLOCK],
+    ])('D-35: en una reposición no hay línea de reloj, con SQL Server %s', async (_label, clock) => {
         await runAt(2026, 10, 3, 10, 0);
-        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { clock: OTHER_CLOCK } }));
+        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { clock } }));
 
         await runAt(2026, 10, 4, 0, 0);
 
