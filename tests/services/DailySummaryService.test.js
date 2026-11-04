@@ -1,18 +1,21 @@
-// tests/services/DailySummaryService.test.js (NUEVO — Fase 20.7, plan 20.7-06)
+// tests/services/DailySummaryService.test.js (NUEVO — Fase 20.7, planes 20.7-06 y 20.7-07)
 //
 // Recolección del resumen diario (src/services/DailySummaryService.js): la forma de sus tres
 // consultas, la base explícita en cada una, la validación de la fecha antes del SQL, las fallas
-// parciales y el modelo que sale de punta a punta. El plan 20.7-07 agrega aquí los casos del
-// despacho.
+// parciales y el modelo que sale de punta a punta. Despacho (plan 20.7-07): el estado de cada día
+// en disco, el intento anotado antes de enviar, el tope de 4 intentos, la reposición del día
+// anterior y que nunca lance, con relojes simulados y el estado real en la carpeta temporal.
 //
 // Dobles, calcados de tests/integration/payment-report-dispatch.test.js:
 // - config, con la carpeta de bitácoras en un temporal de os.tmpdir() propio de este proceso;
 // - LogGenerator y SQLServerConnection.runQuery: no hay base de datos local (HANDOFF §6), así que
 //   las consultas se prueban por su texto y con runQuery simulado;
 // - EmailSender: su fábrica anota cada carga en mockEmailSenderLoaded, para poder afirmar que la
-//   recolección no carga el envío (D-01). Sus dos funciones las usa el despacho del plan 20.7-07.
-// PaymentDayLedger y DailySummary van reales: el registro se escribe y se lee de verdad en la
-// carpeta temporal, y el modelo es el mismo que recibiría el correo.
+//   recolección no carga el envío y que el despacho solo lo carga al intentar (D-01). El despacho
+//   manda por sendOperatorReport, cuyo doble falla por VALOR DE RETORNO, nunca rechazando (D-38).
+// PaymentDayLedger, EomNotification y DailySummary van reales: el registro y el estado del día se
+// escriben y se leen de verdad en la carpeta temporal, y el modelo es el mismo que recibiría el
+// correo.
 
 // Mock de src/config — antes de cualquier require, para que las utilidades anidadas lo vean.
 jest.mock('../../src/config', () => {
@@ -531,5 +534,484 @@ describe('collectDailySummary', () => {
         });
 
         expect(mockEmailSenderLoaded).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('dispatchDailySummaryIfDue', () => {
+    const { dispatchDailySummaryIfDue, readDayState, dayStatePath } = service;
+    const D = '2026-11-03';
+    const D1 = '2026-11-04';
+    const SUMMARY = { enabled: true, hour: 23, minute: 45 };
+    const ON = { ...config, notifications: { dailySummary: SUMMARY } };
+    const OFF = { ...config, notifications: { dailySummary: { ...SUMMARY, enabled: false } } };
+    const ECONNREFUSED = 'connect ECONNREFUSED 127.0.0.1:25';
+
+    // Relojes locales, como el `date` de forResponse; noviembre es el mes 10.
+    const at = (d, h, min) => new Date(2026, 10, d, h, min);
+    const runAt = (y, m, d, h, min, cfg = ON) => dispatchDailySummaryIfDue(new Date(y, m, d, h, min), cfg);
+
+    // El estado de un día tal como quedó en la carpeta temporal, o null si no existe.
+    const stateOf = (dateISO) => {
+        const file = dayStatePath(tmpRoot, dateISO);
+        return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
+    };
+    const writeRawState = (dateISO, content) => {
+        const file = dayStatePath(tmpRoot, dateISO);
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, content);
+    };
+    const subjects = () => mockSendOperatorReport.mock.calls.map(([args]) => args.subject);
+    // [nivel, mensaje] de las líneas de la bitácora de avisos que empiezan con `prefix`.
+    const logged = (prefix) => mockLogGenerator.mock.calls
+        .filter(([file, , message]) => file === 'EomNotification' && message.startsWith(prefix))
+        .map(([, level, message]) => [level, message]);
+    // Solo las líneas de intento, las que llevan las cifras.
+    const attemptLines = () => logged('[DAILY-SUMMARY] date=')
+        .filter(([, message]) => / attempt=\d+\/4 sent=(true|false) oc-uploaded=/.test(message));
+
+    // renameSync que lanza para el estado del día cuando `shouldFail(n)` lo pide (n cuenta las
+    // escrituras de ese archivo desde 1) y que deja pasar todo lo demás. Es la última pieza de la
+    // escritura atómica, así que el archivo final no cambia.
+    const failStateRename = (message, shouldFail = () => true) => {
+        const realRenameSync = fs.renameSync;
+        let writes = 0;
+        return jest.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+            if (String(to).endsWith('daily-summary.json')) {
+                writes += 1;
+                if (shouldFail(writes)) {
+                    throw new Error(message);
+                }
+            }
+            return realRenameSync.call(fs, from, to);
+        });
+    };
+
+    beforeEach(() => {
+        // El doble por omisión AFIRMA la entrega: un valor ausente cuenta como no entregado y cada
+        // caso de éxito pasaría a ser un intento fallido (S-2, 20.6 D-14).
+        mockSendOperatorReport.mockResolvedValue({ delivered: true, error: null });
+        mockRunQuery.mockImplementation(routeQueries({}));
+    });
+
+    test('exporta dayStatePath, readDayState y el despacho; el estado va en la carpeta del día (D-04)', () => {
+        expect(typeof dispatchDailySummaryIfDue).toBe('function');
+        expect(typeof readDayState).toBe('function');
+        expect(dayStatePath(tmpRoot, D)).toBe(path.join(tmpRoot, 'sageconnect', D, 'daily-summary.json'));
+        for (const badRoot of ['', '   ', undefined, 12]) {
+            expect(() => dayStatePath(badRoot, D)).toThrow(TypeError);
+        }
+        // La fecha entra en una ruta: nada que no sea una fecha real YYYY-MM-DD.
+        for (const badDate of ['../../x', '2026-11-3', '2026-02-30', undefined]) {
+            expect(() => dayStatePath(tmpRoot, badDate)).toThrow(TypeError);
+        }
+    });
+
+    test('readDayState distingue un estado ausente, uno válido y uno dañado, y nunca lanza (T-20.7-33)', () => {
+        expect(readDayState(tmpRoot, D)).toEqual({ status: 'missing' });
+
+        const valid = { date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: false, error: 'x' }] };
+        writeRawState(D, JSON.stringify(valid));
+        expect(readDayState(tmpRoot, D)).toEqual({ status: 'ok', data: valid });
+
+        for (const content of [
+            'not json',
+            JSON.stringify({ ...valid, date: D1 }),
+            JSON.stringify({ ...valid, status: 'otro' }),
+            JSON.stringify({ ...valid, status: 'delivered' }),
+            '[]',
+            'null',
+        ]) {
+            writeRawState(D, content);
+            expect(readDayState(tmpRoot, D)).toEqual({ status: 'corrupt' });
+        }
+        // Una carpeta en el lugar del archivo es un error de lectura, no un estado ausente.
+        const file = dayStatePath(tmpRoot, D);
+        fs.rmSync(file);
+        fs.mkdirSync(file);
+        expect(readDayState(tmpRoot, D)).toEqual({ status: 'corrupt' });
+        expect(readDayState(undefined, D)).toEqual({ status: 'corrupt' });
+    });
+
+    test.each([
+        ['enabled en false', OFF],
+        ["enabled con el texto 'true'", { ...config, notifications: { dailySummary: { ...SUMMARY, enabled: 'true' } } }],
+        ['notifications sin la llave dailySummary', { ...config, notifications: {} }],
+        ['config sin notifications', config],
+        ['sin config', undefined],
+    ])('apagado (%s): no lee ni escribe estado, no consulta, no envía y no deja bitácora (D-06, D-34, D-40)', async (_label, cfg) => {
+        const readSpy = jest.spyOn(fs, 'readFileSync');
+        try {
+            await expect(dispatchDailySummaryIfDue(at(3, 23, 45), cfg)).resolves.toBeUndefined();
+            await expect(dispatchDailySummaryIfDue(at(4, 0, 0), cfg)).resolves.toBeUndefined();
+            expect(readSpy.mock.calls.filter(([file]) => String(file).endsWith('daily-summary.json'))).toEqual([]);
+        } finally {
+            readSpy.mockRestore();
+        }
+
+        expect(mockRunQuery).not.toHaveBeenCalled();
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(fs.existsSync(path.join(tmpRoot, 'sageconnect'))).toBe(false);
+        expect(mockLogGenerator).not.toHaveBeenCalled();
+    });
+
+    test('encendido sin carpeta de bitácoras: una sola línea de error, sin consultas ni envío (D-08)', async () => {
+        await expect(dispatchDailySummaryIfDue(at(3, 23, 45), { ...ON, paths: {} })).resolves.toBeUndefined();
+
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'error', '[DAILY-SUMMARY] status=no-log-path']]);
+        expect(mockRunQuery).not.toHaveBeenCalled();
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+    });
+
+    test('RD-01: a las 23:30 crea el día sin enviar; a las 23:45 sale un correo con la fecha; a las 23:50 ya no sale otro', async () => {
+        await runAt(2026, 10, 3, 23, 30);
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [] });
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        // Crear el día no deja bitácora: nada de una línea por ejecución (D-34).
+        expect(mockLogGenerator).not.toHaveBeenCalled();
+
+        await runAt(2026, 10, 3, 23, 45);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        const [args] = mockSendOperatorReport.mock.calls[0];
+        expect(args.subject).toContain('Resumen del día 2026-11-03');
+        expect(args.callerLogFile).toBe('EomNotification');
+        expect(args.html).toContain('<h1>SageConnect: Resumen del día 2026-11-03</h1>');
+        // Solo el canal del operador (T-20.7-35).
+        expect(mockSendMail).not.toHaveBeenCalled();
+        expect(stateOf(D)).toEqual({ date: D, status: 'delivered', attempts: [{ at: '2026-11-03T23:45:00', delivered: true, error: null }] });
+        expect(attemptLines()).toEqual([['info',
+            '[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=true oc-uploaded=0 payments-uploaded=n/a oc-pending=0 payments-pending=n/a last-day=0 incomplete=true']]);
+        // El reloj de SQL Server del doble dice el mismo día: no hay línea de reloj.
+        expect(logged('[DAILY-SUMMARY-CLOCK]')).toEqual([]);
+        const linesAfter2345 = mockLogGenerator.mock.calls.length;
+
+        await runAt(2026, 10, 3, 23, 50);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(mockLogGenerator.mock.calls.length).toBe(linesAfter2345);
+    });
+
+    test('D-08: al recolectar y durante el envío, el estado en disco ya trae el intento anotado con delivered: null', async () => {
+        const seen = { collecting: null, sending: null };
+        const snapshot = () => {
+            try {
+                return JSON.parse(fs.readFileSync(dayStatePath(tmpRoot, D), 'utf8'));
+            } catch (err) {
+                return { readError: err.message };
+            }
+        };
+        const route = routeQueries({});
+        mockRunQuery.mockImplementation(async (sql, db) => {
+            if (seen.collecting === null) {
+                seen.collecting = snapshot();
+            }
+            return route(sql, db);
+        });
+        mockSendOperatorReport.mockImplementation(async () => {
+            seen.sending = snapshot();
+            return { delivered: true, error: null };
+        });
+
+        await runAt(2026, 10, 3, 23, 45);
+
+        const noted = { date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: null, error: null }] };
+        expect(seen).toEqual({ collecting: noted, sending: noted });
+        expect(stateOf(D)).toEqual({ date: D, status: 'delivered', attempts: [{ at: '2026-11-03T23:45:00', delivered: true, error: null }] });
+    });
+
+    test('D-08: si no se puede anotar el intento, no se recolecta ni se envía y queda un error state-write-failed', async () => {
+        // El día ya existe: la única escritura de las 23:45 es la del intento.
+        await runAt(2026, 10, 3, 23, 30);
+        const renameSpy = failStateRename('EPERM: operation not permitted, rename');
+        try {
+            await expect(runAt(2026, 10, 3, 23, 45)).resolves.toBeUndefined();
+        } finally {
+            renameSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(mockRunQuery).not.toHaveBeenCalled();
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'error',
+            '[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=false status=state-write-failed err=EPERM: operation not permitted, rename']]);
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [] });
+    });
+
+    test('D-08: si no se puede crear el día, en esa ejecución no se intenta aunque la escritura siguiente sí funcionaría', async () => {
+        const renameSpy = failStateRename('EBUSY: resource busy or locked, rename', (n) => n === 1);
+        try {
+            await runAt(2026, 10, 3, 23, 45);
+        } finally {
+            renameSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toBeNull();
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'error',
+            '[DAILY-SUMMARY] date=2026-11-03 status=state-write-failed err=EBUSY: resource busy or locked, rename']]);
+
+        // La ejecución siguiente crea el día y hace su primer intento.
+        await runAt(2026, 10, 3, 23, 50);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D)).toEqual({ date: D, status: 'delivered', attempts: [{ at: '2026-11-03T23:50:00', delivered: true, error: null }] });
+    });
+
+    test('D-08: si no se puede completar el intento después del envío, queda el error, el intento se queda en null y no hay reenvío inmediato', async () => {
+        await runAt(2026, 10, 3, 23, 30);
+        // A las 23:45 la 1.ª escritura del estado es la del intento y la 2.ª la que lo completa.
+        const renameSpy = failStateRename('ENOSPC: no space left on device, rename', (n) => n === 2);
+        try {
+            await runAt(2026, 10, 3, 23, 45);
+        } finally {
+            renameSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: null, error: null }] });
+        expect(mockLogGenerator).toHaveBeenCalledWith('EomNotification', 'error',
+            '[DAILY-SUMMARY] date=2026-11-03 attempt=1/4 sent=true status=state-write-failed-after-send err=ENOSPC: no space left on device, rename');
+        expect(attemptLines()).toHaveLength(1);
+
+        // El intento en null cuenta: a las 00:00 todavía no toca el segundo.
+        await runAt(2026, 10, 4, 0, 0);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+    });
+
+    test('RD-03: después de un envío entregado, las dos ejecuciones siguientes no vuelven a enviar', async () => {
+        await runAt(2026, 10, 3, 23, 45);
+        // 23:50, el mismo día; 00:45, cuando tocaría el segundo intento si no se hubiera entregado.
+        await runAt(2026, 10, 3, 23, 50);
+        await runAt(2026, 10, 4, 0, 45);
+
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D).status).toBe('delivered');
+    });
+
+    test('RD-03: con el correo siempre caído, el día recibe exactamente 4 intentos (23:45, 00:45, 03:45 y 11:45) y queda abandonado con max-attempts en la ejecución del cuarto', async () => {
+        mockSendOperatorReport.mockResolvedValue({ delivered: false, error: ECONNREFUSED });
+        const sentAt = [];
+        let rightAfter1145 = null;
+
+        // 96 ejecuciones, una cada 15 minutos, de las 23:45 del día D a las 23:30 del siguiente.
+        for (let k = 0; k < 96; k++) {
+            const now = new Date(2026, 10, 3, 23, 45 + 15 * k);
+            const before = mockSendOperatorReport.mock.calls.length;
+            await expect(dispatchDailySummaryIfDue(now, ON)).resolves.toBeUndefined();
+            const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            if (mockSendOperatorReport.mock.calls.length > before) {
+                sentAt.push(hhmm);
+            }
+            if (now.getDate() === 4 && hhmm === '11:45') {
+                rightAfter1145 = stateOf(D);
+            }
+        }
+
+        expect(sentAt).toEqual(['23:45', '00:45', '03:45', '11:45']);
+        expect(subjects()).toHaveLength(4);
+        for (const subject of subjects()) {
+            expect(subject).toContain('Resumen del día 2026-11-03');
+        }
+        expect(rightAfter1145).toEqual({
+            date: D,
+            status: 'abandoned',
+            attempts: ['2026-11-03T23:45:00', '2026-11-04T00:45:00', '2026-11-04T03:45:00', '2026-11-04T11:45:00']
+                .map((stamp) => ({ at: stamp, delivered: false, error: ECONNREFUSED })),
+            reason: 'max-attempts',
+        });
+        expect(logged('[DAILY-SUMMARY-ABANDON]')).toEqual([['warn', '[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=max-attempts attempts=4']]);
+        const lines = attemptLines();
+        expect(lines).toHaveLength(4);
+        lines.forEach(([level, message], index) => {
+            expect(level).toBe('warn');
+            expect(message).toMatch(new RegExp(`^\\[DAILY-SUMMARY\\] date=2026-11-03 attempt=${index + 1}/4 sent=false .* err=connect ECONNREFUSED 127\\.0\\.0\\.1:25$`));
+        });
+        // El día siguiente se creó a las 00:00 y queda pendiente para su propio resumen.
+        expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
+    });
+
+    test('RD-02 (a): un día creado a las 10:00 y sin más ejecuciones se envía en la de las 00:00 del día siguiente, con sus datos y su fecha', async () => {
+        await runAt(2026, 10, 3, 10, 0);
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [] });
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+
+        await runAt(2026, 10, 4, 0, 0);
+
+        expect(subjects()).toHaveLength(1);
+        expect(subjects()[0]).toContain('Resumen del día 2026-11-03');
+        expect(mockRunQuery.mock.calls[0][0]).toContain("CAST('2026-11-03' AS DATE)");
+        expect(stateOf(D)).toEqual({ date: D, status: 'delivered', attempts: [{ at: '2026-11-04T00:00:00', delivered: true, error: null }] });
+        expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
+    });
+
+    test('RD-02 (b): con el día D pendiente tras 2 intentos fallidos, a las 23:45 del día siguiente se abandona D y se intenta el nuevo día', async () => {
+        mockSendOperatorReport
+            .mockResolvedValueOnce({ delivered: false, error: ECONNREFUSED })
+            .mockResolvedValueOnce({ delivered: false, error: ECONNREFUSED });
+        await runAt(2026, 10, 3, 23, 45);
+        await runAt(2026, 10, 4, 0, 45);
+        expect(stateOf(D)).toMatchObject({ status: 'pending', attempts: [{ delivered: false }, { delivered: false }] });
+
+        await runAt(2026, 10, 4, 23, 45);
+
+        expect(logged('[DAILY-SUMMARY-ABANDON]')).toEqual([['warn', '[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=next-summary-due attempts=2']]);
+        expect(stateOf(D)).toMatchObject({ status: 'abandoned', reason: 'next-summary-due', attempts: [{ delivered: false }, { delivered: false }] });
+        expect(subjects()).toHaveLength(3);
+        expect(subjects()[2]).toContain('Resumen del día 2026-11-04');
+        expect(stateOf(D1)).toMatchObject({ status: 'delivered' });
+    });
+
+    test('RD-02 (c): sin estado del día D, a las 08:00 del día siguiente no se envía nada y a las 23:45 sale el del nuevo día', async () => {
+        await runAt(2026, 10, 4, 8, 0);
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toBeNull();
+
+        await runAt(2026, 10, 4, 23, 45);
+        expect(subjects()).toHaveLength(1);
+        expect(subjects()[0]).toContain('Resumen del día 2026-11-04');
+    });
+
+    test('RD-02 (d): con el resumen apagado el día D, al encenderlo a las 10:30 del día siguiente no se manda el de D', async () => {
+        await runAt(2026, 10, 3, 10, 0, OFF);
+        await runAt(2026, 10, 3, 23, 45, OFF);
+        await runAt(2026, 10, 4, 10, 30);
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toBeNull();
+        expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
+    });
+
+    test("un estado de hoy dañado ('not json') a las 23:45 no se envía: queda abandonado con state-corrupt y una sola línea de abandono", async () => {
+        writeRawState(D, 'not json');
+
+        await runAt(2026, 10, 3, 23, 45);
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toEqual({ date: D, status: 'abandoned', attempts: [], reason: 'state-corrupt' });
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'warn', '[DAILY-SUMMARY-ABANDON] date=2026-11-03 reason=state-corrupt attempts=0']]);
+
+        await runAt(2026, 10, 3, 23, 50);
+        expect(mockLogGenerator).toHaveBeenCalledTimes(1);
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+    });
+
+    test('si no se puede escribir un abandono, queda el error y ninguna línea de abandono, y el día dañado tampoco se envía', async () => {
+        writeRawState(D, 'not json');
+        const renameSpy = failStateRename('EACCES: permission denied, rename');
+        try {
+            await runAt(2026, 10, 3, 23, 45);
+        } finally {
+            renameSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'error',
+            '[DAILY-SUMMARY] date=2026-11-03 status=state-write-failed err=EACCES: permission denied, rename']]);
+        expect(fs.readFileSync(dayStatePath(tmpRoot, D), 'utf8')).toBe('not json');
+    });
+
+    test('D-35: al resumir hoy con la fecha de SQL Server en otro día queda un warn de reloj', async () => {
+        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { clock: OTHER_CLOCK } }));
+
+        await runAt(2026, 10, 3, 23, 45);
+
+        expect(logged('[DAILY-SUMMARY-CLOCK]')).toEqual([['warn', '[DAILY-SUMMARY-CLOCK] tz-date=2026-11-03 sql-date=2026-11-04']]);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+    });
+
+    test('D-35: en una reposición no hay línea de reloj, aunque la fecha de SQL Server ya sea la del día siguiente', async () => {
+        await runAt(2026, 10, 3, 10, 0);
+        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { clock: OTHER_CLOCK } }));
+
+        await runAt(2026, 10, 4, 0, 0);
+
+        expect(subjects()).toHaveLength(1);
+        expect(subjects()[0]).toContain('Resumen del día 2026-11-03');
+        expect(logged('[DAILY-SUMMARY-CLOCK]')).toEqual([]);
+    });
+
+    test.each([
+        ['ausente (undefined)', undefined],
+        ['malformado ({ delivered: 1 })', { delivered: 1, error: null }],
+    ])('D-38: un desenlace %s no cuenta como entregado: el intento queda en false, el día sigue pendiente y la línea dice unknown delivery failure', async (_label, outcome) => {
+        mockSendOperatorReport.mockResolvedValueOnce(outcome);
+
+        await expect(runAt(2026, 10, 3, 23, 45)).resolves.toBeUndefined();
+
+        expect(stateOf(D)).toEqual({
+            date: D,
+            status: 'pending',
+            attempts: [{ at: '2026-11-03T23:45:00', delivered: false, error: 'unknown delivery failure' }],
+        });
+        expect(attemptLines()).toEqual([['warn',
+            expect.stringMatching(/^\[DAILY-SUMMARY\] date=2026-11-03 attempt=1\/4 sent=false .* err=unknown delivery failure$/)]]);
+    });
+
+    test('T-20.7-36: el mensaje del transporte se guarda recortado a 500 caracteres y la línea lo acota a 200', async () => {
+        mockSendOperatorReport.mockResolvedValueOnce({ delivered: false, error: 'E'.repeat(800) });
+
+        await runAt(2026, 10, 3, 23, 45);
+
+        expect(stateOf(D).attempts[0].error).toBe('E'.repeat(500));
+        const [[, message]] = attemptLines();
+        expect(message.endsWith(` err=${'E'.repeat(200)}`)).toBe(true);
+        expect(message).not.toContain('E'.repeat(201));
+    });
+
+    test('RD-09: un día sin pendientes manda igual su correo, con «sin pendientes» en el asunto y «Sin pendientes» en el cuerpo', async () => {
+        recordRun('COPDAT', [['PY0000801', { outcome: 'uploaded', vendor: 'PROV01', fechaRegistro: '2026-10-30' }]]);
+        mockRunQuery.mockImplementation(routeQueries({ COPDAT: { uploaded: 4 } }));
+
+        await runAt(2026, 10, 3, 23, 45);
+
+        expect(subjects()).toEqual(['[SageConnect] Resumen del día 2026-11-03 — sin pendientes']);
+        expect(mockSendOperatorReport.mock.calls[0][0].html).toContain('<p>Sin pendientes</p>');
+        expect(stateOf(D).status).toBe('delivered');
+    });
+
+    test('nunca lanza: con runQuery rechazando todo, resuelve y envía el correo con las notas de lo que no se pudo leer', async () => {
+        mockRunQuery.mockRejectedValue(new Error('Login failed for user'));
+
+        await expect(runAt(2026, 10, 3, 23, 45)).resolves.toBeUndefined();
+
+        expect(subjects()).toEqual(['[SageConnect] Resumen del día 2026-11-03 — datos incompletos']);
+        expect(mockSendOperatorReport.mock.calls[0][0].html).toContain('No se pudieron leer las OCs con error de COPDAT: Login failed for user.');
+        expect(stateOf(D).status).toBe('delivered');
+    });
+
+    test('nunca lanza: si la recolección lanza (config sin portal), resuelve, deja dispatch-failed y el intento se queda en null sin reenvío inmediato', async () => {
+        const { portal: _omitted, ...broken } = ON;
+
+        await expect(dispatchDailySummaryIfDue(at(3, 23, 45), broken)).resolves.toBeUndefined();
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(stateOf(D)).toEqual({ date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: null, error: null }] });
+        const errors = mockLogGenerator.mock.calls.filter(([, level]) => level === 'error');
+        expect(errors).toHaveLength(1);
+        expect(errors[0][2]).toMatch(/^\[DAILY-SUMMARY\] status=dispatch-failed err=\S.*tenants/);
+
+        // El intento en null cuenta como hecho: a las 00:00 todavía no toca el segundo.
+        await runAt(2026, 10, 4, 0, 0);
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+    });
+
+    test('D-01: el envío se carga solo al intentar; ni una ejecución apagada ni la de las 23:30 lo cargan, la de las 23:45 sí', async () => {
+        // Registros limpios. Los casos de arriba ya cargaron el doble en el registro de afuera, y
+        // dentro del bloque aislado Jest devolvería esa instancia sin volver a correr la fábrica
+        // (desviación 4 del plan 20.7-06): resetModules vacía los dos registros.
+        jest.resetModules();
+        mockEmailSenderLoaded.mockClear();
+        const loads = {};
+
+        await jest.isolateModulesAsync(async () => {
+            const isolated = require('../../src/services/DailySummaryService');
+            loads.alRequerir = mockEmailSenderLoaded.mock.calls.length;
+            await isolated.dispatchDailySummaryIfDue(at(3, 23, 45), OFF);
+            loads.apagado = mockEmailSenderLoaded.mock.calls.length;
+            await isolated.dispatchDailySummaryIfDue(at(3, 23, 30), ON);
+            loads.a2330 = mockEmailSenderLoaded.mock.calls.length;
+            await isolated.dispatchDailySummaryIfDue(at(3, 23, 45), ON);
+            loads.a2345 = mockEmailSenderLoaded.mock.calls.length;
+        });
+
+        expect(loads).toEqual({ alRequerir: 0, apagado: 0, a2330: 0, a2345: 1 });
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D).status).toBe('delivered');
     });
 });
