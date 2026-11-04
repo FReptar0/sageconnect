@@ -54,6 +54,8 @@ const CLOSED = { todayISO: null, yesterdayISO: null, ops: [] };
 
 const MISSING = { status: 'missing' };
 const CORRUPT = { status: 'corrupt' };
+// WR-01: la envoltura que da readDayState cuando la lectura falla por E/S y no por el contenido.
+const UNREADABLE = { status: 'unreadable', error: 'EBUSY: resource busy or locked, open' };
 const ok = (data) => ({ status: 'ok', data });
 const pendingState = (date, attempts = []) => ({ date, status: 'pending', attempts });
 const failedAttempt = (stamp) => ({ at: stamp, delivered: false, error: 'connect ECONNREFUSED 127.0.0.1:25' });
@@ -496,6 +498,44 @@ describe('decideDailySummaryAction: estado dañado nunca provoca un envío (D-07
         expect(decide(at(3, 23, 45), { status: 'otro' }, MISSING).ops).toEqual(abandonToday);
         expect(decide(at(3, 23, 45), undefined, MISSING).ops).toEqual(abandonToday);
         expect(decide(at(3, 23, 45), 'missing', MISSING).ops).toEqual(abandonToday);
+    });
+});
+
+describe('decideDailySummaryAction: un estado que no se pudo leer no se toca (WR-01)', () => {
+    // Un error de E/S (EBUSY, EACCES…) no dice nada del contenido: abandonar ese día lo perdería
+    // para siempre por una falla pasajera. Ese día no recibe ninguna operación en esta ejecución y
+    // la siguiente lo vuelve a leer.
+    test('hoy unreadable a las 23:45 → ninguna operación: ni crear, ni abandonar, ni intentar', () => {
+        expect(decide(at(3, 23, 45), UNREADABLE, MISSING)).toEqual({ todayISO: D, yesterdayISO: D_MINUS_1, ops: [] });
+    });
+
+    test('hoy unreadable antes de la hora no detiene la reposición de ayer', () => {
+        expect(decide(at(3, 0, 0), UNREADABLE, ok(pendingState(D_MINUS_1))).ops).toEqual([
+            { type: 'attempt', date: D_MINUS_1, attemptNumber: 1 },
+        ]);
+    });
+
+    test('hoy unreadable después de la hora: ayer pendiente se abandona igual por next-summary-due y hoy no recibe nada', () => {
+        const yesterday = ok(pendingState(D_MINUS_1, [failedAttempt('2026-11-02T23:45:00')]));
+        expect(decide(at(3, 23, 45), UNREADABLE, yesterday).ops).toEqual([
+            { type: 'abandon', date: D_MINUS_1, reason: 'next-summary-due', attempts: 1 },
+        ]);
+    });
+
+    test('ayer unreadable antes de la hora → nada sobre ayer; hoy ausente se crea igual', () => {
+        expect(decide(at(3, 10, 30), MISSING, UNREADABLE).ops).toEqual([{ type: 'create', date: D }]);
+        expect(decide(at(3, 10, 30), ok(pendingState(D)), UNREADABLE).ops).toEqual([]);
+    });
+
+    test('ayer unreadable después de la hora → nada sobre ayer; hoy se intenta', () => {
+        expect(decide(at(3, 23, 45), ok(pendingState(D)), UNREADABLE).ops).toEqual([
+            { type: 'attempt', date: D, attemptNumber: 1 },
+        ]);
+    });
+
+    test('los dos unreadable → ninguna operación, antes y después de la hora', () => {
+        expect(decide(at(3, 10, 30), UNREADABLE, UNREADABLE).ops).toEqual([]);
+        expect(decide(at(3, 23, 45), UNREADABLE, UNREADABLE).ops).toEqual([]);
     });
 });
 

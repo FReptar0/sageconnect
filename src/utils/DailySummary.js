@@ -182,12 +182,17 @@ function isValidDayState(data, dateISO) {
     return true;
 }
 
-// Clasifica la envoltura que entrega el despachador: `missing`, `ok` o `corrupt`. Un `ok` se
-// vuelve a validar aquí y cualquier forma no reconocida cuenta como dañada, así que lo que no se
-// puede probar válido nunca llega a ser objetivo de un envío.
+// Clasifica la envoltura que entrega el despachador: `missing`, `ok`, `unreadable` o `corrupt`.
+// Un `ok` se vuelve a validar aquí y cualquier forma no reconocida cuenta como dañada, así que lo
+// que no se puede probar válido nunca llega a ser objetivo de un envío. `unreadable` es una
+// lectura que falló por E/S (WR-01): no dice nada del contenido, así que ese día no se toca en
+// esta ejecución, ni para abandonarlo ni para intentarlo.
 function classifyDayState(read, dateISO) {
     if (read && read.status === 'missing') {
         return 'missing';
+    }
+    if (read && read.status === 'unreadable') {
+        return 'unreadable';
     }
     if (read && read.status === 'ok' && isValidDayState(read.data, dateISO)) {
         return 'ok';
@@ -228,22 +233,26 @@ function nextAttemptOp(dateISO, state, now) {
  *      y sin fechas.
  *   2. Hoy ausente → `create` (D-05: la primera ejecución encendida del día crea su estado; un
  *      día sin estado no debe nada). Hoy dañado → `abandon` con `state-corrupt`, y hoy no es
- *      objetivo.
+ *      objetivo. Hoy ilegible (`unreadable`, WR-01) → ninguna operación sobre hoy.
  *   3. A partir de la hora, comparada con hora y minuto del inicio de la ejecución (D-09): ayer
  *      pendiente → `abandon` con `next-summary-due`, y el objetivo es hoy si sigue pendiente.
  *      Antes de la hora: ayer dañado → `abandon` con `state-corrupt`; ayer pendiente → es el
- *      objetivo. Ayer ausente nunca produce operaciones y ningún día anterior a ayer se mira.
+ *      objetivo. Ayer ausente o ilegible nunca produce operaciones y ningún día anterior a ayer
+ *      se mira.
  *   4. Con un objetivo de `n` intentos: `n >= MAX_ATTEMPTS` → `abandon` con `max-attempts`;
  *      `n === 0` → `attempt` 1; si no, `attempt` n+1 solo cuando ya pasaron
  *      `RETRY_OFFSETS_MIN[n - 1]` minutos desde el primer intento.
  *
- * Un estado `ok` se vuelve a validar con `isValidDayState`: uno ilegible, de otra fecha o
- * incoherente se trata como dañado y nunca provoca un envío (T-20.7-06).
+ * Un estado `ok` se vuelve a validar con `isValidDayState`: uno de otra fecha o incoherente se
+ * trata como dañado y nunca provoca un envío (T-20.7-06). Un día cuya lectura falló por E/S
+ * (`unreadable`) no se trata como dañado: abandonarlo lo perdería para siempre por una falla
+ * pasajera, así que no recibe ninguna operación y la ejecución siguiente lo vuelve a leer (WR-01).
  *
  * @param {{now: Date, summaryCfg: {enabled: boolean, hour: number, minute: number},
  *          today: {status: string, data?: object}, yesterday: {status: string, data?: object}}} input
  *   `summaryCfg` es `config.notifications.dailySummary`; `today` y `yesterday` son
- *   `{ status: 'missing' }`, `{ status: 'ok', data }` o `{ status: 'corrupt' }`.
+ *   `{ status: 'missing' }`, `{ status: 'ok', data }`, `{ status: 'unreadable', error }` o
+ *   `{ status: 'corrupt' }`.
  * @returns {{todayISO: string|null, yesterdayISO: string|null, ops: object[]}} Las operaciones son
  *   `{ type: 'create', date }`, `{ type: 'abandon', date, reason, attempts }` con `reason` en
  *   `next-summary-due`, `max-attempts` o `state-corrupt`, y `{ type: 'attempt', date,
@@ -283,9 +292,10 @@ function decideDailySummaryAction(input) {
         todayState = { status: 'pending', attempts: [] };
     } else if (todayKind === 'corrupt') {
         ops.push({ type: 'abandon', date: todayISO, reason: 'state-corrupt', attempts: 0 });
-    } else {
+    } else if (todayKind === 'ok') {
         todayState = today.data;
     }
+    // `unreadable` (WR-01): hoy no recibe ninguna operación en esta ejecución.
 
     const yesterdayKind = classifyDayState(yesterday, yesterdayISO);
     const yesterdayPending = yesterdayKind === 'ok' && yesterday.data.status === 'pending';

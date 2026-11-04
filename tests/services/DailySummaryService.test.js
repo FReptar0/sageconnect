@@ -586,6 +586,19 @@ describe('dispatchDailySummaryIfDue', () => {
         });
     };
 
+    // readFileSync que lanza un error de E/S con su código para el estado de `dateISO` y deja pasar
+    // todo lo demás (WR-01): el archivo en disco está bien y lo que falla es su lectura.
+    const failStateRead = (dateISO, code, message) => {
+        const realReadFileSync = fs.readFileSync;
+        const target = dayStatePath(tmpRoot, dateISO);
+        return jest.spyOn(fs, 'readFileSync').mockImplementation((file, ...rest) => {
+            if (String(file) === target) {
+                throw Object.assign(new Error(message), { code });
+            }
+            return realReadFileSync.call(fs, file, ...rest);
+        });
+    };
+
     beforeEach(() => {
         // El doble por omisión AFIRMA la entrega: un valor ausente cuenta como no entregado y cada
         // caso de éxito pasaría a ser un intento fallido (S-2, 20.6 D-14).
@@ -606,13 +619,14 @@ describe('dispatchDailySummaryIfDue', () => {
         }
     });
 
-    test('readDayState distingue un estado ausente, uno válido y uno dañado, y nunca lanza (T-20.7-33)', () => {
+    test('readDayState distingue un estado ausente, uno válido, uno dañado y uno que no se pudo leer, y nunca lanza (T-20.7-33, WR-01)', () => {
         expect(readDayState(tmpRoot, D)).toEqual({ status: 'missing' });
 
         const valid = { date: D, status: 'pending', attempts: [{ at: '2026-11-03T23:45:00', delivered: false, error: 'x' }] };
         writeRawState(D, JSON.stringify(valid));
         expect(readDayState(tmpRoot, D)).toEqual({ status: 'ok', data: valid });
 
+        // Dañado es solo el contenido: un JSON que no se puede leer o con una forma que no se reconoce.
         for (const content of [
             'not json',
             JSON.stringify({ ...valid, date: D1 }),
@@ -624,12 +638,14 @@ describe('dispatchDailySummaryIfDue', () => {
             writeRawState(D, content);
             expect(readDayState(tmpRoot, D)).toEqual({ status: 'corrupt' });
         }
-        // Una carpeta en el lugar del archivo es un error de lectura, no un estado ausente.
+        // Una carpeta en el lugar del archivo es un error de lectura, no un estado ausente ni un
+        // contenido dañado (WR-01): sale unreadable con el error.
         const file = dayStatePath(tmpRoot, D);
         fs.rmSync(file);
         fs.mkdirSync(file);
-        expect(readDayState(tmpRoot, D)).toEqual({ status: 'corrupt' });
-        expect(readDayState(undefined, D)).toEqual({ status: 'corrupt' });
+        expect(readDayState(tmpRoot, D)).toEqual({ status: 'unreadable', error: expect.stringContaining('EISDIR') });
+        // Sin ruta tampoco se leyó nada.
+        expect(readDayState(undefined, D)).toEqual({ status: 'unreadable', error: 'dayStatePath: logsRoot debe ser texto no vacío' });
     });
 
     test.each([
@@ -936,6 +952,45 @@ describe('dispatchDailySummaryIfDue', () => {
         expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'error',
             '[DAILY-SUMMARY] date=2026-11-03 status=state-write-failed err=EACCES: permission denied, rename']]);
         expect(fs.readFileSync(dayStatePath(tmpRoot, D), 'utf8')).toBe('not json');
+    });
+
+    test('WR-01: si la lectura del estado de hoy falla con EBUSY a las 23:45, el día no se abandona ni se reescribe y queda un solo warn state-unreadable; la ejecución siguiente envía', async () => {
+        writeRawState(D, JSON.stringify({ date: D, status: 'pending', attempts: [] }));
+        const before = fs.readFileSync(dayStatePath(tmpRoot, D));
+        const readSpy = failStateRead(D, 'EBUSY', 'EBUSY: resource busy or locked, open');
+        try {
+            await expect(runAt(2026, 10, 3, 23, 45)).resolves.toBeUndefined();
+        } finally {
+            readSpy.mockRestore();
+        }
+
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(mockRunQuery).not.toHaveBeenCalled();
+        expect(fs.readFileSync(dayStatePath(tmpRoot, D)).equals(before)).toBe(true);
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'warn',
+            '[DAILY-SUMMARY] date=2026-11-03 status=state-unreadable err=EBUSY: resource busy or locked, open']]);
+
+        // La falla era pasajera: con la lectura de vuelta, el intento que tocaba sale en la ejecución siguiente.
+        await runAt(2026, 10, 3, 23, 50);
+        expect(mockSendOperatorReport).toHaveBeenCalledTimes(1);
+        expect(stateOf(D)).toEqual({ date: D, status: 'delivered', attempts: [{ at: '2026-11-03T23:50:00', delivered: true, error: null }] });
+    });
+
+    test('WR-01: un estado de ayer entregado que no se puede leer (EACCES) antes de la hora queda igual en disco; hoy se crea como siempre', async () => {
+        const delivered = JSON.stringify({ date: D, status: 'delivered', attempts: [{ at: '2026-11-03T23:45:00', delivered: true, error: null }] });
+        writeRawState(D, delivered);
+        const readSpy = failStateRead(D, 'EACCES', 'EACCES: permission denied, open');
+        try {
+            await runAt(2026, 10, 4, 10, 30);
+        } finally {
+            readSpy.mockRestore();
+        }
+
+        expect(fs.readFileSync(dayStatePath(tmpRoot, D), 'utf8')).toBe(delivered);
+        expect(stateOf(D1)).toEqual({ date: D1, status: 'pending', attempts: [] });
+        expect(mockSendOperatorReport).not.toHaveBeenCalled();
+        expect(mockLogGenerator.mock.calls).toEqual([['EomNotification', 'warn',
+            '[DAILY-SUMMARY] date=2026-11-03 status=state-unreadable err=EACCES: permission denied, open']]);
     });
 
     test('D-35: al resumir hoy con la fecha de SQL Server en otro día queda un warn de reloj', async () => {

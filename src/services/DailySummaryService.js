@@ -320,26 +320,34 @@ function dayStatePath(logsRoot, dateISO) {
 }
 
 /**
- * Lee el estado de un día resumido. Nunca lanza y distingue tres casos:
+ * Lee el estado de un día resumido. Nunca lanza y distingue cuatro casos:
  * - `{ status: 'missing' }`: el archivo no existe. Un día sin estado no debe su resumen (D-05);
  * - `{ status: 'ok', data }`: JSON que pasa isValidDayState para esa fecha;
- * - `{ status: 'corrupt' }`: cualquier otra cosa, incluidos un error de lectura, un JSON que no
- *   se puede leer, el estado de otra fecha y una forma que no se reconoce.
+ * - `{ status: 'unreadable', error }`: no se pudo leer, por un error de E/S distinto de ENOENT
+ *   (EACCES, EPERM, EBUSY, EMFILE, EIO, una carpeta en su lugar) o porque no se pudo armar la
+ *   ruta. No dice nada del contenido (WR-01);
+ * - `{ status: 'corrupt' }`: se leyó y el contenido no sirve: un JSON que no se puede leer, el
+ *   estado de otra fecha o una forma que no se reconoce.
  *
  * Un estado dañado no cuenta como ausente: si contara, el día se volvería a crear pendiente y
  * podría reenviarse un resumen que ya salió. La agenda lo abandona con state-corrupt, sin enviar
- * (T-20.7-33).
+ * (T-20.7-33). Uno ilegible tampoco cuenta como dañado: abandonarlo lo perdería para siempre por
+ * una falla que suele ser pasajera, y reescribirlo borraría sus intentos. La agenda no lo toca y
+ * la ejecución siguiente lo vuelve a leer.
  *
  * @param {string} logsRoot - Raíz de bitácoras.
  * @param {string} dateISO - Día resumido, `YYYY-MM-DD`.
- * @returns {{status: string, data?: object}}
+ * @returns {{status: string, data?: object, error?: string}}
  */
 function readDayState(logsRoot, dateISO) {
     let raw;
     try {
         raw = fs.readFileSync(dayStatePath(logsRoot, dateISO), 'utf8');
     } catch (err) {
-        return (err && err.code === 'ENOENT') ? { status: 'missing' } : { status: 'corrupt' };
+        if (err && err.code === 'ENOENT') {
+            return { status: 'missing' };
+        }
+        return { status: 'unreadable', error: failureText(err) };
     }
     try {
         const data = JSON.parse(raw);
@@ -393,7 +401,8 @@ function writeDayState(logsRoot, state) {
  *    - abandonar: el día queda abandonado con su motivo, y una línea de abandono lo anuncia;
  *    - intentar: los pasos 3 a 5.
  *    Cada escritura va en su propio try/catch. Un día cuya creación no se pudo escribir no se
- *    intenta en esta ejecución.
+ *    intenta en esta ejecución. Un día cuyo estado no se pudo leer (error de E/S) no recibe
+ *    operaciones ni se reescribe: solo deja una línea warn state-unreadable (WR-01).
  * 3. El intento se anota en disco con `delivered: null` ANTES de recolectar y de enviar, y si
  *    esa escritura falla, en esta ejecución no se envía (D-08). Como queda anotado antes de
  *    recolectar, ni la continuación de un bloque que se pasó de tiempo ni una ejecución manual
@@ -437,7 +446,20 @@ async function dispatchDailySummaryIfDue(now, cfg) {
         const yesterdayISO = addDaysISO(todayISO, -1);
         const today = readDayState(logsRoot, todayISO);
         const yesterday = readDayState(logsRoot, yesterdayISO);
-        const { ops } = decideDailySummaryAction({ now, summaryCfg, today, yesterday });
+        const decision = decideDailySummaryAction({ now, summaryCfg, today, yesterday });
+        const { ops } = decision;
+
+        // WR-01: un día cuyo estado no se pudo leer no recibe operaciones y su archivo no se toca;
+        // solo queda esta línea, y la ejecución siguiente lo vuelve a leer. Una decisión cerrada
+        // (todayISO null) no deja nada, como antes.
+        if (decision.todayISO !== null) {
+            for (const [dateISO, read] of [[todayISO, today], [yesterdayISO, yesterday]]) {
+                if (read.status === 'unreadable') {
+                    logGenerator(LOG_FILE, 'warn',
+                        `[DAILY-SUMMARY] date=${dateISO} status=state-unreadable err=${read.error}`);
+                }
+            }
+        }
 
         // Lo que hay en disco de cada día mientras se aplican las operaciones: el estado leído o
         // el que se acaba de escribir. Un día que no está aquí no tiene estado escrito y no se
